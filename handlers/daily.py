@@ -1,10 +1,25 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
+from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_patsan_cached, get_daily_reward
 from keyboards.keyboards import main_keyboard
 from keyboards.new_keyboards import daily_keyboard, achievements_keyboard
 
 router = Router()
+
+# Декоратор для обработки ошибки "message is not modified"
+def ignore_not_modified_error(func):
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                # Игнорируем эту ошибку - ничего страшного
+                if len(args) > 0 and hasattr(args[0], 'callback_query'):
+                    await args[0].callback_query.answer()
+                return
+            raise  # Пропускаем другие ошибки
+    return wrapper
 
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message):
@@ -44,6 +59,7 @@ async def cmd_daily(message: types.Message):
             parse_mode="HTML"
         )
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "daily")
 async def callback_daily(callback: types.CallbackQuery):
     """Кнопка ежедневной награды"""
@@ -127,6 +143,7 @@ async def cmd_achievements(message: types.Message):
         parse_mode="HTML"
     )
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "achievements")
 async def callback_achievements(callback: types.CallbackQuery):
     """Кнопка достижений"""
