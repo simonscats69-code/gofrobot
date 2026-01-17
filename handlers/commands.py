@@ -2,6 +2,7 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from database.db_manager import get_patsan  # Теперь асинхронная функция
 from keyboards.keyboards import main_keyboard
+from keyboards.top_keyboards import top_menu_keyboard  # Импортируем новую клавиатуру
 
 router = Router()
 
@@ -46,5 +47,15 @@ async def cmd_profile(message: types.Message):
         f"🔍 Находка: {patsan['skill_nahodka']}"
         f"{upgrade_text}",
         reply_markup=main_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.message(Command("top"))
+async def cmd_top(message: types.Message):
+    """Обработчик команды /top"""
+    await message.answer(
+        "🏆 <b>Топ пацанов с гофроцентрала</b>\n\n"
+        "Выбери, по какому показателю сортировать рейтинг:",
+        reply_markup=top_menu_keyboard(),
         parse_mode="HTML"
     )
