@@ -2,11 +2,26 @@ from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_patsan_cached, change_nickname
 from keyboards.keyboards import main_keyboard
 from keyboards.new_keyboards import nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_to_rademka_keyboard
 
 router = Router()
+
+# Декоратор для обработки ошибки "message is not modified"
+def ignore_not_modified_error(func):
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                # Игнорируем эту ошибку - ничего страшного
+                if len(args) > 0 and hasattr(args[0], 'callback_query'):
+                    await args[0].callback_query.answer()
+                return
+            raise  # Пропускаем другие ошибки
+    return wrapper
 
 # ==================== СМЕНА НИКА (FSM) ====================
 
@@ -18,6 +33,12 @@ async def cmd_nickname(message: types.Message, state: FSMContext):
     """Команда /nickname - смена ника"""
     user_id = message.from_user.id
     patsan = await get_patsan_cached(user_id)
+    
+    # Проверяем текущее состояние
+    current_state = await state.get_state()
+    if current_state == NicknameChange.waiting_for_nickname.state:
+        await message.answer("Ты уже в процессе смены ника! Напиши новый ник или отмени командой /cancel")
+        return
     
     nickname_changed = patsan.get("nickname_changed", False)
     cost = 0 if not nickname_changed else 5000
@@ -53,6 +74,12 @@ async def callback_change_nickname(callback: types.CallbackQuery, state: FSMCont
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
     
+    # Проверяем текущее состояние - если уже в состоянии смены ника, не редактируем
+    current_state = await state.get_state()
+    if current_state == NicknameChange.waiting_for_nickname.state:
+        await callback.answer("Ты уже в процессе смены ника! Напиши новый ник.")
+        return
+    
     nickname_changed = patsan.get("nickname_changed", False)
     cost = 0 if not nickname_changed else 5000
     
@@ -73,14 +100,15 @@ async def callback_change_nickname(callback: types.CallbackQuery, state: FSMCont
             f"Напиши новый ник (3-20 символов, только буквы и цифры):"
         )
     
-    await callback.message.edit_text(
+    # Отправляем новое сообщение вместо редактирования старого
+    await callback.message.answer(
         message_text,
         reply_markup=nickname_keyboard(),
         parse_mode="HTML"
     )
     
     await state.set_state(NicknameChange.waiting_for_nickname)
-    await callback.answer()
+    await callback.answer("Введи новый ник в чат")
 
 @router.message(NicknameChange.waiting_for_nickname)
 async def process_nickname(message: types.Message, state: FSMContext):
@@ -134,6 +162,21 @@ async def process_nickname(message: types.Message, state: FSMContext):
     
     await state.clear()
 
+# Команда для отмены смены ника
+@router.message(Command("cancel"))
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    """Отмена смены ника"""
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("Нечего отменять.")
+        return
+    
+    await state.clear()
+    await message.answer(
+        "Смена ника отменена.",
+        reply_markup=main_keyboard()
+    )
+
 # ==================== РАДЁМКА ====================
 
 @router.message(Command("rademka"))
@@ -164,6 +207,7 @@ async def cmd_rademka(message: types.Message):
         parse_mode="HTML"
     )
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
 async def callback_rademka(callback: types.CallbackQuery):
     """Кнопка радёмки"""
@@ -321,8 +365,6 @@ async def rademka_confirm(callback: types.CallbackQuery):
         # Достижение за первую радёмку
         await unlock_achievement(user_id, "first_rademka", "Первая радёмка", 200)
         
-        # Достижение за 10 радёмок (нужно будет добавить счётчик)
-        
     else:
         # ПРОВАЛ РАДЁМКИ
         
@@ -364,7 +406,6 @@ async def rademka_confirm(callback: types.CallbackQuery):
 @router.callback_query(F.data == "rademka_stats")
 async def rademka_stats(callback: types.CallbackQuery):
     """Статистика радёмок"""
-    # Пока заглушка - можно добавить реальную статистику
     message_text = (
         f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
         f"<i>В разработке...</i>\n\n"
@@ -385,7 +426,6 @@ async def rademka_stats(callback: types.CallbackQuery):
 @router.callback_query(F.data == "rademka_top")
 async def rademka_top(callback: types.CallbackQuery):
     """Топ радёмщиков"""
-    # Пока заглушка - можно добавить реальный топ
     message_text = (
         f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
         f"<i>В разработке...</i>\n\n"
@@ -403,6 +443,7 @@ async def rademka_top(callback: types.CallbackQuery):
     )
     await callback.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
 async def back_to_main(callback: types.CallbackQuery):
     """Возврат в главное меню"""
