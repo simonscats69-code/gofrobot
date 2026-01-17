@@ -1,5 +1,5 @@
 from aiogram import Router, types, F
-from database.db_manager import get_patsan, buy_upgrade
+from database.db_manager import get_patsan, buy_upgrade  # ← теперь асинхронные
 from keyboards.keyboards import shop_keyboard, main_keyboard
 
 router = Router()
@@ -7,7 +7,8 @@ router = Router()
 @router.callback_query(F.data == "shop")
 async def callback_shop(callback: types.CallbackQuery):
     """Магазин нагнетательной столовой"""
-    patsan = get_patsan(callback.from_user.id)
+    # ИСПРАВЛЕНО: добавлен await
+    patsan = await get_patsan(callback.from_user.id)
     
     upgrades = patsan["upgrades"]
     text = "<b>🍽️ Нагнетательная столовая:</b>\n\n"
@@ -26,14 +27,20 @@ async def callback_shop(callback: types.CallbackQuery):
     
     text += f"💰 Твои деньги: {patsan['dengi']} руб."
     
-    await callback.message.edit_text(text, reply_markup=shop_keyboard())
+    await callback.message.edit_text(
+        text, 
+        reply_markup=shop_keyboard(),
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data.startswith("buy_"))
 async def callback_buy(callback: types.CallbackQuery):
     """Покупка нагнетателя"""
     upgrade = callback.data.replace("buy_", "")
-    patsan = get_patsan(callback.from_user.id)
-    patsan, result = buy_upgrade(patsan, upgrade)
+    user_id = callback.from_user.id
+    
+    # ИСПРАВЛЕНО: новая сигнатура - передаём user_id и upgrade
+    patsan, result = await buy_upgrade(user_id, upgrade)
     
     if patsan is None:
         await callback.answer(result, show_alert=True)
