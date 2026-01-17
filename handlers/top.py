@@ -2,7 +2,7 @@ from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_top_players
 from keyboards.keyboards import main_keyboard
-from keyboards.top_keyboards import top_menu_keyboard
+from keyboards.new_keyboards import top_sort_keyboard  # ИЗМЕНЕНО
 
 router = Router()
 
@@ -26,7 +26,7 @@ async def callback_top_menu(callback: types.CallbackQuery):
     await callback.message.edit_text(
         "🏆 <b>Топ пацанов с гофроцентрала</b>\n\n"
         "Выбери, по какому показателю сортировать рейтинг:",
-        reply_markup=top_menu_keyboard(),
+        reply_markup=top_sort_keyboard(),  # ИЗМЕНЕНО
         parse_mode="HTML"
     )
 
@@ -62,7 +62,7 @@ async def show_top(callback: types.CallbackQuery):
             "😕 <b>Топ пуст!</b>\n\n"
             "Ещё никто не заслужил места в рейтинге.\n"
             "Будь первым!",
-            reply_markup=top_menu_keyboard(),
+            reply_markup=top_sort_keyboard(),  # ИЗМЕНЕНО
             parse_mode="HTML"
         )
         return
@@ -111,7 +111,7 @@ async def show_top(callback: types.CallbackQuery):
     
     await callback.message.edit_text(
         top_text,
-        reply_markup=top_menu_keyboard(),
+        reply_markup=top_sort_keyboard(),  # ИЗМЕНЕНО
         parse_mode="HTML"
     )
 
