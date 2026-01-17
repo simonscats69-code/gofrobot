@@ -10,7 +10,7 @@ from handlers.commands import router as commands_router
 from handlers.callbacks import router as callbacks_router
 from handlers.shop import router as shop_router
 
-# Импорт для инициализации БД
+# Импорт для инициализации БД (теперь асинхронной)
 from database.db_manager import init_db
 
 # ========== ПРОВЕРКА ТОКЕНА ==========
@@ -35,8 +35,8 @@ print(f"✅ Токен получен. Длина: {len(BOT_TOKEN)}, ID бота
 # ========== КОНЕЦ ПРОВЕРКИ ==========
 
 async def main():
-    # Инициализируем базу данных
-    init_db()
+    # Инициализируем базу данных (АСИНХРОННО)
+    await init_db()  # ← ВАЖНО: добавили await!
     
     # Создаем бота
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -49,6 +49,7 @@ async def main():
     
     print("🤖 Бот 'Пацаны с гофроцентрала' запущен!")
     print("⚡ Работаем на заварваривание двенашек!")
+    print("📊 База данных: асинхронный режим")
     
     # Запускаем поллинг
     await dp.start_polling(bot)
