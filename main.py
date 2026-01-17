@@ -9,6 +9,7 @@ from aiogram.enums import ParseMode
 from handlers.commands import router as commands_router
 from handlers.callbacks import router as callbacks_router
 from handlers.shop import router as shop_router
+from handlers.top import router as top_router  # НОВЫЙ ИМПОРТ ДЛЯ ТОПА
 
 # Импорт для инициализации БД (теперь асинхронной)
 from database.db_manager import init_db
@@ -42,13 +43,15 @@ async def main():
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     
-    # Подключаем роутеры
+    # Подключаем роутеры (ВАЖНО: порядок может иметь значение!)
     dp.include_router(commands_router)
     dp.include_router(callbacks_router)
     dp.include_router(shop_router)
+    dp.include_router(top_router)  # ПОДКЛЮЧАЕМ НОВЫЙ РОУТЕР
     
     print("🤖 Бот 'Пацаны с гофроцентрала' запущен!")
     print("⚡ Работаем на заварваривание двенашек!")
+    print("🏆 Топ игроков активирован!")
     print("📊 База данных: асинхронный режим")
     
     # Запускаем поллинг
