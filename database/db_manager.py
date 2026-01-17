@@ -5,14 +5,10 @@ import json
 from typing import Optional, List, Dict, Any, Tuple
 import aiosqlite
 
-# Константы
 ATM_MAX = 12
 ATM_TIME = 600
 DB_NAME = "bot_database.db"
 
-# ==================== НОВЫЕ КОНСТАНТЫ ====================
-
-# Звания по авторитету
 RANKS = {
     1: ("Пацанчик", "👶"),
     11: ("Браток", "👊"),
@@ -22,7 +18,6 @@ RANKS = {
     1001: ("БОГ ГОВНА", "💩")
 }
 
-# Дерево специализаций
 SPECIALIZATIONS = {
     "давила": {
         "name": "Давила",
@@ -30,8 +25,8 @@ SPECIALIZATIONS = {
         "requirements": {"skill_davka": 5, "zmiy": 50.0},
         "price": 1500,
         "bonuses": {
-            "davka_multiplier": 1.5,  # +50% к дачке
-            "atm_cost_reduction": 1,   # -1 атмосфера на дачку
+            "davka_multiplier": 1.5,
+            "atm_cost_reduction": 1,
             "unlocks": ["гигантская_давка"]
         }
     },
@@ -41,8 +36,8 @@ SPECIALIZATIONS = {
         "requirements": {"skill_nahodka": 5, "inventory_contains": "двенашка"},
         "price": 1200,
         "bonuses": {
-            "find_chance_bonus": 0.15,  # +15% к шансу находок
-            "rare_find_chance": 0.05,   # 5% шанс на редкий предмет
+            "find_chance_bonus": 0.15,
+            "rare_find_chance": 0.05,
             "unlocks": ["детектор_двенашек"]
         }
     },
@@ -52,14 +47,13 @@ SPECIALIZATIONS = {
         "requirements": {"skill_zashita": 5, "avtoritet": 20},
         "price": 2000,
         "bonuses": {
-            "atm_regen_bonus": 0.9,     # -10% времени восстановления
-            "rademka_defense": 0.15,    # +15% защиты в радёмках
+            "atm_regen_bonus": 0.9,
+            "rademka_defense": 0.15,
             "unlocks": ["железный_живот"]
         }
     }
 }
 
-# Рецепты крафта
 CRAFT_RECIPES = {
     "супер_двенашка": {
         "name": "Супер-двенашка",
@@ -86,12 +80,11 @@ CRAFT_RECIPES = {
         "name": "Бустер атмосфер",
         "description": "+3 к максимальному запасу атмосфер",
         "ingredients": {"энергетик": 2, "двенашка": 1, "деньги": 2000},
-        "result": {"item": "бустер_атмосфер", "quantity": 1},
+        "result": {"item": "буster_атмосфер", "quantity": 1},
         "success_chance": 0.7
     }
 }
 
-# Уровневые достижения
 LEVELED_ACHIEVEMENTS = {
     "zmiy_collector": {
         "name": "Коллекционер змия",
@@ -122,20 +115,15 @@ LEVELED_ACHIEVEMENTS = {
     }
 }
 
-# ==================== АСИНХРОННЫЕ ФУНКЦИИ БАЗЫ ДАННЫХ ====================
-
 async def get_connection():
-    """Создаёт асинхронное соединение с базой данных"""
     conn = await aiosqlite.connect(DB_NAME)
     conn.row_factory = aiosqlite.Row
     return conn
 
 async def init_db():
-    """Асинхронная инициализация базы данных: создаёт все таблицы"""
     conn = await aiosqlite.connect(DB_NAME)
     
     try:
-        # 1. Таблица пользователей
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,25 +135,24 @@ async def init_db():
                 last_update INTEGER,
                 last_daily INTEGER DEFAULT 0,
                 atm_count INTEGER DEFAULT 12,
-                max_atm INTEGER DEFAULT 12,  -- НОВОЕ: максимальный запас
+                max_atm INTEGER DEFAULT 12,
                 skill_davka INTEGER DEFAULT 1,
                 skill_zashita INTEGER DEFAULT 1,
                 skill_nahodka INTEGER DEFAULT 1,
-                specialization TEXT DEFAULT '',  -- НОВОЕ: специализация
-                experience INTEGER DEFAULT 0,     -- НОВОЕ: опыт
-                level INTEGER DEFAULT 1,          -- НОВОЕ: уровень
+                specialization TEXT DEFAULT '',
+                experience INTEGER DEFAULT 0,
+                level INTEGER DEFAULT 1,
                 inventory TEXT,
                 upgrades TEXT,
-                active_boosts TEXT DEFAULT '{}',  -- НОВОЕ: активные бусты
+                active_boosts TEXT DEFAULT '{}',
                 achievements TEXT DEFAULT '[]',
                 nickname_changed BOOLEAN DEFAULT FALSE,
-                crafted_items TEXT DEFAULT '[]',  -- НОВОЕ: скрафченные предметы
-                rademka_scouts INTEGER DEFAULT 0, -- НОВОЕ: разведки радёмки
+                crafted_items TEXT DEFAULT '[]',
+                rademka_scouts INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # 2. Таблица достижений прогресса
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS achievement_progress (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,7 +164,6 @@ async def init_db():
             )
         ''')
         
-        # 3. Таблица краж предметов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS stolen_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,7 +174,6 @@ async def init_db():
             )
         ''')
         
-        # 4. Таблица истории крафта
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS craft_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +184,6 @@ async def init_db():
             )
         ''')
         
-        # Существующие таблицы (оставляем)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS cart (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,12 +223,11 @@ async def init_db():
                 loser_id INTEGER NOT NULL,
                 money_taken INTEGER DEFAULT 0,
                 item_stolen TEXT,
-                scouted BOOLEAN DEFAULT FALSE,  -- НОВОЕ: была ли разведка
+                scouted BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
-        # Индексы
         indexes = [
             ('idx_users_user_id', 'users(user_id)'),
             ('idx_users_specialization', 'users(specialization)'),
@@ -268,43 +251,32 @@ async def init_db():
     finally:
         await conn.close()
 
-# ==================== НОВЫЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-
 def get_rank(avtoritet: int) -> Tuple[str, str]:
-    """Получить звание по авторитету"""
     for threshold, (name, emoji) in sorted(RANKS.items(), reverse=True):
         if avtoritet >= threshold:
             return name, emoji
     return "Пацанчик", "👶"
 
 def calculate_atm_regen_time(user_data: Dict[str, Any]) -> int:
-    """Рассчитать время восстановления атмосферы с учётом бонусов"""
-    base_time = ATM_TIME  # 10 минут
+    base_time = ATM_TIME
     
-    # Бонус от скилла защиты
     if user_data.get("skill_zashita", 1) >= 10:
-        base_time *= 0.9  # -10%
+        base_time *= 0.9
     
-    # Бонус от специализации
     if user_data.get("specialization") == "непробиваемый":
-        base_time *= 0.9  # Ещё -10%
+        base_time *= 0.9
     
-    # Бонус от активных бустов
     boosts = user_data.get("active_boosts", {})
     if boosts.get("вечный_двигатель"):
-        base_time *= 0.7  # -30%
+        base_time *= 0.7
     
-    return int(max(60, base_time))  # Не меньше 1 минуты
+    return int(max(60, base_time))
 
 def get_specialization_bonuses(specialization: str) -> Dict[str, Any]:
-    """Получить бонусы специализации"""
     spec = SPECIALIZATIONS.get(specialization, {})
     return spec.get("bonuses", {})
 
-# ==================== ОБНОВЛЁННАЯ ФУНКЦИЯ GET_PATSAN ====================
-
 async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
-    """Асинхронно получаем пацана из базы, создаём нового если нет"""
     conn = await get_connection()
     try:
         cursor = await conn.execute(
@@ -316,7 +288,6 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
         if user_row:
             user = dict(user_row)
             
-            # Автоматическое восстановление атмосфер С УЧЁТОМ БОНУСОВ
             now = int(time.time())
             last = user.get("last_update", now)
             passed = now - last
@@ -336,25 +307,22 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                     ''', (user["atm_count"], user["last_update"], user_id))
                     await conn.commit()
             
-            # Преобразуем JSON строки
             user["inventory"] = json.loads(user["inventory"]) if user["inventory"] else []
             user["upgrades"] = json.loads(user["upgrades"]) if user["upgrades"] else {}
             user["achievements"] = json.loads(user["achievements"]) if user.get("achievements") else []
             user["active_boosts"] = json.loads(user["active_boosts"]) if user.get("active_boosts") else {}
             user["crafted_items"] = json.loads(user["crafted_items"]) if user.get("crafted_items") else []
             
-            # Добавляем звание
             user["rank_name"], user["rank_emoji"] = get_rank(user["avtoritet"])
             
             return user
         else:
-            # СОЗДАНИЕ НОВОГО ИГРОКА С БОЛЕЕ БАЛАНСИРОВАННЫМИ СТАРТОВЫМИ ПРЕДМЕТАМИ
             new_user = {
                 "user_id": user_id,
                 "nickname": f"Пацанчик_{user_id}",
                 "avtoritet": 1,
                 "zmiy": 0.0,
-                "dengi": 150,  # +50 стартовых денег
+                "dengi": 150,
                 "last_update": int(time.time()),
                 "last_daily": 0,
                 "atm_count": 12,
@@ -365,7 +333,7 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                 "specialization": "",
                 "experience": 0,
                 "level": 1,
-                "inventory": ["двенашка", "энергетик"],  # +1 энергетик на старте
+                "inventory": ["двенашка", "энергетик"],
                 "upgrades": {
                     "ryazhenka": False,
                     "tea_slivoviy": False,
@@ -409,7 +377,6 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
         await conn.close()
 
 async def save_patsan(user_data: Dict[str, Any]):
-    """Асинхронно сохраняем пацана в базу"""
     conn = await get_connection()
     try:
         await conn.execute('''
@@ -450,20 +417,14 @@ async def save_patsan(user_data: Dict[str, Any]):
     finally:
         await conn.close()
 
-# ==================== ОБНОВЛЁННАЯ ДАВКА С БОНУСАМИ ====================
-
 async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
-    """Асинхронная обработка дачки коричневага С УЧЁТОМ СПЕЦИАЛИЗАЦИЙ"""
     patsan = await get_patsan(user_id)
     
-    # БАЗОВАЯ СТОИМОСТЬ С БОНУСАМИ
     base_cost = 2
     
-    # Бонус от улучшения
     if patsan["upgrades"].get("tea_slivoviy"):
         base_cost = max(1, base_cost - 1)
     
-    # Бонус от специализации
     bonuses = get_specialization_bonuses(patsan.get("specialization", ""))
     if bonuses.get("atm_cost_reduction"):
         base_cost = max(1, base_cost - bonuses["atm_cost_reduction"])
@@ -473,37 +434,30 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     patsan["atm_count"] -= base_cost
     
-    # БАЗОВЫЙ ВЫХОД С БОНУСАМИ
     base_grams = random.randint(200, 1500)
     skill_bonus = patsan["skill_davka"] * 100
     
-    # Множитель от улучшения (БАЛАНС: было 1.5, стало 1.75)
     multiplier = 1.0
     if patsan["upgrades"].get("ryazhenka"):
         multiplier = 1.75
     
-    # Множитель от специализации
     if bonuses.get("davka_multiplier"):
         multiplier *= bonuses["davka_multiplier"]
     
     base_grams = int(base_grams * multiplier)
     total_grams = base_grams + skill_bonus
     
-    # Добавляем опыт за действие
     exp_gained = min(10, total_grams // 100)
     patsan["experience"] += exp_gained
     await check_level_up(patsan)
     
     patsan["zmiy"] += total_grams / 1000
     
-    # ШАНС НАХОДКИ С БОНУСАМИ
     find_chance = patsan["skill_nahodka"] * 0.05
     
-    # Бонус от улучшения (БАЛАНС: было +0.2, стало +0.35)
     if patsan["upgrades"].get("bubbleki"):
         find_chance += 0.35
     
-    # Бонус от специализации
     if bonuses.get("find_chance_bonus"):
         find_chance += bonuses["find_chance_bonus"]
     
@@ -514,7 +468,6 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
         patsan["inventory"].append("двенашка")
         dvenashka_found = True
         
-        # Шанс на редкий предмет (только у охотников)
         if bonuses.get("rare_find_chance") and random.random() < bonuses["rare_find_chance"]:
             rare_items = ["золотая_двенашка", "кристалл_атмосферы", "секретная_схема"]
             rare_item = random.choice(rare_items)
@@ -523,10 +476,8 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     await save_patsan(patsan)
     
-    # Прогресс достижений
     await update_achievement_progress(user_id, "zmiy_collector", total_grams / 1000)
     
-    # Форматирование результата
     if total_grams >= 1000:
         kg = total_grams // 1000
         grams = total_grams % 1000
@@ -548,10 +499,7 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     return patsan, result_data
 
-# ==================== НОВЫЕ ФУНКЦИИ: СПЕЦИАЛИЗАЦИИ ====================
-
 async def buy_specialization(user_id: int, specialization: str) -> Tuple[bool, str]:
-    """Покупка специализации"""
     patsan = await get_patsan(user_id)
     
     if not specialization in SPECIALIZATIONS:
@@ -559,7 +507,6 @@ async def buy_specialization(user_id: int, specialization: str) -> Tuple[bool, s
     
     spec = SPECIALIZATIONS[specialization]
     
-    # Проверка требований
     for req_key, req_value in spec["requirements"].items():
         if req_key == "inventory_contains":
             if req_value not in patsan.get("inventory", []):
@@ -567,26 +514,21 @@ async def buy_specialization(user_id: int, specialization: str) -> Tuple[bool, s
         elif patsan.get(req_key, 0) < req_value:
             return False, f"Недостаточно {req_key}: нужно {req_value}"
     
-    # Проверка денег
     if patsan["dengi"] < spec["price"]:
         return False, f"Не хватает {spec['price'] - patsan['dengi']}р"
     
-    # Уже есть специализация?
     if patsan.get("specialization"):
         return False, "У тебя уже есть специализация. Можно иметь только одну."
     
-    # Покупка
     patsan["dengi"] -= spec["price"]
     patsan["specialization"] = specialization
     
-    # Награда за первую специализацию
     await unlock_achievement(user_id, "first_specialization", "Первая специализация", 500)
     
     await save_patsan(patsan)
     return True, f"✅ Куплена специализация '{spec['name']}' за {spec['price']}р!"
 
 async def get_available_specializations(user_id: int) -> List[Dict[str, Any]]:
-    """Получить доступные специализации для игрока"""
     patsan = await get_patsan(user_id)
     available = []
     
@@ -615,10 +557,7 @@ async def get_available_specializations(user_id: int) -> List[Dict[str, Any]]:
     
     return available
 
-# ==================== НОВЫЕ ФУНКЦИИ: КРАФТ ====================
-
 async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
-    """Крафт предмета по рецепту"""
     patsan = await get_patsan(user_id)
     
     if recipe_id not in CRAFT_RECIPES:
@@ -626,7 +565,6 @@ async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
     
     recipe = CRAFT_RECIPES[recipe_id]
     
-    # Проверка ингредиентов
     inventory = patsan.get("inventory", [])
     inventory_count = {}
     for item in inventory:
@@ -643,7 +581,6 @@ async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
     if missing:
         return False, f"Не хватает: {', '.join(missing)}", {}
     
-    # Расход ингредиентов
     for item_name, needed in recipe["ingredients"].items():
         if item_name == "деньги":
             patsan["dengi"] -= needed
@@ -652,21 +589,17 @@ async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
                 if item_name in patsan["inventory"]:
                     patsan["inventory"].remove(item_name)
     
-    # Проверка успеха крафта
     success = random.random() < recipe["success_chance"]
     
     if success:
         result = recipe["result"]
         
         if result.get("item"):
-            # Добавляем предмет в инвентарь
             patsan["inventory"].append(result["item"])
             
-            # Если предмет с длительностью, добавляем в активные бусты
             if result.get("duration"):
                 patsan["active_boosts"][result["item"]] = int(time.time()) + result["duration"]
         
-        # Добавляем в историю крафта
         crafted = patsan.get("crafted_items", [])
         crafted.append({
             "recipe": recipe_id,
@@ -675,14 +608,12 @@ async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
         })
         patsan["crafted_items"] = crafted
         
-        # Достижение за крафт
         await unlock_achievement(user_id, "first_craft", "Первый крафт", 100)
         
         message = f"✅ Успешно скрафчено: {recipe['name']}!"
     else:
         message = f"❌ Неудачная попытка крафта {recipe['name']}... Ингредиенты потеряны."
     
-    # Сохраняем историю крафта в БД
     conn = await get_connection()
     try:
         await conn.execute('''
@@ -697,7 +628,6 @@ async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
     return success, message, recipe.get("result", {})
 
 async def get_craftable_items(user_id: int) -> List[Dict[str, Any]]:
-    """Получить доступные для крафта предметы"""
     patsan = await get_patsan(user_id)
     inventory = patsan.get("inventory", [])
     inventory_count = {}
@@ -733,20 +663,15 @@ async def get_craftable_items(user_id: int) -> List[Dict[str, Any]]:
     
     return craftable
 
-# ==================== ОБНОВЛЁННАЯ СДАЧА ЗМИЯ ====================
-
 async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
-    """Асинхронная сдача змия на металл (БАЛАНС: +25% цены)"""
     patsan = await get_patsan(user_id)
     
     if patsan["zmiy"] <= 0:
         return None, "Нечего сдавать!"
     
-    # БАЛАНС: Увеличиваем цену за кг с 50 до 62.5р
     price_per_kg = 62.5
     total_money = int(patsan["zmiy"] * price_per_kg)
     
-    # Бонус авторитета увеличен с 5 до 8р за уровень
     avtoritet_bonus = patsan["avtoritet"] * 8
     total_money += avtoritet_bonus
     
@@ -754,14 +679,12 @@ async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     patsan["dengi"] += total_money
     patsan["zmiy"] = 0
     
-    # Опыт за сдачу
     exp_gained = min(20, int(total_money / 100))
     patsan["experience"] += exp_gained
     await check_level_up(patsan)
     
     await save_patsan(patsan)
     
-    # Прогресс достижений
     await update_achievement_progress(user_id, "money_maker", total_money)
     
     return patsan, {
@@ -771,32 +694,28 @@ async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
         "exp_gained": exp_gained
     }
 
-# ==================== ОБНОВЛЁННЫЙ МАГАЗИН (БАЛАНС) ====================
-
 async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, Any]], str]:
-    """Асинхронная покупка улучшения (ОБНОВЛЁННЫЕ ЦЕНЫ И ЭФФЕКТЫ)"""
     patsan = await get_patsan(user_id)
     
-    # ОБНОВЛЁННЫЕ ЦЕНЫ И ЭФФЕКТЫ
     upgrades_data = {
         "ryazhenka": {
-            "price": 300,  # было 500
-            "effect": "+75% давления в двенашке",  # было +50%
+            "price": 300,
+            "effect": "+75% давления в двенашке",
             "bonus_func": None
         },
         "tea_slivoviy": {
-            "price": 500,  # было 700
-            "effect": "-2 атмосферы на действие (мин 1)",  # было -1
+            "price": 500,
+            "effect": "-2 атмосферы на действие (мин 1)",
             "bonus_func": None
         },
         "bubbleki": {
-            "price": 800,  # было 600
-            "effect": "+35% к шансу находок + шанс на редкий предмет",  # было +20%
+            "price": 800,
+            "effect": "+35% к шансу находок + шанс на редкий предмет",
             "bonus_func": None
         },
         "kuryasany": {
-            "price": 1500,  # было 1000
-            "effect": "+2 авторитета и временный буст",  # было +1
+            "price": 1500,
+            "effect": "+2 авторитета и временный буст",
             "bonus_func": lambda p: p.update({"avtoritet": p.get("avtoritet", 1) + 2})
         }
     }
@@ -812,34 +731,27 @@ async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, An
     if patsan["dengi"] < upgrade_data["price"]:
         return None, f"Не хватает {upgrade_data['price'] - patsan['dengi']}р!"
     
-    # Применяем покупку
     patsan["dengi"] -= upgrade_data["price"]
     patsan["upgrades"][upgrade] = True
     
-    # Применяем бонус функцию если есть
     if upgrade_data["bonus_func"]:
         upgrade_data["bonus_func"](patsan)
     
     await save_patsan(patsan)
     
-    # Достижение за покупку всех улучшений
     all_upgrades = ["ryazhenka", "tea_slivoviy", "bubbleki", "kuryasany"]
     if all(patsan["upgrades"].get(upg, False) for upg in all_upgrades):
         await unlock_achievement(user_id, "all_upgrades", "Все нагнетатели", 1500)
     
     return patsan, f"✅ Куплено '{upgrade}' за {upgrade_data['price']}р! {upgrade_data['effect']}"
 
-# ==================== ОБНОВЛЁННАЯ ПРОКАЧКА ====================
-
 async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]], str]:
-    """Асинхронная прокачка скилла (БАЛАНС: -10% цены)"""
     patsan = await get_patsan(user_id)
     
-    # Цены снижены на 10%
     skill_costs = {
-        "davka": 180,   # было 200
-        "zashita": 270,  # было 300
-        "nahodka": 225   # было 250
+        "davka": 180,
+        "zashita": 270,
+        "nahodka": 225
     }
     
     cost = skill_costs.get(skill, 180)
@@ -849,20 +761,16 @@ async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]]
     
     patsan["dengi"] -= cost
     
-    # Опыт за прокачку
     exp_gained = cost // 10
     patsan["experience"] += exp_gained
     
-    # Прокачка скилла
     old_level = patsan[f"skill_{skill}"]
     patsan[f"skill_{skill}"] += 1
     
-    # Проверка уровня
     await check_level_up(patsan)
     
     await save_patsan(patsan)
     
-    # Достижения за высокие уровни скиллов
     new_level = patsan[f"skill_{skill}"]
     if new_level >= 10:
         await unlock_achievement(user_id, f"skill_{skill}_10", f"Мастер {skill}", 500)
@@ -871,14 +779,10 @@ async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]]
     
     return patsan, f"✅ Прокачано '{skill}' с {old_level} до {new_level} уровня за {cost}р! (+{exp_gained} опыта)"
 
-# ==================== СИСТЕМА УРОВНЕЙ ====================
-
 async def check_level_up(user_data: Dict[str, Any]):
-    """Проверка повышения уровня на основе опыта"""
     current_level = user_data.get("level", 1)
     current_exp = user_data.get("experience", 0)
     
-    # Формула опыта: 100 * уровень^1.5
     required_exp = int(100 * (current_level ** 1.5))
     
     if current_exp >= required_exp:
@@ -886,16 +790,13 @@ async def check_level_up(user_data: Dict[str, Any]):
         user_data["level"] = current_level + 1
         user_data["experience"] = current_exp - required_exp
         
-        # Награда за уровень
         level_reward = user_data["level"] * 100
         user_data["dengi"] += level_reward
         
-        # Каждый 5 уровень даёт +1 к максимальным атмосферам
         if user_data["level"] % 5 == 0:
             user_data["max_atm"] += 1
             user_data["atm_count"] = min(user_data["atm_count"] + 1, user_data["max_atm"])
         
-        # Достижения за уровни
         if user_data["level"] >= 10:
             await unlock_achievement(user_data["user_id"], "level_10", "10 уровень", 500)
         if user_data["level"] >= 25:
@@ -912,16 +813,12 @@ async def check_level_up(user_data: Dict[str, Any]):
     
     return False, None
 
-# ==================== УРОВНЕВЫЕ ДОСТИЖЕНИЯ ====================
-
 async def update_achievement_progress(user_id: int, achievement_id: str, progress_increment: float):
-    """Обновление прогресса уровневого достижения"""
     if achievement_id not in LEVELED_ACHIEVEMENTS:
         return
     
     conn = await get_connection()
     try:
-        # Получаем текущий прогресс
         cursor = await conn.execute('''
             SELECT progress, current_level FROM achievement_progress 
             WHERE user_id = ? AND achievement_id = ?
@@ -942,17 +839,14 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
         
         achievement = LEVELED_ACHIEVEMENTS[achievement_id]
         
-        # Проверяем, достигли ли мы нового уровня
         if current_level < len(achievement["levels"]):
             next_level = achievement["levels"][current_level]
             
             if current_progress >= next_level["goal"]:
-                # Выдаём награду
                 patsan = await get_patsan(user_id)
                 patsan["dengi"] += next_level["reward"]
                 patsan["experience"] += next_level["exp"]
                 
-                # Обновляем уровень достижения
                 await conn.execute('''
                     UPDATE achievement_progress 
                     SET progress = ?, current_level = ?
@@ -961,7 +855,6 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
                 
                 await save_patsan(patsan)
                 
-                # Добавляем в список достижений пользователя
                 achievements = patsan.get("achievements", [])
                 achievements.append({
                     "id": f"{achievement_id}_level_{current_level + 1}",
@@ -981,14 +874,12 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
                     "exp": next_level["exp"]
                 }
             else:
-                # Обновляем только прогресс
                 await conn.execute('''
                     UPDATE achievement_progress 
                     SET progress = ?
                     WHERE user_id = ? AND achievement_id = ?
                 ''', (current_progress, user_id, achievement_id))
         else:
-            # Все уровни пройдены
             await conn.execute('''
                 UPDATE achievement_progress 
                 SET progress = ?
@@ -1002,7 +893,6 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
         await conn.close()
 
 async def get_achievement_progress(user_id: int) -> Dict[str, Any]:
-    """Получить прогресс по всем уровневым достижениям"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1040,10 +930,7 @@ async def get_achievement_progress(user_id: int) -> Dict[str, Any]:
     finally:
         await conn.close()
 
-# ==================== УЛУЧШЕННАЯ РАДЁМКА С РАЗВЕДКОЙ ====================
-
 async def rademka_scout(user_id: int, target_id: int) -> Tuple[bool, str, Dict]:
-    """Разведка перед радёмкой (узнать точный шанс)"""
     patsan = await get_patsan(user_id)
     target = await get_patsan(target_id)
     
@@ -1053,41 +940,34 @@ async def rademka_scout(user_id: int, target_id: int) -> Tuple[bool, str, Dict]:
     if patsan["rademka_scouts"] >= 5 and patsan["dengi"] < 50:
         return False, "Нужно 50р для разведки (бесплатные разведки закончились)", {}
     
-    # Стоимость разведки
     cost = 0 if patsan["rademka_scouts"] < 5 else 50
     
     if patsan["dengi"] < cost:
         return False, f"Не хватает {cost - patsan['dengi']}р для разведки", {}
     
-    # Рассчитываем точный шанс
     base_chance = 50
     avtoritet_diff = patsan["avtoritet"] - target["avtoritet"]
     chance = base_chance + (avtoritet_diff * 5)
     
-    # Бонусы/штрафы
     if patsan.get("specialization") == "непробиваемый":
-        chance += 5  # +5% за специализацию
+        chance += 5
     
-    # Гандикап: слабые против сильных получают +20%
     if patsan["avtoritet"] < target["avtoritet"]:
         chance += 20
     
-    chance = max(10, min(95, chance))  # Ограничиваем 10-95%
+    chance = max(10, min(95, chance))
     
-    # Если цель в пассивном режиме (давно не играла) - +15%
     now = time.time()
     last_active = target.get("last_update", now)
-    if now - last_active > 86400:  # 24 часа
+    if now - last_active > 86400:
         chance += 15
     
-    # Применяем стоимость
     if cost > 0:
         patsan["dengi"] -= cost
     patsan["rademka_scouts"] += 1
     
     await save_patsan(patsan)
     
-    # Сохраняем разведку для использования в будущей радёмке
     conn = await get_connection()
     try:
         await conn.execute('''
@@ -1121,20 +1001,17 @@ async def rademka_scout(user_id: int, target_id: int) -> Tuple[bool, str, Dict]:
         ]
     }
     
-    # Очищаем None
     scout_data["factors"] = [f for f in scout_data["factors"] if f]
     
     return True, f"Разведка {'бесплатная' if cost == 0 else 'за 50р'} успешна!", scout_data
 
 async def rademka_fight_with_scout(user_id: int, target_id: int, scouted_chance: float = None) -> Dict[str, Any]:
-    """Радёмка с учётом разведки"""
     attacker = await get_patsan(user_id)
     target = await get_patsan(target_id)
     
     if not attacker or not target:
         return {"error": "Один из пацанов не найден"}
     
-    # Используем шанс из разведки или рассчитываем стандартный
     if scouted_chance:
         chance = scouted_chance
         was_scouted = True
@@ -1143,7 +1020,6 @@ async def rademka_fight_with_scout(user_id: int, target_id: int, scouted_chance:
         avtoritet_diff = attacker["avtoritet"] - target["avtoritet"]
         chance = base_chance + (avtoritet_diff * 5)
         
-        # Гандикап
         if attacker["avtoritet"] < target["avtoritet"]:
             chance += 20
         
@@ -1160,23 +1036,15 @@ async def rademka_fight_with_scout(user_id: int, target_id: int, scouted_chance:
         "target": target["nickname"]
     }
     
-    # Бонус за использование разведки
     if was_scouted:
         result["scout_bonus"] = "Точный расчёт шанса"
     
-    # Здесь должна быть логика изменения денег, авторитета и т.д.
-    # (используй существующую логику из rademka_confirm)
-    
-    # Прогресс достижения
     if success:
         await update_achievement_progress(user_id, "rademka_king", 1)
     
     return result
 
-# ==================== ПРОДОЛЖЕНИЕ СУЩЕСТВУЮЩИХ ФУНКЦИЙ ====================
-
 async def get_daily_reward(user_id: int) -> Dict[str, Any]:
-    """Выдача ежедневной награды (ОБНОВЛЁННАЯ С УЧЁТОМ УРОВНЯ)"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1199,9 +1067,8 @@ async def get_daily_reward(user_id: int) -> Dict[str, Any]:
                 "next_daily": last_daily + 86400
             }
         
-        # Награда зависит от уровня
         player_level = user["level"] or 1
-        base_reward = 100 + (player_level * 10)  # +10р за каждый уровень
+        base_reward = 100 + (player_level * 10)
         
         achievements = json.loads(user["achievements"]) if user["achievements"] else []
         streak_key = "daily_streak"
@@ -1212,7 +1079,6 @@ async def get_daily_reward(user_id: int) -> Dict[str, Any]:
                 current_streak = ach.get("value", 1) + 1
                 break
         
-        # Бонусы за стрик
         streak_multiplier = 1.0
         streak_bonus_text = ""
         
@@ -1231,11 +1097,9 @@ async def get_daily_reward(user_id: int) -> Dict[str, Any]:
         
         base_reward = int(base_reward * streak_multiplier)
         
-        # Случайный бонус (0-10% от базовой награды)
         random_bonus = random.randint(0, base_reward // 10)
         total_reward = base_reward + random_bonus
         
-        # Предмет в зависимости от уровня
         if player_level >= 20:
             items = ["двенашка", "атмосфера", "энергетик", "золотая_двенашка", "бустер_атмосфер"]
             weights = [0.3, 0.25, 0.2, 0.15, 0.1]
@@ -1245,7 +1109,6 @@ async def get_daily_reward(user_id: int) -> Dict[str, Any]:
         
         reward_item = random.choices(items, weights=weights, k=1)[0]
         
-        # Обновляем стрик
         streak_updated = False
         new_achievements = []
         for ach in achievements:
@@ -1263,7 +1126,6 @@ async def get_daily_reward(user_id: int) -> Dict[str, Any]:
                 "last_updated": now
             })
         
-        # Обновляем пользователя
         await conn.execute('''
             UPDATE users SET 
                 dengi = dengi + ?,
@@ -1294,7 +1156,6 @@ async def get_daily_reward(user_id: int) -> Dict[str, Any]:
         await conn.close()
 
 async def unlock_achievement(user_id: int, achievement_id: str, name: str, reward: int = 0):
-    """Разблокировка достижения и выдача награды (ОСТАЁТСЯ БЕЗ ИЗМЕНЕНИЙ)"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1347,7 +1208,6 @@ async def unlock_achievement(user_id: int, achievement_id: str, name: str, rewar
         await conn.close()
 
 async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
-    """Смена ника пользователя (БАЛАНС: первая смена бесплатна, вторая 5000р)"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1391,7 +1251,6 @@ async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
         await conn.close()
 
 async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0, item_stolen: str = None, scouted: bool = False):
-    """Сохранение статистики радёмки в базу с учётом разведки"""
     conn = await get_connection()
     try:
         await conn.execute('''
@@ -1402,13 +1261,10 @@ async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0
     finally:
         await conn.close()
 
-# ==================== КЭШИРОВАНИЕ (ОСТАЁТСЯ) ====================
-
 _user_cache = {}
 _cache_lock = asyncio.Lock()
 
 async def get_patsan_cached(user_id: int) -> Optional[Dict[str, Any]]:
-    """Получение пользователя с кэшированием (TTL: 30 секунд)"""
     async with _cache_lock:
         now = time.time()
         cache_key = f"user_{user_id}"
@@ -1429,16 +1285,12 @@ async def get_patsan_cached(user_id: int) -> Optional[Dict[str, Any]]:
         return user
 
 async def invalidate_user_cache(user_id: int):
-    """Сбросить кэш пользователя (после обновления данных)"""
     async with _cache_lock:
         cache_key = f"user_{user_id}"
         if cache_key in _user_cache:
             del _user_cache[cache_key]
 
-# ==================== СУЩЕСТВУЮЩИЕ ФУНКЦИИ (КОРЗИНА, ЗАКАЗЫ, ТОП) ====================
-
 async def get_cart(user_id: int) -> List[Dict[str, Any]]:
-    """Асинхронно получить корзину пользователя"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1456,7 +1308,6 @@ async def get_cart(user_id: int) -> List[Dict[str, Any]]:
         await conn.close()
 
 async def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 1):
-    """Асинхронно добавить товар в корзину"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1483,7 +1334,6 @@ async def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 
         await conn.close()
 
 async def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
-    """Асинхронно удалить товар из корзины"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1513,7 +1363,6 @@ async def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
         await conn.close()
 
 async def clear_cart(user_id: int):
-    """Асинхронно очистить корзину пользователя"""
     conn = await get_connection()
     try:
         await conn.execute('DELETE FROM cart WHERE user_id = ?', (user_id,))
@@ -1522,7 +1371,6 @@ async def clear_cart(user_id: int):
         await conn.close()
 
 async def get_cart_total(user_id: int) -> int:
-    """Асинхронно получить общую стоимость корзины"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1536,7 +1384,6 @@ async def get_cart_total(user_id: int) -> int:
         await conn.close()
 
 async def create_order(user_id: int, items: List[Dict], total: int) -> int:
-    """Асинхронно создать заказ"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1554,7 +1401,6 @@ async def create_order(user_id: int, items: List[Dict], total: int) -> int:
         await conn.close()
 
 async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
-    """Асинхронно получить историю заказов"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
@@ -1574,7 +1420,6 @@ async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
         await conn.close()
 
 async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[Dict[str, Any]]:
-    """Асинхронно получить топ игроков по выбранному критерию."""
     conn = await get_connection()
     try:
         valid_columns = ["avtoritet", "dengi", "zmiy", "level"]
@@ -1626,7 +1471,6 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
             player["zmiy_formatted"] = f"{player['zmiy']:.1f}кг"
             player["dengi_formatted"] = f"{player['dengi']}р"
             
-            # Добавляем звание
             rank_name, rank_emoji = get_rank(player["avtoritet"])
             player["rank"] = f"{rank_emoji} {rank_name}"
             
@@ -1637,7 +1481,6 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
         await conn.close()
 
 async def get_user_achievements(user_id: int) -> List[Dict[str, Any]]:
-    """Получение списка достижений пользователя"""
     conn = await get_connection()
     try:
         cursor = await conn.execute('''
