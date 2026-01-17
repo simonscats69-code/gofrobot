@@ -1,9 +1,24 @@
 from aiogram import Router, types, F
+from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_top_players
 from keyboards.keyboards import main_keyboard
 from keyboards.top_keyboards import top_menu_keyboard
 
 router = Router()
+
+# Декоратор для обработки ошибки "message is not modified"
+def ignore_not_modified_error(func):
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                # Игнорируем эту ошибку - ничего страшного
+                if len(args) > 0 and hasattr(args[0], 'callback_query'):
+                    await args[0].callback_query.answer()
+                return
+            raise  # Пропускаем другие ошибки
+    return wrapper
 
 @router.callback_query(F.data == "top")
 async def callback_top_menu(callback: types.CallbackQuery):
@@ -15,6 +30,7 @@ async def callback_top_menu(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
+@ignore_not_modified_error
 @router.callback_query(F.data.startswith("top_"))
 async def show_top(callback: types.CallbackQuery):
     """Показать топ по выбранному критерию"""
@@ -99,11 +115,10 @@ async def show_top(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
 async def back_to_main_from_top(callback: types.CallbackQuery):
     """Возврат в главное меню из топа"""
-    # Этот обработчик может дублироваться с другим файлом, но это нормально
-    # Главное, чтобы диспетчер знал о нём
     from database.db_manager import get_patsan_cached
     
     patsan = await get_patsan_cached(callback.from_user.id)
