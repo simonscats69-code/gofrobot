@@ -73,7 +73,21 @@ def back_to_rademka_keyboard():
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-# ==================== НОВЫЕ КЛАВИАТУРЫ ДЛЯ НОВЫХ ФУНКЦИЙ ====================
+# ==================== НОВАЯ ФУНКЦИЯ ДЛЯ РАЗВЕДКИ ====================
+
+def rademka_scout_keyboard():
+    """Клавиатура для меню разведки радёмки"""
+    kb = [
+        [InlineKeyboardButton(text="🎯 Случайная цель", callback_data="rademka_scout_random")],
+        [InlineKeyboardButton(text="📊 Статистика разведок", callback_data="rademka_scout_stats")],
+        [
+            InlineKeyboardButton(text="👊 К радёмке", callback_data="rademka"),
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+# ==================== КОНЕЦ НОВОЙ ФУНКЦИИ ====================
 
 def achievements_progress_keyboard():
     """Клавиатура для прогресса уровневих достижений"""
