@@ -644,4 +644,459 @@ async def callback_rademka_scout_target(callback: types.CallbackQuery):
             parse_mode="HTML"
         )
     elif data == "stats":
-       
+        # Статистика разведок
+        user_id = callback.from_user.id
+        patsan = await get_patsan_cached(user_id)
+        
+        scouts_used = patsan.get("rademka_scouts", 0)
+        free_used = min(5, scouts_used)
+        paid_used = max(0, scouts_used - 5)
+        
+        text = (
+            f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n"
+            f"🕵️ Всего разведок: {scouts_used}\n"
+            f"🎯 Бесплатных: {free_used}/5\n"
+            f"💰 Платных: {paid_used}\n"
+            f"💸 Потрачено на разведки: {paid_used * 50}р\n\n"
+        )
+        
+        # Здесь можно добавить историю успешных разведок
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=rademka_scout_keyboard(),
+            parse_mode="HTML"
+        )
+    else:
+        # Разведка конкретной цели по ID
+        try:
+            target_id = int(data)
+            user_id = callback.from_user.id
+            
+            success, message, scout_data = await rademka_scout(user_id, target_id)
+            
+            if success:
+                await callback.answer("Разведка выполнена!", show_alert=True)
+                # Показываем результат разведки
+                # (тут нужна логика для получения информации о цели)
+                pass
+            else:
+                await callback.answer(message, show_alert=True)
+        except ValueError:
+            await callback.answer("Ошибка: неверный ID цели", show_alert=True)
+
+# ==================== НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ДОСТИЖЕНИЙ И ПРОГРЕССА ====================
+
+@router.callback_query(F.data == "achievements_progress")
+async def callback_achievements_progress(callback: types.CallbackQuery):
+    """Прогресс по уровневым достижениям"""
+    user_id = callback.from_user.id
+    progress_data = await get_achievement_progress(user_id)
+    
+    if not progress_data:
+        await callback.message.edit_text(
+            "📊 <b>ПРОГРЕСС ДОСТИЖЕНИЙ</b>\n\n"
+            "Пока нет прогресса по уровневым достижениям.\n"
+            "Играй активно, и прогресс появится!",
+            reply_markup=achievements_progress_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    text = "<b>📊 ПРОГРЕСС ПО УРОВНЕВЫМ ДОСТИЖЕНИЯМ</b>\n\n"
+    
+    for ach_id, data in progress_data.items():
+        text += f"<b>{data['name']}</b>\n"
+        
+        if data['next_level']:
+            text += f"Уровень: {data['current_level']}/{len(data['all_levels'])}\n"
+            text += f"Прогресс: {data['current_progress']:.1f}/{data['next_level']['goal']} "
+            text += f"({data['progress_percent']:.1f}%)\n"
+            text += f"Следующий уровень: {data['next_level']['title']} "
+            text += f"(+{data['next_level']['reward']}р, +{data['next_level']['exp']} опыта)\n"
+        else:
+            text += f"✅ Все уровни пройдены! (Максимум)\n"
+        
+        text += "\n"
+    
+    text += "<i>Выбери достижение для подробной информации:</i>"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=achievements_progress_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("achievement_"))
+async def callback_achievement_detail(callback: types.CallbackQuery):
+    """Детальная информация о достижении"""
+    ach_type = callback.data.replace("achievement_", "")
+    
+    ach_map = {
+        "zmiy_collector": {
+            "name": "Коллекционер змия",
+            "description": "Собери определённое количество змия",
+            "levels": [
+                {"goal": 10, "reward": 50, "title": "Новичок"},
+                {"goal": 100, "reward": 300, "title": "Любитель"},
+                {"goal": 1000, "reward": 1500, "title": "Профессионал"},
+                {"goal": 10000, "reward": 5000, "title": "КОРОЛЬ ГОФРОЦЕНТРАЛА"}
+            ]
+        },
+        "money_maker": {
+            "name": "Денежный мешок",
+            "description": "Заработай много денег",
+            "levels": [
+                {"goal": 1000, "reward": 100, "title": "Бедолага"},
+                {"goal": 10000, "reward": 1000, "title": "Состоятельный"},
+                {"goal": 100000, "reward": 5000, "title": "Олигарх"},
+                {"goal": 1000000, "reward": 25000, "title": "РОТШИЛЬД"}
+            ]
+        },
+        "rademka_king": {
+            "name": "Король радёмок",
+            "description": "Победи в множестве радёмок",
+            "levels": [
+                {"goal": 5, "reward": 200, "title": "Задира"},
+                {"goal": 25, "reward": 1000, "title": "Гроза района"},
+                {"goal": 100, "reward": 5000, "title": "Неприкасаемый"},
+                {"goal": 500, "reward": 25000, "title": "ЛЕГЕНДА РАДЁМКИ"}
+            ]
+        }
+    }
+    
+    if ach_type not in ach_map:
+        await callback.answer("Неизвестное достижение", show_alert=True)
+        return
+    
+    ach_data = ach_map[ach_type]
+    
+    text = f"<b>🏆 {ach_data['name'].upper()}</b>\n\n"
+    text += f"<i>{ach_data['description']}</i>\n\n"
+    text += "<b>📊 Уровни:</b>\n"
+    
+    for i, level in enumerate(ach_data['levels'], 1):
+        text += f"{i}. {level['title']}: {level['goal']} → +{level['reward']}р\n"
+    
+    text += "\n<i>Прогресс автоматически отслеживается во время игры.</i>"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_to_profile_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "level_stats")
+async def callback_level_stats(callback: types.CallbackQuery):
+    """Статистика по уровням"""
+    user_id = callback.from_user.id
+    patsan = await get_patsan_cached(user_id)
+    
+    current_level = patsan.get("level", 1)
+    current_exp = patsan.get("experience", 0)
+    
+    # Рассчитываем опыт для следующего уровня
+    required_exp = int(100 * (current_level ** 1.5))
+    progress_percent = (current_exp / required_exp) * 100
+    
+    # Прогресс-бар
+    progress_bars = 10
+    filled_bars = int(progress_percent / 10)
+    progress_bar = "█" * filled_bars + "░" * (progress_bars - filled_bars)
+    
+    # Награда за следующий уровень
+    next_level_reward = (current_level + 1) * 100
+    max_atm_increase = (current_level + 1) % 5 == 0
+    
+    text = (
+        f"<b>📈 СТАТИСТИКА УРОВНЕЙ</b>\n\n"
+        f"🏆 <b>Текущий уровень:</b> {current_level}\n"
+        f"📚 <b>Опыт:</b> {current_exp}/{required_exp}\n"
+        f"📊 <b>Прогресс:</b> [{progress_bar}] {progress_percent:.1f}%\n\n"
+        f"🎁 <b>Награда за {current_level + 1} уровень:</b>\n"
+        f"• +{next_level_reward}р\n"
+    )
+    
+    if max_atm_increase:
+        text += f"• +1 к максимальным атмосферам\n"
+    
+    text += f"\n<b>ℹ️ Информация:</b>\n"
+    text += f"• Опыт даётся за все действия\n"
+    text += f"• Каждый 5 уровень увеличивает запас атмосфер\n"
+    text += f"• Уровень влияет на ежедневные награды\n"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=level_stats_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "atm_status")
+async def callback_atm_status(callback: types.CallbackQuery):
+    """Статус атмосфер"""
+    user_id = callback.from_user.id
+    patsan = await get_patsan_cached(user_id)
+    
+    atm_count = patsan['atm_count']
+    max_atm = patsan.get('max_atm', 12)
+    
+    # Время восстановления
+    regen_time = calculate_atm_regen_time(patsan)
+    regen_minutes = regen_time // 60
+    regen_seconds = regen_time % 60
+    
+    # Бонусы к восстановлению
+    bonuses = []
+    
+    if patsan.get("skill_zashita", 1) >= 10:
+        bonuses.append("Скилл защиты ≥10: -10% времени")
+    
+    if patsan.get("specialization") == "непробиваемый":
+        bonuses.append("Специализация: -10% времени")
+    
+    if "вечный_двигатель" in patsan.get("active_boosts", {}):
+        bonuses.append("Вечный двигатель: -30% времени")
+    
+    # Прогресс-бар
+    progress = int((atm_count / max_atm) * 10)
+    progress_bar = "█" * progress + "░" * (10 - progress)
+    
+    text = (
+        f"<b>🌡️ СОСТОЯНИЕ АТМОСФЕР</b>\n\n"
+        f"🌀 <b>Текущий запас:</b> {atm_count}/{max_atm}\n"
+        f"📊 <b>Заполненность:</b> [{progress_bar}] {(atm_count/max_atm)*100:.1f}%\n\n"
+        f"⏱️ <b>Время восстановления:</b>\n"
+        f"• 1 атмосфера: {regen_minutes}м {regen_seconds}с\n"
+        f"• До полного: {regen_minutes * (max_atm - atm_count)}м\n\n"
+    )
+    
+    if bonuses:
+        text += f"⚡ <b>Активные бонусы:</b>\n"
+        for bonus in bonuses:
+            text += f"• {bonus}\n"
+        text += "\n"
+    
+    text += f"<b>ℹ️ Как увеличить?</b>\n"
+    text += f"• Каждый 5 уровень: +1 к максимуму\n"
+    text += f"• Бустер атмосфер: +3 к максимуму\n"
+    text += f"• Прокачка защиты: ускоряет восстановление\n"
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=atm_status_keyboard(),
+        parse_mode="HTML"
+    )
+
+# ==================== ОБНОВЛЁННЫЙ ТОП ====================
+
+@router.callback_query(F.data == "top")
+async def callback_top_menu(callback: types.CallbackQuery):
+    """Меню топа (ОБНОВЛЁННОЕ)"""
+    await callback.message.edit_text(
+        "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\n"
+        "Выбери, по какому показателю сортировать рейтинг:\n\n"
+        "<i>Новые варианты:</i>\n"
+        "• 📈 По уровню - кто больше прокачался\n"
+        "• 👊 По победам в радёмках - кто самый дерзкий</i>",
+        reply_markup=top_sort_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("top_"))
+async def show_top(callback: types.CallbackQuery):
+    """Показать топ по выбранному критерию (ОБНОВЛЁННЫЙ)"""
+    sort_type = callback.data.replace("top_", "")
+    
+    # Маппинг callback -> (русское название, эмодзи, ключ для сортировки)
+    sort_map = {
+        "avtoritet": ("авторитету", "⭐", "avtoritet"),
+        "dengi": ("деньгам", "💰", "dengi"),
+        "zmiy": ("змию", "🐍", "zmiy"),
+        "total_skill": ("сумме скиллов", "💪", "total_skill"),
+        "level": ("уровню", "📈", "level"),
+        "rademka_wins": ("победам в радёмках", "👊", "rademka_wins")
+    }
+    
+    if sort_type not in sort_map:
+        await callback.answer("Неизвестный тип топа", show_alert=True)
+        return
+    
+    sort_name, emoji, db_key = sort_map[sort_type]
+    
+    # Для победы в радёмках нужен специальный запрос
+    if sort_type == "rademka_wins":
+        try:
+            conn = await get_connection()
+            cursor = await conn.execute('''
+                SELECT 
+                    u.user_id,
+                    u.nickname,
+                    u.avtoritet,
+                    COUNT(rf.id) as wins
+                FROM users u
+                LEFT JOIN rademka_fights rf ON u.user_id = rf.winner_id
+                GROUP BY u.user_id, u.nickname, u.avtoritet
+                ORDER BY wins DESC
+                LIMIT 10
+            ''')
+            top_players_raw = await cursor.fetchall()
+            await conn.close()
+            
+            top_players = []
+            for row in top_players_raw:
+                player = dict(row)
+                player["wins"] = player["wins"] or 0
+                player["rank"] = "?"  # Ранг будет установлен ниже
+                player["zmiy"] = 0
+                player["dengi"] = 0
+                player["level"] = 1
+                player["zmiy_formatted"] = "0кг"
+                player["dengi_formatted"] = "0р"
+                top_players.append(player)
+        except:
+            top_players = []
+    else:
+        # Стандартный топ
+        try:
+            top_players = await get_top_players(limit=10, sort_by=db_key)
+        except Exception as e:
+            await callback.answer(f"Ошибка при получении топа: {e}", show_alert=True)
+            return
+    
+    if not top_players:
+        await callback.message.edit_text(
+            "😕 <b>Топ пуст!</b>\n\n"
+            "Ещё никто не заслужил места в рейтинге.\n"
+            "Будь первым!",
+            reply_markup=top_sort_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+    
+    # Формируем красивый топ
+    top_text = f"{emoji} <b>Топ пацанов по {sort_name}:</b>\n\n"
+    
+    # Медальки для первых трёх мест
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    
+    for i, player in enumerate(top_players):
+        medal = medals[i] if i < len(medals) else f"{i+1}."
+        
+        # Форматируем значение в зависимости от типа топа
+        if sort_type == "avtoritet":
+            value = f"⭐ {player['avtoritet']}"
+        elif sort_type == "dengi":
+            value = f"💰 {player.get('dengi_formatted', f'{player.get('dengi', 0)}р')}"
+        elif sort_type == "zmiy":
+            value = f"🐍 {player.get('zmiy_formatted', f'{player.get('zmiy', 0):.1f}кг')}"
+        elif sort_type == "total_skill":
+            value = f"💪 {player.get('total_skill', 0)} ур."
+        elif sort_type == "level":
+            value = f"📈 {player.get('level', 1)} ур."
+        elif sort_type == "rademka_wins":
+            value = f"👊 {player.get('wins', 0)} побед"
+        else:
+            value = ""
+        
+        # Обрезаем слишком длинные ники
+        nickname = player.get('nickname', f'Пацан_{player.get("user_id", "?")}')
+        if len(nickname) > 20:
+            nickname = nickname[:17] + "..."
+        
+        # Добавляем звание если есть
+        rank_info = ""
+        if sort_type != "rademka_wins":
+            rank_name = player.get("rank", "").split(" ")
+            if len(rank_name) > 1:
+                rank_info = f" ({rank_name[1]})"
+        
+        top_text += f"{medal} <code>{nickname}</code>{rank_info} — {value}\n"
+    
+    # Добавляем статистику
+    top_text += f"\n📊 <i>Всего пацанов в системе: {len(top_players)}</i>"
+    
+    # Показываем пользователю его позицию, если он есть в топе
+    current_user_id = callback.from_user.id
+    user_position = None
+    
+    for i, player in enumerate(top_players):
+        if player.get('user_id') == current_user_id:
+            user_position = i + 1
+            break
+    
+    if user_position:
+        user_medal = medals[user_position-1] if user_position-1 < len(medals) else str(user_position)
+        top_text += f"\n\n🎯 <b>Твоя позиция:</b> {user_medal}"
+    
+    await callback.message.edit_text(
+        top_text,
+        reply_markup=top_sort_keyboard(),
+        parse_mode="HTML"
+    )
+
+# ==================== ДОПОЛНИТЕЛЬНЫЕ ОБРАБОТЧИКИ ====================
+
+@router.callback_query(F.data.startswith("inventory_"))
+async def callback_inventory_action(callback: types.CallbackQuery):
+    """Действия с инвентарём"""
+    action = callback.data.replace("inventory_", "")
+    
+    if action == "use":
+        await callback.answer("Функция использования предметов в разработке!", show_alert=True)
+    elif action == "sort":
+        await callback.answer("Инвентарь отсортирован!", show_alert=True)
+        await callback_inventory(callback)
+    elif action == "trash":
+        await callback.message.edit_text(
+            "🗑️ <b>ВЫБРОСИТЬ МУСОР</b>\n\n"
+            "Ты уверен? Это действие удалит:\n"
+            "• Все 'перчатки'\n"
+            "• Все 'швабры'\n"
+            "• Все 'вёдра'\n\n"
+            "Зато освободит место в инвентаре!",
+            reply_markup=confirmation_keyboard("trash_inventory"),
+            parse_mode="HTML"
+        )
+    else:
+        await callback.answer("Неизвестное действие", show_alert=True)
+
+@router.callback_query(F.data == "confirm_trash_inventory")
+async def callback_confirm_trash_inventory(callback: types.CallbackQuery):
+    """Подтверждение очистки инвентаря"""
+    user_id = callback.from_user.id
+    patsan = await get_patsan(user_id)
+    
+    inventory = patsan.get("inventory", [])
+    trash_items = ["перчатки", "швабра", "ведро"]
+    
+    # Считаем сколько выбросим
+    count_before = len(inventory)
+    
+    # Удаляем мусор
+    new_inventory = [item for item in inventory if item not in trash_items]
+    count_after = len(new_inventory)
+    removed = count_before - count_after
+    
+    if removed > 0:
+        patsan["inventory"] = new_inventory
+        await save_patsan(patsan)
+        
+        await callback.message.edit_text(
+            f"✅ <b>МУСОР ВЫБРОШЕН!</b>\n\n"
+            f"Выброшено предметов: {removed}\n"
+            f"Осталось в инвентаре: {count_after}\n\n"
+            f"<i>Теперь есть место для чего-то полезного!</i>",
+            reply_markup=main_keyboard(),
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            "🤷 <b>НЕТ МУСОРА</b>\n\n"
+            "В твоём инвентаре не нашлось мусора.\n"
+            "Всё полезное, всё пригодится!",
+            reply_markup=main_keyboard(),
+            parse_mode="HTML"
+        )
+
+# Остальные существующие обработчики остаются без изменений
+# (buy_upgrade, daily, achievements и т.д. будут в других файлах)
