@@ -14,13 +14,17 @@ DB_NAME = "bot_database.db"
 
 async def get_connection():
     """Создаёт асинхронное соединение с базой данных"""
+    # ИСПРАВЛЕНИЕ: правильное создание соединения
     conn = await aiosqlite.connect(DB_NAME)
-    conn.row_factory = aiosqlite.Row  # Чтобы получать данные как словари
+    conn.row_factory = aiosqlite.Row
     return conn
 
 async def init_db():
     """Асинхронная инициализация базы данных: создаёт все таблицы"""
-    async with await get_connection() as conn:
+    # ИСПРАВЛЕНИЕ: используем отдельное соединение для инициализации
+    conn = await aiosqlite.connect(DB_NAME)
+    
+    try:
         # 1. Таблица пользователей (для игры)
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -71,7 +75,11 @@ async def init_db():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)')
         
         await conn.commit()
-    print("✅ База данных SQLite инициализирована (асинхронная версия)")
+        print("✅ База данных SQLite инициализирована (асинхронная версия)")
+        
+    finally:
+        # Всегда закрываем соединение
+        await conn.close()
 
 # ==================== ИГРОВЫЕ ФУНКЦИИ (АСИНХРОННЫЕ) ====================
 
@@ -456,7 +464,8 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
     Returns:
         Список словарей с данными игроков, включая их ранг
     """
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         # Безопасная проверка поля для сортировки (защита от SQL-инъекций)
         valid_columns = ["avtoritet", "dengi", "zmiy"]
         sort_column = sort_by if sort_by in valid_columns else "avtoritet"
@@ -509,6 +518,8 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
             top_players.append(player)
         
         return top_players
+    finally:
+        await conn.close()
 
 # ==================== КЭШИРОВАНИЕ ====================
 
