@@ -11,14 +11,15 @@ from keyboards.keyboards import (
     main_keyboard, pump_keyboard, back_keyboard, shop_keyboard,
     specializations_keyboard, craft_keyboard, craft_items_keyboard,
     rademka_scout_keyboard, profile_extended_keyboard, confirmation_keyboard,
-    craft_confirmation_keyboard, specialization_confirmation_keyboard,
+    specialization_confirmation_keyboard,
     inventory_management_keyboard, back_to_craft_keyboard, back_to_specializations_keyboard
 )
 from keyboards.new_keyboards import (
     daily_keyboard, achievements_keyboard, rademka_keyboard,
     rademka_fight_keyboard, back_to_rademka_keyboard, achievements_progress_keyboard,
     level_stats_keyboard, atm_status_keyboard, specializations_info_keyboard,
-    craft_recipes_keyboard, top_sort_keyboard, back_to_profile_keyboard
+    craft_recipes_keyboard, top_sort_keyboard, back_to_profile_keyboard,
+    craft_confirmation_keyboard
 )
 
 router = Router()
