@@ -7,8 +7,13 @@ def main_keyboard():
         [InlineKeyboardButton(text="💰 Сдать змия на металл", callback_data="sdat")],
         [InlineKeyboardButton(text="📈 Прокачать скиллы", callback_data="pump")],
         [InlineKeyboardButton(text="🛒 Нагнетательная столовая", callback_data="shop")],
-        [InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")],
-        [InlineKeyboardButton(text="🏆 Топ пацанов", callback_data="top")],  # НОВАЯ КНОПКА
+        [InlineKeyboardButton(text="🎁 Ежедневная награда", callback_data="daily")],  # НОВОЕ
+        [InlineKeyboardButton(text="📜 Достижения", callback_data="achievements")],  # НОВОЕ
+        [InlineKeyboardButton(text="👊 Протащить радёмку", callback_data="rademka")],  # НОВОЕ
+        [
+            InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory"),
+            InlineKeyboardButton(text="🏆 Топ пацанов", callback_data="top")
+        ],
         [InlineKeyboardButton(text="📊 Профиль", callback_data="profile")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
