@@ -32,9 +32,9 @@ def nickname_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def rademka_keyboard():
-    """Клавиатура для радёмки"""
+    """Клавиатура для радёмки (ИСПРАВЛЕНА: убрана неработающая кнопка)"""
     kb = [
-        [InlineKeyboardButton(text="👊 ПРОТАЩИТЬ КОГО-ТО", callback_data="rademka_fight")],
+        [InlineKeyboardButton(text="🎯 Выбрать случайную цель", callback_data="rademka_random")],
         [InlineKeyboardButton(text="📊 Статистика радёмок", callback_data="rademka_stats")],
         [InlineKeyboardButton(text="👑 Топ радёмщиков", callback_data="rademka_top")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]
@@ -51,7 +51,6 @@ def rademka_fight_keyboard(target_id: int = None):
     else:
         kb = [
             [InlineKeyboardButton(text="🎯 Выбрать случайную цель", callback_data="rademka_random")],
-            [InlineKeyboardButton(text="👥 Посмотреть всех пацанов", callback_data="rademka_list")],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data="rademka")]
         ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
