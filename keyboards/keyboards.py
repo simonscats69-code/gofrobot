@@ -8,6 +8,7 @@ def main_keyboard():
         [InlineKeyboardButton(text="📈 Прокачать скиллы", callback_data="pump")],
         [InlineKeyboardButton(text="🛒 Нагнетательная столовая", callback_data="shop")],
         [InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")],
+        [InlineKeyboardButton(text="🏆 Топ пацанов", callback_data="top")],  # НОВАЯ КНОПКА
         [InlineKeyboardButton(text="📊 Профиль", callback_data="profile")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
