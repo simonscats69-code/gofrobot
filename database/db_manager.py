@@ -33,12 +33,15 @@ async def init_db():
                 zmiy REAL DEFAULT 0.0,
                 dengi INTEGER DEFAULT 100,
                 last_update INTEGER,
+                last_daily INTEGER DEFAULT 0,          -- НОВОЕ: последняя ежедневная награда
                 atm_count INTEGER DEFAULT 12,
                 skill_davka INTEGER DEFAULT 1,
                 skill_zashita INTEGER DEFAULT 1,
                 skill_nahodka INTEGER DEFAULT 1,
                 inventory TEXT,
                 upgrades TEXT,
+                achievements TEXT DEFAULT '[]',        -- НОВОЕ: список достижений в JSON
+                nickname_changed BOOLEAN DEFAULT FALSE, -- НОВОЕ: менял ли ник
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -67,13 +70,26 @@ async def init_db():
             )
         ''')
         
+        # 4. НОВАЯ ТАБЛИЦА: Достижения
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS achievements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                achievement_id TEXT NOT NULL,
+                unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, achievement_id)
+            )
+        ''')
+        
         # Создаём индексы для быстрого поиска
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_achievements_user_id ON achievements(user_id)')
         
         await conn.commit()
         print("✅ База данных SQLite инициализирована (асинхронная версия)")
+        print("✅ Добавлены поля для: ежедневных наград, достижений, смены ника")
         
     finally:
         await conn.close()
@@ -109,8 +125,10 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                     ''', (user["atm_count"], user["last_update"], user_id))
                     await conn.commit()
             
+            # Преобразуем JSON строки обратно в Python объекты
             user["inventory"] = json.loads(user["inventory"]) if user["inventory"] else []
             user["upgrades"] = json.loads(user["upgrades"]) if user["upgrades"] else {}
+            user["achievements"] = json.loads(user["achievements"]) if user.get("achievements") else []
             return user
         else:
             new_user = {
@@ -120,6 +138,7 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                 "zmiy": 0.0,
                 "dengi": 100,
                 "last_update": int(time.time()),
+                "last_daily": 0,
                 "atm_count": 12,
                 "skill_davka": 1,
                 "skill_zashita": 1,
@@ -130,21 +149,26 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                     "tea_slivoviy": False,
                     "bubbleki": False,
                     "kuryasany": False
-                }
+                },
+                "achievements": [],
+                "nickname_changed": False
             }
             
             await conn.execute('''
                 INSERT INTO users 
                 (user_id, nickname, avtoritet, zmiy, dengi, last_update, 
-                 atm_count, skill_davka, skill_zashita, skill_nahodka, inventory, upgrades)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 last_daily, atm_count, skill_davka, skill_zashita, skill_nahodka, 
+                 inventory, upgrades, achievements, nickname_changed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 new_user["user_id"], new_user["nickname"], new_user["avtoritet"],
                 new_user["zmiy"], new_user["dengi"], new_user["last_update"],
-                new_user["atm_count"], new_user["skill_davka"], new_user["skill_zashita"],
-                new_user["skill_nahodka"], 
+                new_user["last_daily"], new_user["atm_count"], new_user["skill_davka"], 
+                new_user["skill_zashita"], new_user["skill_nahodka"], 
                 json.dumps(new_user["inventory"]), 
-                json.dumps(new_user["upgrades"])
+                json.dumps(new_user["upgrades"]),
+                json.dumps(new_user["achievements"]),
+                new_user["nickname_changed"]
             ))
             
             await conn.commit()
@@ -159,8 +183,9 @@ async def save_patsan(user_data: Dict[str, Any]):
         await conn.execute('''
             UPDATE users SET
                 nickname = ?, avtoritet = ?, zmiy = ?, dengi = ?,
-                last_update = ?, atm_count = ?, skill_davka = ?,
-                skill_zashita = ?, skill_nahodka = ?, inventory = ?, upgrades = ?
+                last_update = ?, last_daily = ?, atm_count = ?, 
+                skill_davka = ?, skill_zashita = ?, skill_nahodka = ?, 
+                inventory = ?, upgrades = ?, achievements = ?, nickname_changed = ?
             WHERE user_id = ?
         ''', (
             user_data.get("nickname"),
@@ -168,12 +193,15 @@ async def save_patsan(user_data: Dict[str, Any]):
             user_data.get("zmiy", 0.0),
             user_data.get("dengi", 100),
             user_data.get("last_update", int(time.time())),
+            user_data.get("last_daily", 0),
             user_data.get("atm_count", 12),
             user_data.get("skill_davka", 1),
             user_data.get("skill_zashita", 1),
             user_data.get("skill_nahodka", 1),
             json.dumps(user_data.get("inventory", [])),
             json.dumps(user_data.get("upgrades", {})),
+            json.dumps(user_data.get("achievements", [])),
+            user_data.get("nickname_changed", False),
             user_data["user_id"]
         ))
         await conn.commit()
@@ -213,6 +241,12 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     await save_patsan(patsan)
     
+    # Проверка достижений после дачки
+    await check_achievements(user_id, "davka", {
+        "total_grams": total_grams,
+        "dvenashka_found": dvenashka_found
+    })
+    
     if total_grams >= 1000:
         kg = total_grams // 1000
         grams = total_grams % 1000
@@ -247,6 +281,12 @@ async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     patsan["zmiy"] = 0
     
     await save_patsan(patsan)
+    
+    # Проверка достижений после сдачи
+    await check_achievements(user_id, "sdat", {
+        "total_money": total_money,
+        "old_zmiy": old_zmiy
+    })
     
     return patsan, {
         "old_zmiy": old_zmiy,
@@ -285,6 +325,12 @@ async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, An
     
     await save_patsan(patsan)
     
+    # Проверка достижений после покупки
+    await check_achievements(user_id, "buy_upgrade", {
+        "upgrade": upgrade,
+        "price": price
+    })
+    
     return patsan, f"Куплено за {price}р!{effect}"
 
 async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]], str]:
@@ -307,7 +353,304 @@ async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]]
     
     await save_patsan(patsan)
     
+    # Проверка достижений после прокачки
+    await check_achievements(user_id, "pump_skill", {
+        "skill": skill,
+        "level": patsan[f"skill_{skill}"]
+    })
+    
     return patsan, f"Прокачано за {cost}р!"
+
+# ==================== НОВЫЕ ФУНКЦИИ: ЕЖЕДНЕВНЫЕ НАГРАДЫ ====================
+
+async def get_daily_reward(user_id: int) -> Dict[str, Any]:
+    """Выдача ежедневной награды"""
+    conn = await get_connection()
+    try:
+        # Получаем данные пользователя
+        cursor = await conn.execute('''
+            SELECT last_daily, nickname, achievements FROM users WHERE user_id = ?
+        ''', (user_id,))
+        user = await cursor.fetchone()
+        
+        if not user:
+            return {"success": False, "error": "Пользователь не найден"}
+        
+        now = int(time.time())
+        last_daily = user["last_daily"] or 0
+        
+        # Проверяем, можно ли получить награду
+        if last_daily > 0 and now - last_daily < 86400:  # 24 часа
+            wait_hours = (86400 - (now - last_daily)) // 3600
+            wait_minutes = ((86400 - (now - last_daily)) % 3600) // 60
+            return {
+                "success": False, 
+                "wait_time": f"{wait_hours}ч {wait_minutes}м",
+                "next_daily": last_daily + 86400
+            }
+        
+        # Вычисляем стрик (последовательные дни)
+        achievements = json.loads(user["achievements"]) if user["achievements"] else []
+        streak_key = "daily_streak"
+        current_streak = 1
+        
+        # Ищем информацию о стрике в достижениях
+        for ach in achievements:
+            if ach.get("id") == streak_key:
+                current_streak = ach.get("value", 1) + 1
+                break
+        
+        # Генерируем награду
+        base_reward = 100
+        
+        # Бонус за стрик
+        if current_streak >= 7:
+            base_reward *= 3
+            streak_bonus = " (x3 за недельный стрик!)"
+        elif current_streak >= 3:
+            base_reward *= 2
+            streak_bonus = " (x2 за 3-дневный стрик!)"
+        else:
+            streak_bonus = ""
+        
+        # Случайный бонус
+        random_bonus = random.randint(0, 100)
+        total_reward = base_reward + random_bonus
+        
+        # Случайный предмет
+        items = ["двенашка", "атмосфера", "перчатки", "швабра", "ведро"]
+        weights = [0.4, 0.3, 0.15, 0.1, 0.05]
+        reward_item = random.choices(items, weights=weights, k=1)[0]
+        
+        # Обновляем стрик в достижениях
+        streak_updated = False
+        new_achievements = []
+        for ach in achievements:
+            if ach.get("id") == streak_key:
+                ach["value"] = current_streak
+                ach["last_updated"] = now
+                streak_updated = True
+            new_achievements.append(ach)
+        
+        if not streak_updated:
+            new_achievements.append({
+                "id": streak_key,
+                "name": f"Стрик {current_streak} дней",
+                "value": current_streak,
+                "last_updated": now
+            })
+        
+        # Обновляем пользователя
+        await conn.execute('''
+            UPDATE users SET 
+                dengi = dengi + ?,
+                last_daily = ?,
+                inventory = json_insert(
+                    COALESCE(inventory, '[]'), 
+                    '$[#]', 
+                    ?
+                ),
+                achievements = ?
+            WHERE user_id = ?
+        ''', (total_reward, now, reward_item, json.dumps(new_achievements), user_id))
+        
+        await conn.commit()
+        
+        # Проверяем достижения за стрик
+        if current_streak == 3:
+            await unlock_achievement(user_id, "streak_3", "Трёхдневный стрик", 50)
+        elif current_streak == 7:
+            await unlock_achievement(user_id, "streak_7", "Недельный стрик", 200)
+        elif current_streak == 30:
+            await unlock_achievement(user_id, "streak_30", "Месяц без пропусков", 1000)
+        
+        return {
+            "success": True, 
+            "money": total_reward,
+            "item": reward_item,
+            "streak": current_streak,
+            "streak_bonus": streak_bonus,
+            "base": base_reward,
+            "random_bonus": random_bonus
+        }
+        
+    finally:
+        await conn.close()
+
+# ==================== НОВЫЕ ФУНКЦИИ: ДОСТИЖЕНИЯ ====================
+
+async def check_achievements(user_id: int, action: str, data: Dict[str, Any]):
+    """Проверка и разблокировка достижений после различных действий"""
+    
+    if action == "davka":
+        total_grams = data.get("total_grams", 0)
+        
+        if total_grams >= 1000:
+            await unlock_achievement(user_id, "first_kg", "Первый килограмм", 100)
+        if total_grams >= 10000:
+            await unlock_achievement(user_id, "10kg", "Десять кило говна", 500)
+        if total_grams >= 100000:
+            await unlock_achievement(user_id, "100kg", "Центнер говна", 2000)
+        
+        if data.get("dvenashka_found"):
+            await unlock_achievement(user_id, "first_dvenashka", "Первая двенашка", 150)
+    
+    elif action == "sdat":
+        total_money = data.get("total_money", 0)
+        
+        if total_money >= 1000:
+            await unlock_achievement(user_id, "1000_money", "Тыща рублей", 200)
+        if total_money >= 10000:
+            await unlock_achievement(user_id, "10000_money", "Десять штук", 1000)
+    
+    elif action == "buy_upgrade":
+        upgrade = data.get("upgrade", "")
+        
+        if upgrade == "kuryasany":
+            await unlock_achievement(user_id, "buy_kuryasany", "Курвасаны с телотинкой", 300)
+        
+        # Проверяем, куплены ли все улучшения
+        conn = await get_connection()
+        try:
+            cursor = await conn.execute('''
+                SELECT upgrades FROM users WHERE user_id = ?
+            ''', (user_id,))
+            user = await cursor.fetchone()
+            
+            if user and user["upgrades"]:
+                upgrades = json.loads(user["upgrades"])
+                all_upgrades = ["ryazhenka", "tea_slivoviy", "bubbleki", "kuryasany"]
+                
+                if all(upgrades.get(upg, False) for upg in all_upgrades):
+                    await unlock_achievement(user_id, "all_upgrades", "Все нагнетатели", 1000)
+        finally:
+            await conn.close()
+
+async def unlock_achievement(user_id: int, achievement_id: str, name: str, reward: int = 0):
+    """Разблокировка достижения и выдача награды"""
+    conn = await get_connection()
+    try:
+        # Проверяем, не разблокировано ли уже
+        cursor = await conn.execute('''
+            SELECT 1 FROM achievements WHERE user_id = ? AND achievement_id = ?
+        ''', (user_id, achievement_id))
+        
+        existing = await cursor.fetchone()
+        
+        if existing:
+            return False  # Уже разблокировано
+        
+        # Добавляем в таблицу достижений
+        await conn.execute('''
+            INSERT INTO achievements (user_id, achievement_id) 
+            VALUES (?, ?)
+        ''', (user_id, achievement_id))
+        
+        # Добавляем в список достижений пользователя
+        cursor = await conn.execute('''
+            SELECT achievements FROM users WHERE user_id = ?
+        ''', (user_id,))
+        user = await cursor.fetchone()
+        
+        achievements = json.loads(user["achievements"]) if user and user["achievements"] else []
+        
+        # Проверяем, нет ли уже такого достижения в списке
+        for ach in achievements:
+            if ach.get("id") == achievement_id:
+                return False
+        
+        # Добавляем новое достижение
+        achievements.append({
+            "id": achievement_id,
+            "name": name,
+            "unlocked_at": int(time.time()),
+            "reward": reward
+        })
+        
+        # Выдаём награду, если есть
+        if reward > 0:
+            await conn.execute('''
+                UPDATE users SET 
+                    dengi = dengi + ?,
+                    achievements = ?
+                WHERE user_id = ?
+            ''', (reward, json.dumps(achievements), user_id))
+        else:
+            await conn.execute('''
+                UPDATE users SET achievements = ? WHERE user_id = ?
+            ''', (json.dumps(achievements), user_id))
+        
+        await conn.commit()
+        return True
+        
+    finally:
+        await conn.close()
+
+async def get_user_achievements(user_id: int) -> List[Dict[str, Any]]:
+    """Получение списка достижений пользователя"""
+    conn = await get_connection()
+    try:
+        cursor = await conn.execute('''
+            SELECT achievements FROM users WHERE user_id = ?
+        ''', (user_id,))
+        user = await cursor.fetchone()
+        
+        if user and user["achievements"]:
+            return json.loads(user["achievements"])
+        return []
+    finally:
+        await conn.close()
+
+# ==================== НОВЫЕ ФУНКЦИИ: СМЕНА НИКА ====================
+
+async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
+    """Смена ника пользователя"""
+    conn = await get_connection()
+    try:
+        # Проверяем пользователя
+        cursor = await conn.execute('''
+            SELECT nickname_changed, dengi FROM users WHERE user_id = ?
+        ''', (user_id,))
+        user = await cursor.fetchone()
+        
+        if not user:
+            return False, "Пользователь не найден"
+        
+        nickname_changed = user["nickname_changed"]
+        current_money = user["dengi"]
+        
+        # Проверяем, можно ли сменить бесплатно
+        if not nickname_changed:
+            # Первая смена - бесплатно
+            await conn.execute('''
+                UPDATE users SET 
+                    nickname = ?,
+                    nickname_changed = TRUE
+                WHERE user_id = ?
+            ''', (new_nickname, user_id))
+            
+            await conn.commit()
+            await unlock_achievement(user_id, "first_nickname", "Первая бирка", 100)
+            return True, "Ник успешно изменён! (первая смена бесплатно) +100р"
+        
+        # Не первая смена - проверяем деньги
+        cost = 5000
+        if current_money < cost:
+            return False, f"Не хватает {cost - current_money}р для смены ника"
+        
+        # Списание денег и смена ника
+        await conn.execute('''
+            UPDATE users SET 
+                nickname = ?,
+                dengi = dengi - ?
+            WHERE user_id = ?
+        ''', (new_nickname, cost, user_id))
+        
+        await conn.commit()
+        return True, f"Ник изменён! Списано {cost}р"
+        
+    finally:
+        await conn.close()
 
 # ==================== ФУНКЦИИ ДЛЯ КОРЗИНЫ (АСИНХРОННЫЕ) ====================
 
@@ -449,7 +792,7 @@ async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
     finally:
         await conn.close()
 
-# ==================== НОВАЯ ФУНКЦИЯ: ТОП ИГРОКОВ ====================
+# ==================== ФУНКЦИЯ: ТОП ИГРОКОВ ====================
 
 async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[Dict[str, Any]]:
     """
