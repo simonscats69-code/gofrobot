@@ -1,6 +1,6 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from database.db_manager import get_patsan
+from database.db_manager import get_patsan  # Теперь асинхронная функция
 from keyboards.keyboards import main_keyboard
 
 router = Router()
@@ -8,20 +8,23 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     """Обработчик команды /start"""
-    patsan = get_patsan(message.from_user.id)
+    # ДОБАВЛЯЕМ await!
+    patsan = await get_patsan(message.from_user.id)
     
     await message.answer(
         f"<b>Ну чё, пацан?</b> 👊\n"
         f"Добро пожаловать на гофроцентрал.\n"
         f"У тебя в кишке {patsan['atm_count']}/12 атмосфер.\n"
         f"Иди заварваривай коричневага, а то старшие придут и спросят.",
-        reply_markup=main_keyboard()
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
     )
 
 @router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     """Обработчик команды /profile"""
-    patsan = get_patsan(message.from_user.id)
+    # ДОБАВЛЯЕМ await!
+    patsan = await get_patsan(message.from_user.id)
     
     upgrades = patsan["upgrades"]
     bought_upgrades = [k for k, v in upgrades.items() if v]
@@ -42,5 +45,6 @@ async def cmd_profile(message: types.Message):
         f"🛡️ Защита: {patsan['skill_zashita']}\n"
         f"🔍 Находка: {patsan['skill_nahodka']}"
         f"{upgrade_text}",
-        reply_markup=main_keyboard()
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
     )
