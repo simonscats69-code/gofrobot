@@ -81,15 +81,30 @@ async def init_db():
             )
         ''')
         
+        # 5. НОВАЯ ТАБЛИЦА: Статистика радёмок
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS rademka_fights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                winner_id INTEGER NOT NULL,
+                loser_id INTEGER NOT NULL,
+                money_taken INTEGER DEFAULT 0,
+                item_stolen TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Создаём индексы для быстрого поиска
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_achievements_user_id ON achievements(user_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_winner ON rademka_fights(winner_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_loser ON rademka_fights(loser_id)')
         
         await conn.commit()
         print("✅ База данных SQLite инициализирована (асинхронная версия)")
         print("✅ Добавлены поля для: ежедневных наград, достижений, смены ника")
+        print("✅ Таблица для статистики радёмок создана")
         
     finally:
         await conn.close()
@@ -649,6 +664,20 @@ async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
         await conn.commit()
         return True, f"Ник изменён! Списано {cost}р"
         
+    finally:
+        await conn.close()
+
+# ==================== НОВАЯ ФУНКЦИЯ: СОХРАНЕНИЕ СТАТИСТИКИ РАДЁМКИ ====================
+
+async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0, item_stolen: str = None):
+    """Сохранение статистики радёмки в базу"""
+    conn = await get_connection()
+    try:
+        await conn.execute('''
+            INSERT INTO rademka_fights (winner_id, loser_id, money_taken, item_stolen)
+            VALUES (?, ?, ?, ?)
+        ''', (winner_id, loser_id, money_taken, item_stolen))
+        await conn.commit()
     finally:
         await conn.close()
 
