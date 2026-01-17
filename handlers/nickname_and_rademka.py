@@ -262,6 +262,37 @@ async def callback_rademka(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
+# Добавьте этот обработчик для кнопки "Разведка цели" из rademka_keyboard
+@router.callback_query(F.data == "rademka_scout_menu")
+async def rademka_scout_menu(callback: types.CallbackQuery):
+    """Меню разведки радёмки"""
+    user_id = callback.from_user.id
+    patsan = await get_patsan_cached(user_id)
+    
+    scouts_used = patsan.get("rademka_scouts", 0)
+    free_scouts_left = max(0, 5 - scouts_used)
+    
+    text = (
+        f"🕵️ <b>РАЗВЕДКА РАДЁМКИ</b>\n\n"
+        f"<i>Узнай точный шанс успеха перед атакой!</i>\n\n"
+        f"📊 <b>Твоя статистика:</b>\n"
+        f"• Использовано разведок: {scouts_used}\n"
+        f"• Бесплатных осталось: {free_scouts_left}/5\n"
+        f"• Стоимость разведки: {0 if free_scouts_left > 0 else 50}р\n\n"
+        f"<b>Преимущества разведки:</b>\n"
+        f"• Узнаешь точный шанс победы\n"
+        f"• Увидишь все факторы влияния\n"
+        f"• Принимай обдуманные решения!\n\n"
+        f"<i>Выбери действие:</i>"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=rademka_scout_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
 @router.callback_query(F.data == "rademka_random")
 async def rademka_random(callback: types.CallbackQuery):
     """Случайный пацан для радёмки (ОБНОВЛЁННЫЙ)"""
@@ -362,28 +393,8 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
     data = callback.data.replace("rademka_scout_", "")
     
     if data == "menu":
-        # Меню разведки
-        user_id = callback.from_user.id
-        patsan = await get_patsan_cached(user_id)
-        
-        scouts_used = patsan.get("rademka_scouts", 0)
-        free_scouts_left = max(0, 5 - scouts_used)
-        
-        text = (
-            f"🕵️ <b>РАЗВЕДКА РАДЁМКИ</b>\n\n"
-            f"<i>Узнай точный шанс успеха перед атакой!</i>\n\n"
-            f"📊 <b>Твоя статистика:</b>\n"
-            f"• Использовано разведок: {scouts_used}\n"
-            f"• Бесплатных осталось: {free_scouts_left}/5\n"
-            f"• Стоимость разведки: {0 if free_scouts_left > 0 else 50}р\n\n"
-            f"<i>Выбери действие:</i>"
-        )
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=rademka_scout_keyboard(),
-            parse_mode="HTML"
-        )
+        # Меню разведки - теперь перенаправляем на rademka_scout_menu
+        await rademka_scout_menu(callback)
         return
     
     elif data == "random":
