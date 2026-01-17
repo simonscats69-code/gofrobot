@@ -4,15 +4,20 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage  # НОВОЕ: для FSM
+from aiogram.fsm.storage.memory import MemoryStorage
 
 # Импорт роутеров
 from handlers.commands import router as commands_router
 from handlers.callbacks import router as callbacks_router
 from handlers.shop import router as shop_router
 from handlers.top import router as top_router
-from handlers.daily import router as daily_router  # НОВОЕ
-from handlers.nickname_and_rademka import router as nickname_rademka_router  # НОВОЕ
+from handlers.daily import router as daily_router
+from handlers.nickname_and_rademka import router as nickname_rademka_router
+
+# НОВЫЕ ИМПОРТЫ ДЛЯ НОВЫХ ФУНКЦИЙ
+from handlers.specializations import router as specializations_router
+from handlers.craft import router as craft_router
+from handlers.achievements_progress import router as achievements_progress_router
 
 # Импорт для инициализации БД
 from database.db_manager import init_db
@@ -39,8 +44,9 @@ print(f"✅ Токен получен. Длина: {len(BOT_TOKEN)}, ID бота
 # ========== КОНЕЦ ПРОВЕРКИ ==========
 
 async def main():
-    # Инициализируем базу данных
+    # Инициализируем базу данных С НОВЫМИ ТАБЛИЦАМИ
     await init_db()
+    print("✅ База данных инициализирована")
     
     # Создаем бота с хранилищем для FSM
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -48,21 +54,71 @@ async def main():
     dp = Dispatcher(storage=storage)
     
     # Подключаем роутеры (ВАЖНО: порядок может иметь значение!)
+    # 1. Основные команды
     dp.include_router(commands_router)
+    
+    # 2. Колбэки (основные действия)
     dp.include_router(callbacks_router)
+    
+    # 3. Магазин
     dp.include_router(shop_router)
+    
+    # 4. Топ и рейтинги
     dp.include_router(top_router)
-    dp.include_router(daily_router)  # НОВОЕ: ежедневные награды и достижения
-    dp.include_router(nickname_rademka_router)  # НОВОЕ: смена ника и радёмка
+    
+    # 5. Ежедневные награды и достижения
+    dp.include_router(daily_router)
+    
+    # 6. Смена ника и радёмка
+    dp.include_router(nickname_rademka_router)
+    
+    # 7. НОВЫЕ РОУТЕРЫ ДЛЯ НОВЫХ ФУНКЦИЙ
+    dp.include_router(specializations_router)        # Специализации
+    dp.include_router(craft_router)                  # Крафт предметов
+    dp.include_router(achievements_progress_router)  # Прогресс достижений
     
     print("🤖 Бот 'Пацаны с гофроцентрала' запущен!")
-    print("⚡ Работаем на заварваривание двенашек!")
-    print("🎁 Ежедневные награды активированы!")
-    print("📜 Система достижений готова!")
-    print("👊 Радёмка: 'ИДИ СЮДА РАДЁМКА БАЛЯ!'")
-    print("🏷️ Смена ника доступна!")
-    print("🏆 Топ игроков работает!")
+    print("=" * 50)
+    print("⚡ РАБОТАЕМ НА ЗАВАРВАРИВАНИЕ ДВЕНАШЕК!")
+    print("=" * 50)
+    print()
+    print("🎉 ОБНОВЛЕНИЕ 2.0 АКТИВИРОВАНО!")
+    print("=" * 50)
+    print("🌳 СИСТЕМА СПЕЦИАЛИЗАЦИЙ")
+    print("• 💪 Давила - мастер давления")
+    print("• 🔍 Охотник - ищет двенашки")
+    print("• 🛡️ Непробиваемый - железные кишки")
+    print()
+    print("🔨 СИСТЕМА КРАФТА")
+    print("• Создавай мощные предметы")
+    print("• 4 уникальных рецепта")
+    print("• Шанс успеха от 70% до 100%")
+    print()
+    print("📈 СИСТЕМА УРОВНЕЙ")
+    print("• Получай опыт за все действия")
+    print("• Повышай уровень за награды")
+    print("• Каждый 5 уровень +1 к атмосферам")
+    print()
+    print("🏆 УРОВНЕВЫЕ ДОСТИЖЕНИЯ")
+    print("• Долгосрочные цели")
+    print("• Множество уровней")
+    print("• Большие награды")
+    print()
+    print("🕵️ РАЗВЕДКА РАДЁМКИ")
+    print("• Узнавай точные шансы")
+    print("• 5 бесплатных разведок")
+    print("• Стратегическое преимущество")
+    print()
+    print("⭐ СИСТЕМА ЗВАНИЙ")
+    print("• От Пацанчика до Царя гофры")
+    print("• Уважение в сообществе")
+    print("• Влияние на игровой процесс")
+    print("=" * 50)
+    print()
     print("📊 База данных: асинхронный режим")
+    print("🎮 Активных функций: 12+")
+    print("⚙️ FSM: активирован для смены ника")
+    print("🚀 Готов к работе!")
     
     # Запускаем поллинг
     await dp.start_polling(bot)
