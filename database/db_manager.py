@@ -443,6 +443,73 @@ async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
         
         return orders
 
+# ==================== НОВАЯ ФУНКЦИЯ: ТОП ИГРОКОВ ====================
+
+async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[Dict[str, Any]]:
+    """
+    Асинхронно получить топ игроков по выбранному критерию.
+    
+    Args:
+        limit: Количество игроков в топе (по умолчанию 10)
+        sort_by: Поле для сортировки ('avtoritet', 'dengi', 'zmiy', 'total_skill')
+    
+    Returns:
+        Список словарей с данными игроков, включая их ранг
+    """
+    async with await get_connection() as conn:
+        # Безопасная проверка поля для сортировки (защита от SQL-инъекций)
+        valid_columns = ["avtoritet", "dengi", "zmiy"]
+        sort_column = sort_by if sort_by in valid_columns else "avtoritet"
+        
+        # Если нужен топ по скиллам, используем особый запрос
+        if sort_by == "total_skill":
+            query = '''
+                SELECT 
+                    user_id,
+                    nickname, 
+                    avtoritet, 
+                    dengi, 
+                    zmiy,
+                    skill_davka, 
+                    skill_zashita, 
+                    skill_nahodka,
+                    (skill_davka + skill_zashita + skill_nahodka) as total_skill,
+                    ROW_NUMBER() OVER (ORDER BY (skill_davka + skill_zashita + skill_nahodka) DESC) as rank
+                FROM users 
+                ORDER BY total_skill DESC 
+                LIMIT ?
+            '''
+            cursor = await conn.execute(query, (limit,))
+        else:
+            query = f'''
+                SELECT 
+                    user_id,
+                    nickname, 
+                    avtoritet, 
+                    dengi, 
+                    zmiy,
+                    skill_davka, 
+                    skill_zashita, 
+                    skill_nahodka,
+                    (skill_davka + skill_zashita + skill_nahodka) as total_skill,
+                    ROW_NUMBER() OVER (ORDER BY {sort_column} DESC) as rank
+                FROM users 
+                ORDER BY {sort_column} DESC 
+                LIMIT ?
+            '''
+            cursor = await conn.execute(query, (limit,))
+        
+        top_players = []
+        rows = await cursor.fetchall()
+        for row in rows:
+            player = dict(row)
+            # Форматируем значения для красоты
+            player["zmiy_formatted"] = f"{player['zmiy']:.1f}кг"
+            player["dengi_formatted"] = f"{player['dengi']}р"
+            top_players.append(player)
+        
+        return top_players
+
 # ==================== КЭШИРОВАНИЕ ====================
 
 # Простой in-memory кэш для пользователей
