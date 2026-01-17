@@ -14,14 +14,12 @@ DB_NAME = "bot_database.db"
 
 async def get_connection():
     """Создаёт асинхронное соединение с базой данных"""
-    # ИСПРАВЛЕНИЕ: правильное создание соединения
     conn = await aiosqlite.connect(DB_NAME)
-    conn.row_factory = aiosqlite.Row
+    conn.row_factory = aiosqlite.Row  # Чтобы получать данные как словари
     return conn
 
 async def init_db():
     """Асинхронная инициализация базы данных: создаёт все таблицы"""
-    # ИСПРАВЛЕНИЕ: используем отдельное соединение для инициализации
     conn = await aiosqlite.connect(DB_NAME)
     
     try:
@@ -78,15 +76,14 @@ async def init_db():
         print("✅ База данных SQLite инициализирована (асинхронная версия)")
         
     finally:
-        # Всегда закрываем соединение
         await conn.close()
 
 # ==================== ИГРОВЫЕ ФУНКЦИИ (АСИНХРОННЫЕ) ====================
 
 async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
     """Асинхронно получаем пацана из базы, создаём нового если нет"""
-    async with await get_connection() as conn:
-        # Пытаемся найти пользователя
+    conn = await get_connection()
+    try:
         cursor = await conn.execute(
             'SELECT * FROM users WHERE user_id = ?', 
             (user_id,)
@@ -94,7 +91,6 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
         user_row = await cursor.fetchone()
         
         if user_row:
-            # Конвертируем Row в словарь
             user = dict(user_row)
             
             # Автоматическое восстановление атмосфер
@@ -107,19 +103,16 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                 if new_atm != user["atm_count"]:
                     user["atm_count"] = new_atm
                     user["last_update"] = now - (passed % ATM_TIME)
-                    # Обновляем в базе
                     await conn.execute('''
                         UPDATE users SET atm_count = ?, last_update = ? 
                         WHERE user_id = ?
                     ''', (user["atm_count"], user["last_update"], user_id))
                     await conn.commit()
             
-            # Преобразуем JSON строки обратно в Python объекты
             user["inventory"] = json.loads(user["inventory"]) if user["inventory"] else []
             user["upgrades"] = json.loads(user["upgrades"]) if user["upgrades"] else {}
             return user
         else:
-            # Новый пацан с гофроцентрала
             new_user = {
                 "user_id": user_id,
                 "nickname": f"Пацанчик_{user_id}",
@@ -140,7 +133,6 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
                 }
             }
             
-            # Вставляем нового пользователя
             await conn.execute('''
                 INSERT INTO users 
                 (user_id, nickname, avtoritet, zmiy, dengi, last_update, 
@@ -157,10 +149,13 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
             
             await conn.commit()
             return new_user
+    finally:
+        await conn.close()
 
 async def save_patsan(user_data: Dict[str, Any]):
     """Асинхронно сохраняем пацана в базу"""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         await conn.execute('''
             UPDATE users SET
                 nickname = ?, avtoritet = ?, zmiy = ?, dengi = ?,
@@ -182,12 +177,13 @@ async def save_patsan(user_data: Dict[str, Any]):
             user_data["user_id"]
         ))
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     """Асинхронная обработка дачки коричневага"""
     patsan = await get_patsan(user_id)
     
-    # Базовый расход атмосфер
     base_cost = 2
     if patsan["upgrades"].get("tea_slivoviy"):
         base_cost = max(1, base_cost - 1)
@@ -197,22 +193,15 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     patsan["atm_count"] -= base_cost
     
-    # Генерируем вес змия
     base_grams = random.randint(200, 1500)
-    
-    # Бонус от скилла
     skill_bonus = patsan["skill_davka"] * 100
     
-    # Бонус от "ряженки"
     if patsan["upgrades"].get("ryazhenka"):
         base_grams = int(base_grams * 1.5)
     
     total_grams = base_grams + skill_bonus
-    
-    # Добавляем змия
     patsan["zmiy"] += total_grams / 1000
     
-    # Проверка на двенашку
     find_chance = patsan["skill_nahodka"] * 0.05
     if patsan["upgrades"].get("bubbleki"):
         find_chance += 0.2
@@ -224,7 +213,6 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     await save_patsan(patsan)
     
-    # Форматируем вес для сообщения
     if total_grams >= 1000:
         kg = total_grams // 1000
         grams = total_grams % 1000
@@ -251,8 +239,6 @@ async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     
     price_per_kg = 50
     total_money = int(patsan["zmiy"] * price_per_kg)
-    
-    # Бонус за авторитет
     avtoritet_bonus = patsan["avtoritet"] * 5
     total_money += avtoritet_bonus
     
@@ -289,7 +275,6 @@ async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, An
     if patsan["dengi"] < price:
         return None, "Не хватает бабла!"
     
-    # Особый эффект для курвасанов
     effect = ""
     if upgrade == "kuryasany":
         patsan["avtoritet"] += 1
@@ -328,7 +313,8 @@ async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]]
 
 async def get_cart(user_id: int) -> List[Dict[str, Any]]:
     """Асинхронно получить корзину пользователя"""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         cursor = await conn.execute('''
             SELECT item_name, quantity, price 
             FROM cart WHERE user_id = ?
@@ -340,11 +326,13 @@ async def get_cart(user_id: int) -> List[Dict[str, Any]]:
             cart_items.append(dict(row))
         
         return cart_items
+    finally:
+        await conn.close()
 
 async def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 1):
     """Асинхронно добавить товар в корзину"""
-    async with await get_connection() as conn:
-        # Проверяем, есть ли уже такой товар
+    conn = await get_connection()
+    try:
         cursor = await conn.execute('''
             SELECT quantity FROM cart 
             WHERE user_id = ? AND item_name = ?
@@ -353,25 +341,25 @@ async def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 
         existing = await cursor.fetchone()
         
         if existing:
-            # Обновляем количество
             new_quantity = existing["quantity"] + quantity
             await conn.execute('''
                 UPDATE cart SET quantity = ? 
                 WHERE user_id = ? AND item_name = ?
             ''', (new_quantity, user_id, item_name))
         else:
-            # Добавляем новый товар
             await conn.execute('''
                 INSERT INTO cart (user_id, item_name, price, quantity)
                 VALUES (?, ?, ?, ?)
             ''', (user_id, item_name, price, quantity))
         
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
     """Асинхронно удалить товар из корзины"""
-    async with await get_connection() as conn:
-        # Получаем текущее количество
+    conn = await get_connection()
+    try:
         cursor = await conn.execute('''
             SELECT quantity FROM cart 
             WHERE user_id = ? AND item_name = ?
@@ -384,29 +372,33 @@ async def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
         current_qty = existing["quantity"]
         
         if current_qty <= quantity:
-            # Удаляем товар полностью
             await conn.execute('''
                 DELETE FROM cart 
                 WHERE user_id = ? AND item_name = ?
             ''', (user_id, item_name))
         else:
-            # Уменьшаем количество
             await conn.execute('''
                 UPDATE cart SET quantity = ? 
                 WHERE user_id = ? AND item_name = ?
             ''', (current_qty - quantity, user_id, item_name))
         
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def clear_cart(user_id: int):
     """Асинхронно очистить корзину пользователя"""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         await conn.execute('DELETE FROM cart WHERE user_id = ?', (user_id,))
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def get_cart_total(user_id: int) -> int:
     """Асинхронно получить общую стоимость корзины"""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         cursor = await conn.execute('''
             SELECT SUM(price * quantity) as total 
             FROM cart WHERE user_id = ?
@@ -414,13 +406,15 @@ async def get_cart_total(user_id: int) -> int:
         
         result = await cursor.fetchone()
         return result["total"] if result and result["total"] else 0
+    finally:
+        await conn.close()
 
 # ==================== ФУНКЦИИ ДЛЯ ЗАКАЗОВ ====================
 
 async def create_order(user_id: int, items: List[Dict], total: int) -> int:
     """Асинхронно создать заказ"""
-    async with await get_connection() as conn:
-        # Вставляем заказ
+    conn = await get_connection()
+    try:
         cursor = await conn.execute('''
             INSERT INTO orders (user_id, items, total, status)
             VALUES (?, ?, ?, ?)
@@ -428,15 +422,17 @@ async def create_order(user_id: int, items: List[Dict], total: int) -> int:
         
         order_id = cursor.lastrowid
         
-        # Очищаем корзину
         await clear_cart(user_id)
         
         await conn.commit()
         return order_id
+    finally:
+        await conn.close()
 
 async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
     """Асинхронно получить историю заказов"""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         cursor = await conn.execute('''
             SELECT id, items, total, status, created_at 
             FROM orders WHERE user_id = ? ORDER BY created_at DESC
@@ -450,6 +446,8 @@ async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
             orders.append(order)
         
         return orders
+    finally:
+        await conn.close()
 
 # ==================== НОВАЯ ФУНКЦИЯ: ТОП ИГРОКОВ ====================
 
@@ -466,11 +464,9 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
     """
     conn = await get_connection()
     try:
-        # Безопасная проверка поля для сортировки (защита от SQL-инъекций)
         valid_columns = ["avtoritet", "dengi", "zmiy"]
         sort_column = sort_by if sort_by in valid_columns else "avtoritet"
         
-        # Если нужен топ по скиллам, используем особый запрос
         if sort_by == "total_skill":
             query = '''
                 SELECT 
@@ -512,7 +508,6 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
         rows = await cursor.fetchall()
         for row in rows:
             player = dict(row)
-            # Форматируем значения для красоты
             player["zmiy_formatted"] = f"{player['zmiy']:.1f}кг"
             player["dengi_formatted"] = f"{player['dengi']}р"
             top_players.append(player)
@@ -523,7 +518,6 @@ async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[D
 
 # ==================== КЭШИРОВАНИЕ ====================
 
-# Простой in-memory кэш для пользователей
 _user_cache = {}
 _cache_lock = asyncio.Lock()
 
@@ -533,18 +527,15 @@ async def get_patsan_cached(user_id: int) -> Optional[Dict[str, Any]]:
         now = time.time()
         cache_key = f"user_{user_id}"
         
-        # Проверяем кэш
         if cache_key in _user_cache:
             user, timestamp = _user_cache[cache_key]
-            if now - timestamp < 30:  # Кэш живёт 30 секунд
+            if now - timestamp < 30:
                 return user
         
-        # Получаем из БД
         user = await get_patsan(user_id)
         if user:
             _user_cache[cache_key] = (user, now)
         
-        # Очищаем старый кэш (больше 100 записей)
         if len(_user_cache) > 100:
             oldest_key = min(_user_cache.items(), key=lambda x: x[1][1])[0]
             del _user_cache[oldest_key]
