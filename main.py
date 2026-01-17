@@ -6,7 +6,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-# Импорт роутеров
 from handlers.commands import router as commands_router
 from handlers.callbacks import router as callbacks_router
 from handlers.shop import router as shop_router
@@ -14,15 +13,12 @@ from handlers.top import router as top_router
 from handlers.daily import router as daily_router
 from handlers.nickname_and_rademka import router as nickname_rademka_router
 
-# НОВЫЕ ИМПОРТЫ ДЛЯ НОВЫХ ФУНКЦИЙ
 from handlers.specializations import router as specializations_router
 from handlers.craft import router as craft_router
 from handlers.achievements_progress import router as achievements_progress_router
 
-# Импорт для инициализации БД
 from database.db_manager import init_db
 
-# ========== ПРОВЕРКА ТОКЕНА ==========
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
@@ -41,41 +37,24 @@ if len(token_parts) != 2 or not token_parts[0].isdigit() or len(token_parts[1]) 
     sys.exit(1)
 
 print(f"✅ Токен получен. Длина: {len(BOT_TOKEN)}, ID бота: {token_parts[0]}")
-# ========== КОНЕЦ ПРОВЕРКИ ==========
 
 async def main():
-    # Инициализируем базу данных С НОВЫМИ ТАБЛИЦАМИ
     await init_db()
     print("✅ База данных инициализирована")
     
-    # Создаем бота с хранилищем для FSM
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    storage = MemoryStorage()  # Хранилище для состояний (FSM)
+    storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
-    # Подключаем роутеры (ВАЖНО: порядок может иметь значение!)
-    # 1. Основные команды
     dp.include_router(commands_router)
-    
-    # 2. Колбэки (основные действия)
     dp.include_router(callbacks_router)
-    
-    # 3. Магазин
     dp.include_router(shop_router)
-    
-    # 4. Топ и рейтинги
     dp.include_router(top_router)
-    
-    # 5. Ежедневные награды и достижения
     dp.include_router(daily_router)
-    
-    # 6. Смена ника и радёмка
     dp.include_router(nickname_rademka_router)
-    
-    # 7. НОВЫЕ РОУТЕРЫ ДЛЯ НОВЫХ ФУНКЦИЙ
-    dp.include_router(specializations_router)        # Специализации
-    dp.include_router(craft_router)                  # Крафт предметов
-    dp.include_router(achievements_progress_router)  # Прогресс достижений
+    dp.include_router(specializations_router)
+    dp.include_router(craft_router)
+    dp.include_router(achievements_progress_router)
     
     print("🤖 Бот 'Пацаны с гофроцентрала' запущен!")
     print("=" * 50)
@@ -120,7 +99,6 @@ async def main():
     print("⚙️ FSM: активирован для смены ника")
     print("🚀 Готов к работе!")
     
-    # Запускаем поллинг
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
