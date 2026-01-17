@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
-from database.db_manager import get_patsan_cached, change_nickname
+from database.db_manager import get_patsan_cached, change_nickname, get_connection
 from keyboards.keyboards import main_keyboard
 from keyboards.new_keyboards import nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_to_rademka_keyboard
 
@@ -307,7 +307,7 @@ async def rademka_random(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("rademka_confirm_"))
 async def rademka_confirm(callback: types.CallbackQuery):
-    """Подтверждение радёмки"""
+    """Подтверждение радёмки (С ИСПРАВЛЕНИЕМ: теперь сохраняет статистику)"""
     from database.db_manager import get_patsan, save_patsan, unlock_achievement
     import random
     
@@ -331,13 +331,17 @@ async def rademka_confirm(callback: types.CallbackQuery):
     # Случайный исход
     success = random.random() < (chance / 100)
     
+    # Переменные для статистики
+    money_taken = 0
+    item_stolen = None
+    
     if success:
         # УСПЕШНАЯ РАДЁМКА!
         
         # Награда: 10% денег цели
-        money_reward = int(target["dengi"] * 0.1)
-        attacker["dengi"] += money_reward
-        target["dengi"] -= money_reward
+        money_taken = int(target["dengi"] * 0.1)
+        attacker["dengi"] += money_taken
+        target["dengi"] -= money_taken
         
         # Минимальная сумма у цели
         if target["dengi"] < 10:
@@ -347,18 +351,20 @@ async def rademka_confirm(callback: types.CallbackQuery):
         attacker["avtoritet"] += 1
         
         # Шанс забрать двенашку (30%)
-        item_stolen = ""
         if target.get("inventory") and "двенашка" in target["inventory"] and random.random() < 0.3:
             target["inventory"].remove("двенашка")
             attacker["inventory"].append("двенашка")
-            item_stolen = "\n🎒 <b>Забрал двенашку!</b>"
+            item_stolen = "двенашка"
+            item_stolen_text = "\n🎒 <b>Забрал двенашку!</b>"
+        else:
+            item_stolen_text = ""
         
         result_text = (
             f"✅ <b>УСПЕШНАЯ РАДЁМКА!</b>\n\n"
             f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ! ТЫ ПРОТАЩИЛ ЕГО!</i>\n\n"
             f"Ты унизил {target['nickname']} на глазах у всех!\n"
             f"⭐ <b>+1 авторитет</b> (теперь {attacker['avtoritet']})\n"
-            f"💰 <b>+{money_reward}р</b> (отжал у пацана){item_stolen}\n\n"
+            f"💰 <b>+{money_taken}р</b> (отжал у пацана){item_stolen_text}\n\n"
             f"<i>Он теперь будет тебя бояться!</i>"
         )
         
@@ -377,6 +383,7 @@ async def rademka_confirm(callback: types.CallbackQuery):
         
         # Шанс получить ответку (20%)
         revenge_text = ""
+        revenge_money = 0
         if random.random() < 0.2:
             revenge_money = int(attacker["dengi"] * 0.05)
             attacker["dengi"] -= revenge_money
@@ -392,9 +399,17 @@ async def rademka_confirm(callback: types.CallbackQuery):
             f"<i>Теперь над тобой смеются...</i>"
         )
     
-    # Сохраняем изменения
+    # Сохраняем изменения в пользователях
     await save_patsan(attacker)
     await save_patsan(target)
+    
+    # Сохраняем статистику боя
+    await save_rademka_fight(
+        winner_id=user_id if success else target_id,
+        loser_id=target_id if success else user_id,
+        money_taken=money_taken,
+        item_stolen=item_stolen
+    )
     
     await callback.message.edit_text(
         result_text,
@@ -403,18 +418,105 @@ async def rademka_confirm(callback: types.CallbackQuery):
     )
     await callback.answer()
 
+async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0, item_stolen: str = None):
+    """Сохранение статистики радёмки в базу"""
+    try:
+        conn = await get_connection()
+        await conn.execute('''
+            INSERT INTO rademka_fights (winner_id, loser_id, money_taken, item_stolen)
+            VALUES (?, ?, ?, ?)
+        ''', (winner_id, loser_id, money_taken, item_stolen))
+        await conn.commit()
+        await conn.close()
+    except Exception as e:
+        # Если таблицы нет - игнорируем, создадим позже
+        pass
+
 @router.callback_query(F.data == "rademka_stats")
 async def rademka_stats(callback: types.CallbackQuery):
-    """Статистика радёмок"""
-    message_text = (
-        f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
-        f"<i>В разработке...</i>\n\n"
-        f"Скоро здесь появится:\n"
-        f"• Твои победы/поражения\n"
-        f"• Заработано на радёмках\n"
-        f"• Самые частые цели\n"
-        f"• Общая статистика по всем пацанам"
-    )
+    """Статистика радёмок (РЕАЛЬНАЯ СТАТИСТИКА)"""
+    user_id = callback.from_user.id
+    
+    try:
+        conn = await get_connection()
+        
+        # Пробуем получить статистику из таблицы rademka_fights
+        cursor = await conn.execute('''
+            SELECT 
+                COUNT(*) as total_fights,
+                SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN loser_id = ? THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN winner_id = ? THEN money_taken ELSE 0 END) as total_money_taken
+            FROM rademka_fights 
+            WHERE winner_id = ? OR loser_id = ?
+        ''', (user_id, user_id, user_id, user_id, user_id))
+        
+        stats = await cursor.fetchone()
+        
+        if stats and stats["total_fights"] and stats["total_fights"] > 0:
+            total = stats["total_fights"]
+            wins = stats["wins"] or 0
+            losses = stats["losses"] or 0
+            win_rate = (wins / total * 100) if total > 0 else 0
+            money_taken = stats["total_money_taken"] or 0
+            
+            message_text = (
+                f"📊 <b>ТВОЯ СТАТИСТИКА РАДЁМОК</b>\n\n"
+                f"🎮 <b>Всего радёмок:</b> {total}\n"
+                f"✅ <b>Побед:</b> {wins}\n"
+                f"❌ <b>Поражений:</b> {losses}\n"
+                f"📈 <b>Винрейт:</b> {win_rate:.1f}%\n"
+                f"💰 <b>Всего отжато:</b> {money_taken}р\n\n"
+            )
+            
+            # Самые частые цели (если есть победы)
+            if wins > 0:
+                cursor = await conn.execute('''
+                    SELECT loser_id, COUNT(*) as fights
+                    FROM rademka_fights 
+                    WHERE winner_id = ?
+                    GROUP BY loser_id 
+                    ORDER BY fights DESC 
+                    LIMIT 3
+                ''', (user_id,))
+                
+                top_targets = await cursor.fetchall()
+                
+                if top_targets:
+                    message_text += "<b>Любимые цели:</b>\n"
+                    for i, target in enumerate(top_targets, 1):
+                        user_cursor = await conn.execute(
+                            "SELECT nickname FROM users WHERE user_id = ?",
+                            (target["loser_id"],)
+                        )
+                        target_user = await user_cursor.fetchone()
+                        nickname = target_user["nickname"] if target_user else f"Пацан_{target['loser_id']}"
+                        
+                        # Обрезаем длинные ники
+                        if len(nickname) > 20:
+                            nickname = nickname[:17] + "..."
+                        
+                        message_text += f"{i}. {nickname} - {target['fights']} раз\n"
+        
+        else:
+            # Нет статистики
+            message_text = (
+                f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
+                f"У тебя ещё не было радёмок!\n"
+                f"Выбери цель и протащи кого-нибудь!\n\n"
+                f"<i>Пока все думают, что ты мирный пацан...</i>"
+            )
+        
+        await conn.close()
+        
+    except Exception as e:
+        # Если таблицы rademka_fights не существует
+        message_text = (
+            f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
+            f"База данных статистики готовится...\n"
+            f"Проведи первую радёмку - статистика появится автоматически!\n\n"
+            f"<i>Система учится считать твои победы!</i>"
+        )
     
     await callback.message.edit_text(
         message_text,
@@ -425,16 +527,77 @@ async def rademka_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "rademka_top")
 async def rademka_top(callback: types.CallbackQuery):
-    """Топ радёмщиков"""
-    message_text = (
-        f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-        f"<i>В разработке...</i>\n\n"
-        f"Скоро здесь появится рейтинг пацанов:\n"
-        f"🥇 Кто больше всех протащил\n"
-        f"🥈 Кто заработал больше всех\n"
-        f"🥉 У кого лучший процент побед\n"
-        f"💀 Самый отжимаемый пацан"
-    )
+    """Топ радёмщиков (РЕАЛЬНЫЙ ТОП)"""
+    try:
+        conn = await get_connection()
+        
+        # Пробуем получить топ из базы
+        cursor = await conn.execute('''
+            SELECT 
+                u.nickname,
+                u.user_id,
+                COUNT(CASE WHEN rf.winner_id = u.user_id THEN 1 END) as wins,
+                COUNT(CASE WHEN rf.loser_id = u.user_id THEN 1 END) as losses,
+                SUM(CASE WHEN rf.winner_id = u.user_id THEN rf.money_taken ELSE 0 END) as total_money_taken
+            FROM users u
+            LEFT JOIN rademka_fights rf ON u.user_id = rf.winner_id OR u.user_id = rf.loser_id
+            GROUP BY u.user_id, u.nickname
+            HAVING wins > 0
+            ORDER BY wins DESC, total_money_taken DESC
+            LIMIT 10
+        ''')
+        
+        top_players = await cursor.fetchall()
+        
+        if top_players:
+            message_text = "👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
+            
+            medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            
+            for i, player in enumerate(top_players):
+                if i >= len(medals):
+                    break
+                    
+                medal = medals[i]
+                nickname = player["nickname"]
+                wins = player["wins"] or 0
+                losses = player["losses"] or 0
+                total = wins + losses
+                win_rate = (wins / total * 100) if total > 0 else 0
+                money = player["total_money_taken"] or 0
+                
+                # Обрезаем длинные ники
+                if len(nickname) > 15:
+                    nickname = nickname[:12] + "..."
+                
+                message_text += (
+                    f"{medal} <code>{nickname}</code>\n"
+                    f"   ✅ {wins} побед | 📈 {win_rate:.0f}% | 💰 {money}р\n\n"
+                )
+            
+            message_text += "<i>Топ по количеству побед в радёмках</i>"
+            
+        else:
+            message_text = (
+                f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
+                f"Пока никого нет в топе!\n"
+                f"Будь первым - протащи кого-нибудь!\n\n"
+                f"<i>Слава ждёт самого дерзкого пацана!</i>"
+            )
+            
+        await conn.close()
+        
+    except Exception as e:
+        # Если таблицы нет или ошибка
+        message_text = (
+            f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
+            f"Рейтинг формируется...\n\n"
+            f"Чтобы попасть в топ, нужно:\n"
+            f"1. Провести несколько радёмок\n"
+            f"2. Побеждать чаще, чем проигрывать\n"
+            f"3. Отжимать больше денег\n\n"
+            f"<i>Первые места скоро будут заняты!</i>"
+        )
     
     await callback.message.edit_text(
         message_text,
