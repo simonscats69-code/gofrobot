@@ -317,6 +317,8 @@ async def callback_specializations(callback: types.CallbackQuery):
         
         text += "\n"
     
+    text += "<i>Выбери специализацию для подробной информации:</i>"
+    
     await callback.message.edit_text(
         text,
         reply_markup=specializations_keyboard(),
@@ -737,30 +739,30 @@ async def callback_achievement_detail(callback: types.CallbackQuery):
             "name": "Коллекционер змия",
             "description": "Собери определённое количество змия",
             "levels": [
-                {"goal": 10, "reward": 50, "title": "Новичок"},
-                {"goal": 100, "reward": 300, "title": "Любитель"},
-                {"goal": 1000, "reward": 1500, "title": "Профессионал"},
-                {"goal": 10000, "reward": 5000, "title": "КОРОЛЬ ГОФРОЦЕНТРАЛА"}
+                {"goal": 10, "reward": 50, "title": "Новичок", "exp": 10},
+                {"goal": 100, "reward": 300, "title": "Любитель", "exp": 50},
+                {"goal": 1000, "reward": 1500, "title": "Профессионал", "exp": 200},
+                {"goal": 10000, "reward": 5000, "title": "КОРОЛЬ ГОФРОЦЕНТРАЛА", "exp": 1000}
             ]
         },
         "money_maker": {
             "name": "Денежный мешок",
             "description": "Заработай много денег",
             "levels": [
-                {"goal": 1000, "reward": 100, "title": "Бедолага"},
-                {"goal": 10000, "reward": 1000, "title": "Состоятельный"},
-                {"goal": 100000, "reward": 5000, "title": "Олигарх"},
-                {"goal": 1000000, "reward": 25000, "title": "РОТШИЛЬД"}
+                {"goal": 1000, "reward": 100, "title": "Бедолага", "exp": 10},
+                {"goal": 10000, "reward": 1000, "title": "Состоятельный", "exp": 100},
+                {"goal": 100000, "reward": 5000, "title": "Олигарх", "exp": 500},
+                {"goal": 1000000, "reward": 25000, "title": "РОТШИЛЬД", "exp": 2500}
             ]
         },
         "rademka_king": {
             "name": "Король радёмок",
             "description": "Победи в множестве радёмок",
             "levels": [
-                {"goal": 5, "reward": 200, "title": "Задира"},
-                {"goal": 25, "reward": 1000, "title": "Гроза района"},
-                {"goal": 100, "reward": 5000, "title": "Неприкасаемый"},
-                {"goal": 500, "reward": 25000, "title": "ЛЕГЕНДА РАДЁМКИ"}
+                {"goal": 5, "reward": 200, "title": "Задира", "exp": 20},
+                {"goal": 25, "reward": 1000, "title": "Гроза района", "exp": 100},
+                {"goal": 100, "reward": 5000, "title": "Неприкасаемый", "exp": 500},
+                {"goal": 500, "reward": 25000, "title": "ЛЕГЕНДА РАДЁМКИ", "exp": 2500}
             ]
         }
     }
@@ -776,7 +778,7 @@ async def callback_achievement_detail(callback: types.CallbackQuery):
     text += "<b>📊 Уровни:</b>\n"
     
     for i, level in enumerate(ach_data['levels'], 1):
-        text += f"{i}. {level['title']}: {level['goal']} → +{level['reward']}р\n"
+        text += f"{i}. <b>{level['title']}</b>: {level['goal']} → +{level['reward']}р (+{level['exp']} опыта)\n"
     
     text += "\n<i>Прогресс автоматически отслеживается во время игры.</i>"
     
@@ -926,6 +928,7 @@ async def show_top(callback: types.CallbackQuery):
     # Для победы в радёмках нужен специальный запрос
     if sort_type == "rademka_wins":
         try:
+            from database.db_manager import get_connection
             conn = await get_connection()
             cursor = await conn.execute('''
                 SELECT 
@@ -953,7 +956,8 @@ async def show_top(callback: types.CallbackQuery):
                 player["zmiy_formatted"] = "0кг"
                 player["dengi_formatted"] = "0р"
                 top_players.append(player)
-        except:
+        except Exception as e:
+            print(f"Ошибка при получении топа радёмок: {e}")
             top_players = []
     else:
         # Стандартный топ
@@ -986,9 +990,14 @@ async def show_top(callback: types.CallbackQuery):
         if sort_type == "avtoritet":
             value = f"⭐ {player['avtoritet']}"
         elif sort_type == "dengi":
-            value = f"💰 {player.get('dengi_formatted', f'{player.get('dengi', 0)}р')}"
+            # Исправленная строка: убираем вложенные f-строки
+            dengi_value = player.get('dengi', 0)
+            dengi_formatted = player.get('dengi_formatted', f"{dengi_value}р")
+            value = f"💰 {dengi_formatted}"
         elif sort_type == "zmiy":
-            value = f"🐍 {player.get('zmiy_formatted', f'{player.get('zmiy', 0):.1f}кг')}"
+            zmiy_value = player.get('zmiy', 0)
+            zmiy_formatted = player.get('zmiy_formatted', f"{zmiy_value:.1f}кг")
+            value = f"🐍 {zmiy_formatted}"
         elif sort_type == "total_skill":
             value = f"💪 {player.get('total_skill', 0)} ур."
         elif sort_type == "level":
@@ -1097,6 +1106,3 @@ async def callback_confirm_trash_inventory(callback: types.CallbackQuery):
             reply_markup=main_keyboard(),
             parse_mode="HTML"
         )
-
-# Остальные существующие обработчики остаются без изменений
-# (buy_upgrade, daily, achievements и т.д. будут в других файлах)
