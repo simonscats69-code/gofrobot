@@ -4,26 +4,20 @@ import random
 import json
 from typing import Optional, List, Dict, Any
 
-# Константы
 ATM_MAX = 12
-ATM_TIME = 600  # 10 минут в секундах
+ATM_TIME = 600
 
-# Подключаемся к базе данных (файл появится в корне проекта)
 DB_NAME = "bot_database.db"
 
 def get_connection():
-    """Создаёт соединение с базой данных"""
     conn = sqlite3.connect(DB_NAME)
-    # Чтобы получать словари вместо кортежей
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Инициализация базы данных: создаёт все таблицы"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # 1. Таблица пользователей (для игры)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,13 +31,12 @@ def init_db():
             skill_davka INTEGER DEFAULT 1,
             skill_zashita INTEGER DEFAULT 1,
             skill_nahodka INTEGER DEFAULT 1,
-            inventory TEXT,  # Будем хранить как JSON строку
-            upgrades TEXT,   # Будем хранить как JSON строку
+            inventory TEXT,
+            upgrades TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
-    # 2. Таблица корзины (для магазина)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cart (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,12 +48,11 @@ def init_db():
         )
     ''')
     
-    # 3. Таблица заказов (история)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            items TEXT NOT NULL,  # JSON список товаров
+            items TEXT NOT NULL,
             total INTEGER NOT NULL,
             status TEXT DEFAULT 'новый',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -71,22 +63,16 @@ def init_db():
     conn.close()
     print("✅ База данных SQLite инициализирована")
 
-# --- ИГРОВЫЕ ФУНКЦИИ (адаптированные под SQLite) ---
-
 def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
-    """Получаем пацана из базы, создаем нового если нет"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Пытаемся найти пользователя
     cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
     user_row = cursor.fetchone()
     
     if user_row:
-        # Конвертируем Row в словарь
         user = dict(user_row)
         
-        # Автоматическое восстановление атмосфер
         now = int(time.time())
         last = user.get("last_update", now)
         passed = now - last
@@ -96,7 +82,6 @@ def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
             if new_atm != user["atm_count"]:
                 user["atm_count"] = new_atm
                 user["last_update"] = now - (passed % ATM_TIME)
-                # Обновляем в базе
                 cursor.execute('''
                     UPDATE users SET atm_count = ?, last_update = ? 
                     WHERE user_id = ?
@@ -105,12 +90,10 @@ def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
         
         conn.close()
         
-        # Преобразуем JSON строки обратно в Python объекты
         user["inventory"] = json.loads(user["inventory"]) if user["inventory"] else []
         user["upgrades"] = json.loads(user["upgrades"]) if user["upgrades"] else {}
         return user
     else:
-        # Новый пацан с гофроцентрала
         new_user = {
             "user_id": user_id,
             "nickname": f"Пацанчик_{user_id}",
@@ -131,7 +114,6 @@ def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
             }
         }
         
-        # Вставляем нового пользователя
         cursor.execute('''
             INSERT INTO users 
             (user_id, nickname, avtoritet, zmiy, dengi, last_update, 
@@ -151,11 +133,9 @@ def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
         return new_user
 
 def save_patsan(user_data: Dict[str, Any]):
-    """Сохраняем пацана в базу"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Подготавливаем данные для обновления
     cursor.execute('''
         UPDATE users SET
             nickname = ?, avtoritet = ?, zmiy = ?, dengi = ?,
@@ -181,8 +161,6 @@ def save_patsan(user_data: Dict[str, Any]):
     conn.close()
 
 def davka_zmiy(patsan: dict):
-    """Обработка дачки коричневага"""
-    # Базовый расход атмосфер
     base_cost = 2
     if patsan["upgrades"].get("tea_slivoviy"):
         base_cost = max(1, base_cost - 1)
@@ -192,22 +170,17 @@ def davka_zmiy(patsan: dict):
     
     patsan["atm_count"] -= base_cost
     
-    # Генерируем вес змия
     base_grams = random.randint(200, 1500)
     
-    # Бонус от скилла
     skill_bonus = patsan["skill_davka"] * 100
     
-    # Бонус от "ряженки"
     if patsan["upgrades"].get("ryazhenka"):
         base_grams = int(base_grams * 1.5)
     
     total_grams = base_grams + skill_bonus
     
-    # Добавляем змия
     patsan["zmiy"] += total_grams / 1000
     
-    # Проверка на двенашку
     find_chance = patsan["skill_nahodka"] * 0.05
     if patsan["upgrades"].get("bubbleki"):
         find_chance += 0.2
@@ -219,7 +192,6 @@ def davka_zmiy(patsan: dict):
     
     save_patsan(patsan)
     
-    # Форматируем вес для сообщения
     if total_grams >= 1000:
         kg = total_grams // 1000
         grams = total_grams % 1000
@@ -238,14 +210,12 @@ def davka_zmiy(patsan: dict):
     }
 
 def sdat_zmiy(patsan: dict):
-    """Сдача змия на металл"""
     if patsan["zmiy"] <= 0:
         return None, "Нечего сдавать!"
     
     price_per_kg = 50
     total_money = int(patsan["zmiy"] * price_per_kg)
     
-    # Бонус за авторитет
     avtoritet_bonus = patsan["avtoritet"] * 5
     total_money += avtoritet_bonus
     
@@ -262,7 +232,6 @@ def sdat_zmiy(patsan: dict):
     }
 
 def buy_upgrade(patsan: dict, upgrade: str):
-    """Покупка улучшения"""
     prices = {
         "ryazhenka": 500,
         "tea_slivoviy": 700,
@@ -280,7 +249,6 @@ def buy_upgrade(patsan: dict, upgrade: str):
     if patsan["dengi"] < price:
         return None, "Не хватает бабла!"
     
-    # Особый эффект для курвасанов
     effect = ""
     if upgrade == "kuryasany":
         patsan["avtoritet"] += 1
@@ -294,7 +262,6 @@ def buy_upgrade(patsan: dict, upgrade: str):
     return patsan, f"Куплено за {price}р!{effect}"
 
 def pump_skill(patsan: dict, skill: str):
-    """Прокачка скилла"""
     skill_costs = {
         "davka": 200,
         "zashita": 300,
@@ -313,10 +280,7 @@ def pump_skill(patsan: dict, skill: str):
     
     return patsan, f"Прокачано за {cost}р!"
 
-# --- ФУНКЦИИ ДЛЯ КОРЗИНЫ (полностью новые для SQLite) ---
-
 def get_cart(user_id: int) -> List[Dict[str, Any]]:
-    """Получить корзину пользователя"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -333,11 +297,9 @@ def get_cart(user_id: int) -> List[Dict[str, Any]]:
     return cart_items
 
 def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 1):
-    """Добавить товар в корзину"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Проверяем, есть ли уже такой товар
     cursor.execute('''
         SELECT quantity FROM cart 
         WHERE user_id = ? AND item_name = ?
@@ -346,14 +308,12 @@ def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 1):
     existing = cursor.fetchone()
     
     if existing:
-        # Обновляем количество
         new_quantity = existing["quantity"] + quantity
         cursor.execute('''
             UPDATE cart SET quantity = ? 
             WHERE user_id = ? AND item_name = ?
         ''', (new_quantity, user_id, item_name))
     else:
-        # Добавляем новый товар
         cursor.execute('''
             INSERT INTO cart (user_id, item_name, price, quantity)
             VALUES (?, ?, ?, ?)
@@ -363,11 +323,9 @@ def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 1):
     conn.close()
 
 def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
-    """Удалить товар из корзины"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Получаем текущее количество
     cursor.execute('''
         SELECT quantity FROM cart 
         WHERE user_id = ? AND item_name = ?
@@ -381,13 +339,11 @@ def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
     current_qty = existing["quantity"]
     
     if current_qty <= quantity:
-        # Удаляем товар полностью
         cursor.execute('''
             DELETE FROM cart 
             WHERE user_id = ? AND item_name = ?
         ''', (user_id, item_name))
     else:
-        # Уменьшаем количество
         cursor.execute('''
             UPDATE cart SET quantity = ? 
             WHERE user_id = ? AND item_name = ?
@@ -397,7 +353,6 @@ def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
     conn.close()
 
 def clear_cart(user_id: int):
-    """Очистить корзину пользователя"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -406,7 +361,6 @@ def clear_cart(user_id: int):
     conn.close()
 
 def get_cart_total(user_id: int) -> int:
-    """Получить общую стоимость корзины"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -419,14 +373,10 @@ def get_cart_total(user_id: int) -> int:
     conn.close()
     return result["total"] if result["total"] else 0
 
-# --- ФУНКЦИИ ДЛЯ ЗАКАЗОВ ---
-
 def create_order(user_id: int, items: List[Dict], total: int) -> int:
-    """Создать заказ"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Вставляем заказ
     cursor.execute('''
         INSERT INTO orders (user_id, items, total, status)
         VALUES (?, ?, ?, ?)
@@ -434,7 +384,6 @@ def create_order(user_id: int, items: List[Dict], total: int) -> int:
     
     order_id = cursor.lastrowid
     
-    # Очищаем корзину
     clear_cart(user_id)
     
     conn.commit()
@@ -442,7 +391,6 @@ def create_order(user_id: int, items: List[Dict], total: int) -> int:
     return order_id
 
 def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
-    """Получить историю заказов"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -454,7 +402,7 @@ def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
     orders = []
     for row in cursor.fetchall():
         order = dict(row)
-        order["items"] = json.loads(order["items"])  # Преобразуем JSON обратно в список
+        order["items"] = json.loads(order["items"])
         orders.append(order)
     
     conn.close()
