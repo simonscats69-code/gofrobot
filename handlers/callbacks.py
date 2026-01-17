@@ -1,5 +1,11 @@
 from aiogram import Router, types, F
-from database.db_manager import get_patsan, save_patsan, davka_zmiy, sdat_zmiy, pump_skill
+from database.db_manager import (
+    get_patsan,           # ← теперь асинхронная
+    davka_zmiy,           # ← теперь асинхронная, сигнатура изменилась!
+    sdat_zmiy,            # ← теперь асинхронная, сигнатура изменилась!
+    pump_skill,           # ← теперь асинхронная, сигнатура изменилась!
+    get_patsan_cached     # ← можно использовать кэшированную версию
+)
 from keyboards.keyboards import main_keyboard, pump_keyboard, back_keyboard
 
 router = Router()
@@ -7,7 +13,8 @@ router = Router()
 @router.callback_query(F.data == "back_main")
 async def back_to_main(callback: types.CallbackQuery):
     """Возврат в главное меню"""
-    patsan = get_patsan(callback.from_user.id)
+    # ИСПРАВЛЕНО: добавлен await
+    patsan = await get_patsan_cached(callback.from_user.id)  # Используем кэшированную версию
     await callback.message.edit_text(
         f"Главное меню. Атмосфер в кишке: {patsan['atm_count']}/12",
         reply_markup=main_keyboard()
@@ -16,8 +23,10 @@ async def back_to_main(callback: types.CallbackQuery):
 @router.callback_query(F.data == "davka")
 async def callback_davka(callback: types.CallbackQuery):
     """Давка коричневага"""
-    patsan = get_patsan(callback.from_user.id)
-    patsan, result = davka_zmiy(patsan)
+    user_id = callback.from_user.id
+    
+    # ИСПРАВЛЕНО: новая сигнатура - передаём user_id, а не patsan
+    patsan, result = await davka_zmiy(user_id)
     
     if patsan is None:
         await callback.answer(result, show_alert=True)
@@ -30,7 +39,7 @@ async def callback_davka(callback: types.CallbackQuery):
     elif patsan["upgrades"].get("bubbleki"):
         nagnetatel_msg = "\n🧋 <i>Бублэки создают нужную турбулентность!</i>"
     
-    dvenashka_msg = "\n🧱 Нашёл двенашку в турбулентности!" if result["dvenashka_found"] else ""
+    dvenashka_msg = "\n🧱 Нашёл двенашку в турбулентности!" if result.get("dvenashka_found") else ""
     
     await callback.message.edit_text(
         f"<b>Заварвариваем дело...</b>{nagnetatel_msg}\n\n"
@@ -39,14 +48,17 @@ async def callback_davka(callback: types.CallbackQuery):
         f"➕ {result['total_grams']/1000:.3f} кг коричневага{dvenashka_msg}\n"
         f"Всего змия накоплено: {patsan['zmiy']:.3f} кг\n"
         f"⚡ Осталось атмосфер: {patsan['atm_count']}/12",
-        reply_markup=main_keyboard()
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
     )
 
 @router.callback_query(F.data == "sdat")
 async def callback_sdat(callback: types.CallbackQuery):
     """Сдача змия"""
-    patsan = get_patsan(callback.from_user.id)
-    patsan, result = sdat_zmiy(patsan)
+    user_id = callback.from_user.id
+    
+    # ИСПРАВЛЕНО: новая сигнатура - передаём user_id, а не patsan
+    patsan, result = await sdat_zmiy(user_id)
     
     if patsan is None:
         await callback.answer(result, show_alert=True)
@@ -58,13 +70,15 @@ async def callback_sdat(callback: types.CallbackQuery):
         f"💰 Получил: {result['total_money']} руб. (включая бонус за авторитет: +{result['avtoritet_bonus']}р)\n"
         f"💸 Теперь на кармане: {patsan['dengi']} руб.\n\n"
         f"<i>Приёмщик: \"Опять эту дрянь принёс...\"</i>",
-        reply_markup=main_keyboard()
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
     )
 
 @router.callback_query(F.data == "pump")
 async def callback_pump(callback: types.CallbackQuery):
     """Меню прокачки"""
-    patsan = get_patsan(callback.from_user.id)
+    # ИСПРАВЛЕНО: добавлен await
+    patsan = await get_patsan_cached(callback.from_user.id)
     
     text = (
         f"<b>Прокачка скиллов:</b>\n"
@@ -75,14 +89,20 @@ async def callback_pump(callback: types.CallbackQuery):
         f"Выбери, что прокачать:"
     )
     
-    await callback.message.edit_text(text, reply_markup=pump_keyboard())
+    await callback.message.edit_text(
+        text, 
+        reply_markup=pump_keyboard(),
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data.startswith("pump_"))
 async def callback_pump_skill(callback: types.CallbackQuery):
     """Прокачка конкретного скилла"""
     skill = callback.data.split("_")[1]
-    patsan = get_patsan(callback.from_user.id)
-    patsan, result = pump_skill(patsan, skill)
+    user_id = callback.from_user.id
+    
+    # ИСПРАВЛЕНО: новая сигнатура - передаём user_id и skill
+    patsan, result = await pump_skill(user_id, skill)
     
     if patsan is None:
         await callback.answer(result, show_alert=True)
@@ -94,7 +114,8 @@ async def callback_pump_skill(callback: types.CallbackQuery):
 @router.callback_query(F.data == "inventory")
 async def callback_inventory(callback: types.CallbackQuery):
     """Инвентарь"""
-    patsan = get_patsan(callback.from_user.id)
+    # ИСПРАВЛЕНО: добавлен await
+    patsan = await get_patsan_cached(callback.from_user.id)
     
     inv = patsan.get("inventory", [])
     if not inv:
@@ -111,12 +132,17 @@ async def callback_inventory(callback: types.CallbackQuery):
     text = f"<b>🎒 Твой инвентарь:</b>\n\n{inv_text}\n\n"
     text += f"🐍 Коричневагый змий: {patsan['zmiy']:.3f} кг"
     
-    await callback.message.edit_text(text, reply_markup=back_keyboard())
+    await callback.message.edit_text(
+        text, 
+        reply_markup=back_keyboard(),
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data == "profile")
 async def callback_profile(callback: types.CallbackQuery):
     """Профиль через callback"""
-    patsan = get_patsan(callback.from_user.id)
+    # ИСПРАВЛЕНО: добавлен await
+    patsan = await get_patsan_cached(callback.from_user.id)
     
     upgrades = patsan["upgrades"]
     bought_upgrades = [k for k, v in upgrades.items() if v]
@@ -137,5 +163,6 @@ async def callback_profile(callback: types.CallbackQuery):
         f"🛡️ Защита: {patsan['skill_zashita']}\n"
         f"🔍 Находка: {patsan['skill_nahodka']}"
         f"{upgrade_text}",
-        reply_markup=main_keyboard()
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
     )
