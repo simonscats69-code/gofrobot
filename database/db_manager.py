@@ -267,7 +267,15 @@ def calculate_atm_regen_time(user_data: Dict[str, Any]) -> int:
         base_time *= 0.9
     
     boosts = user_data.get("active_boosts", {})
-    if boosts.get("вечный_двигатель"):
+    
+    # Безопасное получение бустеров (может быть строкой или словарем)
+    if isinstance(boosts, str):
+        try:
+            boosts = json.loads(boosts) if boosts else {}
+        except:
+            boosts = {}
+    
+    if isinstance(boosts, dict) and boosts.get("вечный_двигатель"):
         base_time *= 0.7
     
     return int(max(60, base_time))
@@ -310,8 +318,31 @@ async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
             user["inventory"] = json.loads(user["inventory"]) if user["inventory"] else []
             user["upgrades"] = json.loads(user["upgrades"]) if user["upgrades"] else {}
             user["achievements"] = json.loads(user["achievements"]) if user.get("achievements") else []
-            user["active_boosts"] = json.loads(user["active_boosts"]) if user.get("active_boosts") else {}
-            user["crafted_items"] = json.loads(user["crafted_items"]) if user.get("crafted_items") else []
+            
+            # Безопасное преобразование active_boosts
+            active_boosts_raw = user.get("active_boosts")
+            if isinstance(active_boosts_raw, str):
+                try:
+                    user["active_boosts"] = json.loads(active_boosts_raw) if active_boosts_raw else {}
+                except:
+                    user["active_boosts"] = {}
+            elif active_boosts_raw is None:
+                user["active_boosts"] = {}
+            else:
+                # Если это уже словарь, оставляем как есть
+                user["active_boosts"] = active_boosts_raw
+            
+            # Безопасное преобразование crafted_items
+            crafted_items_raw = user.get("crafted_items")
+            if isinstance(crafted_items_raw, str):
+                try:
+                    user["crafted_items"] = json.loads(crafted_items_raw) if crafted_items_raw else []
+                except:
+                    user["crafted_items"] = []
+            elif crafted_items_raw is None:
+                user["crafted_items"] = []
+            else:
+                user["crafted_items"] = crafted_items_raw
             
             user["rank_name"], user["rank_emoji"] = get_rank(user["avtoritet"])
             
