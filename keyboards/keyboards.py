@@ -124,3 +124,39 @@ def confirmation_keyboard(action: str, target_id: int = None):
             ]
         ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def specialization_confirmation_keyboard(spec_id: str):
+    """Клавиатура подтверждения покупки специализации"""
+    kb = [
+        [
+            InlineKeyboardButton(text="✅ Купить", callback_data=f"specialization_buy_{spec_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="specializations")
+        ],
+        [InlineKeyboardButton(text="📋 Подробнее", callback_data=f"specialization_info_{spec_id}")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def inventory_management_keyboard():
+    """Клавиатура управления инвентарём"""
+    kb = [
+        [InlineKeyboardButton(text="🛠️ Использовать предмет", callback_data="inventory_use")],
+        [InlineKeyboardButton(text="🔨 Перейти к крафту", callback_data="craft")],
+        [InlineKeyboardButton(text="📦 Сортировать", callback_data="inventory_sort")],
+        [InlineKeyboardButton(text="🗑️ Выбросить мусор", callback_data="inventory_trash")],
+        [InlineKeyboardButton(text="⬅️ Назад к инвентарю", callback_data="inventory")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def back_to_craft_keyboard():
+    """Кнопка назад в меню крафта"""
+    kb = [
+        [InlineKeyboardButton(text="⬅️ Назад к крафту", callback_data="craft")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def back_to_specializations_keyboard():
+    """Кнопка назад в меню специализаций"""
+    kb = [
+        [InlineKeyboardButton(text="⬅️ Назад к специализациям", callback_data="specializations")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
