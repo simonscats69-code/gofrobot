@@ -60,7 +60,8 @@ class DatabaseManager:
                 skill_davka INTEGER DEFAULT 1, skill_zashita INTEGER DEFAULT 1, skill_nahodka INTEGER DEFAULT 1,
                 specialization TEXT DEFAULT '', experience INTEGER DEFAULT 0, level INTEGER DEFAULT 1,
                 inventory TEXT DEFAULT '[]', upgrades TEXT DEFAULT '{}', active_boosts TEXT DEFAULT '{}',
-                achievements TEXT DEFAULT '[]', crafted_items TEXT DEFAULT '[]', rademka_scouts INTEGER DEFAULT 0
+                achievements TEXT DEFAULT '[]', crafted_items TEXT DEFAULT '[]', rademka_scouts INTEGER DEFAULT 0,
+                nickname_changed BOOLEAN DEFAULT FALSE
             );
             CREATE INDEX IF NOT EXISTS idx_av ON users(avtoritet DESC);
             CREATE INDEX IF NOT EXISTS idx_money ON users(dengi DESC);
@@ -72,11 +73,24 @@ class DatabaseManager:
             );
             
             CREATE TABLE IF NOT EXISTS rademka_fights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 winner_id INTEGER, loser_id INTEGER, money_taken INTEGER DEFAULT 0,
                 item_stolen TEXT, scouted BOOLEAN DEFAULT FALSE, created_at INTEGER DEFAULT (strftime('%s','now'))
             );
             CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
             CREATE INDEX IF NOT EXISTS idx_lose ON rademka_fights(loser_id);
+            
+            CREATE TABLE IF NOT EXISTS achievements (
+                user_id INTEGER, achievement_id TEXT, 
+                unlocked_at INTEGER DEFAULT (strftime('%s','now')),
+                PRIMARY KEY (user_id, achievement_id)
+            );
+            
+            CREATE TABLE IF NOT EXISTS craft_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER, recipe_id TEXT, success BOOLEAN,
+                created_at INTEGER DEFAULT (strftime('%s','now'))
+            );
         ''')
         logger.info("Таблицы созданы")
 
@@ -116,12 +130,13 @@ class UserDataManager:
                         d.get("specialization",""), d.get("experience",0), d.get("level",1),
                         json.dumps(d.get("inventory",[])), json.dumps(d.get("upgrades",{})),
                         json.dumps(d.get("active_boosts",{})), json.dumps(d.get("achievements",[])),
-                        json.dumps(d.get("crafted_items",[])), d.get("rademka_scouts",0), uid))
+                        json.dumps(d.get("crafted_items",[])), d.get("rademka_scouts",0), 
+                        d.get("nickname_changed", False), uid))
         await pool.executemany('''
             UPDATE users SET nickname=?, avtoritet=?, zmiy=?, dengi=?, last_update=?, last_daily=?,
             atm_count=?, max_atm=?, skill_davka=?, skill_zashita=?, skill_nahodka=?, specialization=?,
             experience=?, level=?, inventory=?, upgrades=?, active_boosts=?, achievements=?,
-            crafted_items=?, rademka_scouts=? WHERE user_id=?
+            crafted_items=?, rademka_scouts=?, nickname_changed=? WHERE user_id=?
         ''', vals)
     
     async def get_user(self, uid, force=False):
@@ -146,11 +161,14 @@ class UserDataManager:
             "last_update": now, "last_daily": 0, "atm_count": 12, "max_atm": 12, "skill_davka": 1,
             "skill_zashita": 1, "skill_nahodka": 1, "specialization": "", "experience": 0, "level": 1,
             "inventory": ["двенашка", "энергетик"], "upgrades": {}, "active_boosts": {},
-            "achievements": [], "crafted_items": [], "rademka_scouts": 0
+            "achievements": [], "crafted_items": [], "rademka_scouts": 0, "nickname_changed": False
         }
         pool = await self._db.get_pool()
-        await pool.execute('INSERT OR IGNORE INTO users (user_id, nickname, last_update) VALUES (?,?,?)',
-                          (uid, user["nickname"], now))
+        await pool.execute('''
+            INSERT OR IGNORE INTO users 
+            (user_id, nickname, last_update, inventory) 
+            VALUES (?,?,?,?)
+        ''', (uid, user["nickname"], now, json.dumps(user["inventory"])))
         return user
     
     async def _process_user(self, user):
@@ -193,7 +211,13 @@ class UserDataManager:
     async def get_top_fast(self, limit=10, sort="avtoritet"):
         pool = await self._db.get_pool()
         async with pool.execute(f'SELECT * FROM users ORDER BY {sort} DESC LIMIT ?', (limit,)) as c:
-            return [dict(r) for r in await c.fetchall()]
+            rows = await c.fetchall()
+            result = []
+            for row in rows:
+                user = dict(row)
+                await self._process_user(user)
+                result.append(user)
+            return result
 
 user_manager = UserDataManager()
 
@@ -474,7 +498,7 @@ async def rademka_scout(uid, tid):
 
 async def get_daily(uid):
     pool = await DatabaseManager.get_pool()
-    async with pool.execute('SELECT last_daily,level FROM users WHERE user_id=?', (uid,)) as c:
+    async with pool.execute('SELECT last_daily,level,dengi,nickname FROM users WHERE user_id=?', (uid,)) as c:
         u = await c.fetchone(); now = int(time.time())
         if not u: return {"ok":False, "error":"Нет юзера"}
         last = u["last_daily"] or 0
@@ -509,7 +533,7 @@ async def unlock_ach(uid, aid, name, rew=0):
     async with pool.execute('SELECT 1 FROM achievements WHERE user_id=? AND achievement_id=?', (uid,aid)) as c:
         if await c.fetchone(): return False
     await pool.execute('INSERT INTO achievements (user_id, achievement_id) VALUES (?,?)', (uid,aid))
-    async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
+    async with pool.execute('SELECT achievements,dengi FROM users WHERE user_id=?', (uid,)) as c:
         u = await c.fetchone(); ach = json.loads(u["achievements"]) if u and u["achievements"] else []
         for a in ach:
             if a.get("id") == aid: return False
@@ -574,6 +598,57 @@ async def shutdown():
     if DatabaseManager._pool: 
         await DatabaseManager._pool.close()
         DatabaseManager._pool = None
+
+# =================== НЕДОСТАЮЩИЕ ФУНКЦИИ ДЛЯ ИМПОРТОВ ===================
+
+async def get_craftable_items(uid):
+    """Алиас для get_craftable"""
+    return await get_craftable(uid)
+
+async def get_available_specializations(uid):
+    """Алиас для get_available_specs"""
+    return await get_available_specs(uid)
+
+async def buy_specialization(uid, spec):
+    """Алиас для buy_spec"""
+    return await buy_spec(uid, spec)
+
+async def get_achievement_progress(uid):
+    """Алиас для get_ach_progress"""
+    return await get_ach_progress(uid)
+
+def calculate_atm_regen_time(user):
+    """Рассчитывает время восстановления атмосфер"""
+    base_time = 600  # 10 минут в секундах
+    
+    # Бонусы от навыка защиты
+    if user.get("skill_zashita", 1) >= 10:
+        base_time *= 0.9
+    
+    # Бонус от специализации
+    if user.get("specialization") == "непробиваемый":
+        base_time *= 0.9
+    
+    # Бонус от буста "вечный двигатель"
+    boosts = user.get("active_boosts", {})
+    if isinstance(boosts, dict) and "вечный_двигатель" in boosts:
+        base_time *= 0.7
+    elif isinstance(boosts, str) and "вечный_двигатель" in boosts:
+        base_time *= 0.7
+    
+    return int(max(60, base_time))  # Не меньше 60 секунд
+
+async def save_rademka_fight(winner_id, loser_id, money_taken=0, item_stolen=None, scouted=False):
+    """Алиас для save_rademka"""
+    return await save_rademka(winner_id, loser_id, money_taken, item_stolen, scouted)
+
+def get_specialization_bonuses(spec):
+    """Возвращает бонусы специализации"""
+    return SPECS.get(spec, {}).get("bon", {})
+
+async def check_level_up(user):
+    """Алиас для check_lvl"""
+    return await check_lvl(user)
 
 if __name__ == "__main__":
     async def test():
