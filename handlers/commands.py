@@ -1,7 +1,8 @@
 from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from database.db_manager import get_patsan, get_patsan_cached, get_top_players, get_user_achievements
+from database.db_manager import get_patsan, get_patsan_cached, get_top_players, get_user_achievements, RANKS
+from database.db_manager import get_specialization_bonuses, get_daily_reward
 from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
 from keyboards.keyboards import daily_keyboard, achievements_keyboard, rademka_keyboard, top_sort_keyboard
 from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
@@ -13,14 +14,14 @@ router = Router()
 async def cmd_start(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
     rank_emoji, rank_name = get_user_rank(patsan)
-    atm_count, max_atm = patsan['atm_count'], patsan.get('max_atm', 12)
+    atm_count, max_atm = patsan.get('atm_count', 0), patsan.get('max_atm', 12)
     
     await message.answer(
         f"<b>НУ ЧЁ, ПАЦАН?</b> 👊\n\n"
-        f"Добро пожаловать на гофроцентрал, <b>{patsan['nickname']}</b>!\n"
-        f"{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan['avtoritet']} | 📈 Ур. {patsan.get('level', 1)}\n\n"
+        f"Добро пожаловать на гофроцентрал, <b>{patsan.get('nickname', 'Пацанчик')}</b>!\n"
+        f"{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan.get('avtoritet', 1)} | 📈 Ур. {patsan.get('level', 1)}\n\n"
         f"🌀 <b>Атмосферы:</b> [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
-        f"💰 <b>Деньги:</b> {patsan['dengi']}р | 🐍 <b>Змий:</b> {patsan['zmiy']:.1f}кг\n\n"
+        f"💰 <b>Деньги:</b> {patsan.get('dengi', 0)}р | 🐍 <b>Змий:</b> {patsan.get('zmiy', 0.0):.1f}кг\n\n"
         f"<i>Иди заварваривай коричневага, а то старшие придут и спросят.</i>\n"
         f"<i>🔥 Новое в обновлении: специализации, крафт, уровни!</i>",
         reply_markup=main_keyboard(),
@@ -31,19 +32,21 @@ async def cmd_start(message: types.Message):
 async def cmd_profile(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
     rank_emoji, rank_name = get_user_rank(patsan)
-    atm_count, max_atm = patsan['atm_count'], patsan.get('max_atm', 12)
-    upgrades, bought = patsan["upgrades"], [k for k, v in patsan["upgrades"].items() if v]
-    spec_text = f"\n<b>🌳 Специализация:</b> {patsan['specialization']}" if patsan.get("specialization") else ""
+    atm_count, max_atm = patsan.get('atm_count', 0), patsan.get('max_atm', 12)
+    upgrades = patsan.get("upgrades", {})
+    bought = [k for k, v in upgrades.items() if v] if upgrades else []
+    spec = patsan.get("specialization", "")
+    spec_text = f"\n<b>🌳 Специализация:</b> {spec}" if spec else ""
     upgrade_text = "\n<b>🛒 Нагнетатели:</b>\n" + "\n".join(f"• {upg}" for upg in bought) if bought else ""
     
     await message.answer(
         f"<b>📊 ПРОФИЛЬ ПАЦАНА:</b>\n\n{rank_emoji} <b>{rank_name}</b>\n"
-        f"👤 {patsan['nickname']}\n⭐ Авторитет: {patsan['avtoritet']}\n"
+        f"👤 {patsan.get('nickname', 'Пацанчик')}\n⭐ Авторитет: {patsan.get('avtoritet', 1)}\n"
         f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n\n"
         f"<b>Ресурсы:</b>\n🌀 Атмосферы: [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
-        f"🐍 Коричневаг: {patsan['zmiy']:.3f} кг\n💰 Деньги: {patsan['dengi']} руб.\n\n"
-        f"<b>Скиллы:</b>\n💪 Давка: {patsan['skill_davka']}\n"
-        f"🛡️ Защита: {patsan['skill_zashita']}\n🔍 Находка: {patsan['skill_nahodka']}"
+        f"🐍 Коричневаг: {patsan.get('zmiy', 0.0):.3f} кг\n💰 Деньги: {patsan.get('dengi', 0)} руб.\n\n"
+        f"<b>Скиллы:</b>\n💪 Давка: {patsan.get('skill_davka', 1)}\n"
+        f"🛡️ Защита: {patsan.get('skill_zashita', 1)}\n🔍 Находка: {patsan.get('skill_nahodka', 1)}"
         f"{upgrade_text}{spec_text}",
         reply_markup=profile_extended_keyboard(),
         parse_mode="HTML"
@@ -60,30 +63,31 @@ async def cmd_top(message: types.Message):
 
 @router.message(Command("daily"))
 async def cmd_daily(message: types.Message):
-    from database.db_manager import get_daily_reward
     result = await get_daily_reward(message.from_user.id)
     
-    if result["success"]:
-        streak_bonus = result.get('streak_bonus', '')
-        level_multiplier = result.get('level_multiplier', 1)
+    if result.get("ok", False):
+        streak = result.get('streak', 1)
+        level_multiplier = result.get('lvl', 1) / 10  # Конвертируем уровень в множитель
+        base = result.get('base', 0)
+        bonus = result.get('bonus', 0)
+        
         await message.answer(
-            f"🎁 <b>ЕЖЕДНЕВНАЯ НАГРАДА!</b>\n\n💰 +{result['money']} руб. ({result['base']} баз. + {result['random_bonus']} бонус)\n"
-            f"📈 Множитель уровня (x{level_multiplier/100:.1f}) учтён!\n🎒 +1 {result['item']}\n"
-            f"🔥 Стрик: {result['streak']} дней{streak_bonus}\n\n<i>Приходи завтра за новой наградой!</i>",
+            f"🎁 <b>ЕЖЕДНЕВНАЯ НАГРАДА!</b>\n\n💰 +{result.get('money', 0)} руб. ({base} баз. + {bonus} бонус)\n"
+            f"🎒 +1 {result.get('item', 'предмет')}\n"
+            f"🔥 Стрик: {streak} дней\n\n<i>Приходи завтра за новой наградой!</i>",
             reply_markup=main_keyboard(),
             parse_mode="HTML"
         )
     else:
         await message.answer(
             f"⏰ <b>РАНО, ПАЦАН!</b>\n\nТы уже получал сегодняшнюю награду.\n"
-            f"Следующая награда через: {result['wait_time']}\n\n<i>Приходи позже, не торопись!</i>",
+            f"Следующая награда через: {result.get('wait', 'неизвестно')}\n\n<i>Приходи позже, не торопись!</i>",
             reply_markup=daily_keyboard(),
             parse_mode="HTML"
         )
 
 @router.message(Command("achievements"))
 async def cmd_achievements(message: types.Message):
-    from database.db_manager import get_user_achievements
     achievements = await get_user_achievements(message.from_user.id)
     
     if not achievements:
@@ -109,14 +113,15 @@ async def cmd_achievements(message: types.Message):
 @router.message(Command("rademka"))
 async def cmd_rademka(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
-    scouts_used, free_scouts_left = patsan.get("rademka_scouts", 0), max(0, 5 - patsan.get("rademka_scouts", 0))
+    scouts_used = patsan.get("rademka_scouts", 0)
+    free_scouts_left = max(0, 5 - scouts_used)
     
     await message.answer(
         f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
         f"Выбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +1 авторитет\n• 10% его денег\n• Шанс забрать двенашку\n\n"
         f"<b>Риски:</b>\n• Можешь потерять 5% своих денег\n• -1 авторитет при неудаче\n• Отжатый пацан может отомстить\n\n"
         f"🎯 <b>НОВОЕ: Разведка!</b>\n• Узнай точный шанс победы\n• {free_scouts_left}/5 бесплатных разведок\n• Потом 50р за разведку\n\n"
-        f"<b>Твои статы:</b>\n⭐ Авторитет: {patsan['avtoritet']}\n💰 Деньги: {patsan['dengi']}р\n📈 Уровень: {patsan.get('level', 1)}",
+        f"<b>Твои статы:</b>\n⭐ Авторитет: {patsan.get('avtoritet', 1)}\n💰 Деньги: {patsan.get('dengi', 0)}р\n📈 Уровень: {patsan.get('level', 1)}",
         reply_markup=rademka_keyboard(),
         parse_mode="HTML"
     )
@@ -126,11 +131,10 @@ async def cmd_specializations(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
     
     if patsan.get("specialization"):
-        from database.db_manager import get_specialization_bonuses
-        spec_bonuses = get_specialization_bonuses(patsan['specialization'])
-        bonuses_text = "\n".join([f"• {k}: {v}" for k, v in spec_bonuses.items()])
+        spec_bonuses = get_specialization_bonuses(patsan.get('specialization', ''))
+        bonuses_text = "\n".join([f"• {k}: {v}" for k, v in spec_bonuses.items()]) if spec_bonuses else "• Нет бонусов"
         await message.answer(
-            f"<b>🌳 ТВОЯ СПЕЦИАЛИЗАЦИЯ</b>\n\n<b>{patsan['specialization'].upper()}</b>\n\n"
+            f"<b>🌳 ТВОЯ СПЕЦИАЛИЗАЦИЯ</b>\n\n<b>{patsan.get('specialization', '').upper()}</b>\n\n"
             f"<b>🎁 Бонусы:</b>\n{bonuses_text}\n\n"
             f"<i>Сейчас у тебя может быть только одна специализация.</i>\n"
             f"<i>Чтобы сменить, нужно сначала сбросить текущую (стоимость: 2000р).</i>",
@@ -158,7 +162,7 @@ async def cmd_craft(message: types.Message):
     await message.answer(
         f"<b>🔨 КРАФТ ПРЕДМЕТОВ</b>\n\n<i>Создавай мощные предметы из ингредиентов!</i>\n\n"
         f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n🔨 Скрафчено: {crafted_count} предметов\n"
-        f"💰 Деньги: {patsan['dengi']}р\n\n<b>Доступные рецепты:</b>\n• ✨ Супер-двенашка (3× двенашка + 500р)\n"
+        f"💰 Деньги: {patsan.get('dengi', 0)}р\n\n<b>Доступные рецепты:</b>\n• ✨ Супер-двенашка (3× двенашка + 500р)\n"
         f"• ⚡ Вечный двигатель (5× атмосфера + 1× энергетик)\n• 👑 Царский обед (курвасаны + ряженка + 300р)\n"
         f"• 🌀 Бустер атмосфер (2× энергетик + двенашка + 2000р)\n\n<i>Выбери действие:</i>",
         reply_markup=craft_keyboard(),
@@ -183,11 +187,12 @@ async def cmd_inventory(message: types.Message):
         import time
         boosts_text = "\n\n<b>🔮 Активные бусты:</b>\n"
         for boost, end_time in active_boosts.items():
-            time_left = int(end_time) - int(time.time())
-            if time_left > 0:
-                boosts_text += f"• {boost}: {time_left//3600}ч {(time_left%3600)//60}м\n"
+            if isinstance(end_time, (int, float)):
+                time_left = int(end_time) - int(time.time())
+                if time_left > 0:
+                    boosts_text += f"• {boost}: {time_left//3600}ч {(time_left%3600)//60}м\n"
     
-    text = f"{inv_text}{boosts_text}\n\n🐍 Коричневагый змий: {patsan['zmiy']:.3f} кг\n"
+    text = f"{inv_text}{boosts_text}\n\n🐍 Коричневагый змий: {patsan.get('zmiy', 0.0):.3f} кг\n"
     text += f"🔨 Скрафчено предметов: {len(patsan.get('crafted_items', []))}"
     
     await message.answer(text, reply_markup=inventory_management_keyboard(), parse_mode="HTML")
@@ -232,13 +237,13 @@ async def cmd_stats(message: types.Message):
     
     text = (f"<b>📊 ТВОЯ СТАТИСТИКА</b>\n\n<b>🎮 Общая:</b>\n{rank_emoji} <b>{rank_name}</b>\n"
            f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n"
-           f"💰 Деньги: {patsan['dengi']}р\n🐍 Всего собрано змия: {patsan['zmiy']:.1f}кг\n\n"
-           f"<b>🔧 Прокачка:</b>\n💪 Давка: {patsan['skill_davka']} ур.\n🛡️ Защита: {patsan['skill_zashita']} ур.\n"
-           f"🔍 Находка: {patsan['skill_nahodka']} ур.\n\n<b>🎯 Активность:</b>\n🕵️ Разведок: {scouts_used}\n"
+           f"💰 Деньги: {patsan.get('dengi', 0)}р\n🐍 Всего собрано змия: {patsan.get('zmiy', 0.0):.1f}кг\n\n"
+           f"<b>🔧 Прокачка:</b>\n💪 Давка: {patsan.get('skill_davka', 1)} ур.\n🛡️ Защита: {patsan.get('skill_zashita', 1)} ур.\n"
+           f"🔍 Находка: {patsan.get('skill_nahodka', 1)} ур.\n\n<b>🎯 Активность:</b>\n🕵️ Разведок: {scouts_used}\n"
            f"🔨 Скрафчено: {crafted_count}\n🏆 Достижений: {achievements_count}\n\n<b>📦 Ресурсы:</b>\n"
-           f"🌀 Атмосферы: {patsan['atm_count']}/{patsan.get('max_atm', 12)}\n"
+           f"🌀 Атмосферы: {patsan.get('atm_count', 0)}/{patsan.get('max_atm', 12)}\n"
            f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n"
-           f"🛒 Улучшений: {sum(1 for v in patsan['upgrades'].values() if v)}/4\n")
+           f"🛒 Улучшений: {sum(1 for v in patsan.get('upgrades', {}).values() if v)}/4\n")
     
     if patsan.get("specialization"): text += f"🌳 Специализация: {patsan['specialization']}\n"
     
@@ -246,13 +251,11 @@ async def cmd_stats(message: types.Message):
 
 @router.message(Command("rank"))
 async def cmd_rank(message: types.Message):
-    from database.db_manager import RANKS
-    
     text = "<b>⭐ СИСТЕМА ЗВАНИЙ</b>\n\n<i>Звание зависит от авторитета и даёт уважение среди пацанов.</i>\n\n"
-    for threshold, (name, emoji) in sorted(RANKS.items()):
+    for threshold, (emoji, name) in sorted(RANKS.items()):
         text += f"{emoji} <b>{name}</b> - от {threshold} авторитета\n"
     
-    text += ("\n<b>🎁 Бонусы званий:</b>\n• Уважение в чатах\n• Влияние на шансы в радёмках\n• Бонус к сдаче змия\n"
+    text += ("\n<b>🎁 Бонусы званий:</b>\n• Уважение в чатах\n• Влияние на шансы в радёмках\n• Бонус к сдазе змия\n"
             "• Возможность стать лидером банды (скоро)\n\n<i>Повышай авторитет через радёмки и покупку курвасанов!</i>")
     
     await message.answer(text, reply_markup=main_keyboard(), parse_mode="HTML")
@@ -260,17 +263,18 @@ async def cmd_rank(message: types.Message):
 @router.message(Command("shop"))
 async def cmd_shop(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
+    upgrades = patsan.get("upgrades", {})
     
     text = ("<b>🛒 НАГНЕТАТЕЛЬНАЯ СТОЛОВАЯ</b>\n\n<i>Покупай питание для заварваривания двенашки</i>\n\n"
            f"<b>🥛 Ряженка</b> - 300р\n<i>+75% давления в двенашке</i>\n"
-           f"Статус: {'✅ Куплено' if patsan['upgrades'].get('ryazhenka') else '❌ Нет в наличии'}\n\n"
+           f"Статус: {'✅ Куплено' if upgrades.get('ryazhenka') else '❌ Нет в наличии'}\n\n"
            f"<b>🍵 Чай сливовый</b> - 500р\n<i>Разгоняет процесс (-2 атмосферы)</i>\n"
-           f"Статус: {'✅ Куплено' if patsan['upgrades'].get('tea_slivoviy') else '❌ Нет в наличии'}\n\n"
+           f"Статус: {'✅ Куплено' if upgrades.get('tea_slivoviy') else '❌ Нет в наличии'}\n\n"
            f"<b>🧋 Бублэки</b> - 800р\n<i>Турбулентность (+35% к находкам + редкие предметы)</i>\n"
-           f"Статус: {'✅ Куплено' if patsan['upgrades'].get('bubbleki') else '❌ Нет в наличии'}\n\n"
+           f"Статус: {'✅ Куплено' if upgrades.get('bubbleki') else '❌ Нет в наличии'}\n\n"
            f"<b>🥐 Курвасаны с телотинкой</b> - 1500р\n<i>Заряд энергии (+2 авторитета)</i>\n"
-           f"Статус: {'✅ Куплено' if patsan['upgrades'].get('kuryasany') else '❌ Нет в наличии'}\n\n"
-           f"💰 <b>Твои деньги:</b> {patsan['dengi']} руб.\n\n"
+           f"Статус: {'✅ Куплено' if upgrades.get('kuryasany') else '❌ Нет в наличии'}\n\n"
+           f"💰 <b>Твои деньги:</b> {patsan.get('dengi', 0)} руб.\n\n"
            "<i>💡 Совет: Купи все улучшения для достижения 'Все нагнетатели' (+1500р)!</i>")
     
     await message.answer(text, reply_markup=shop_keyboard(), parse_mode="HTML")
@@ -305,7 +309,7 @@ async def cmd_nickname(message: types.Message):
         cost = 'Бесплатно (первый раз)' if not patsan.get('nickname_changed', False) else '5000 руб.'
         
         await message.answer(
-            f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
+            f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Пацанчик')}</code>\n"
             f"⭐ <b>Авторитет:</b> {patsan.get('avtoritet', 1)} (используется как репутация)\n"
             f"💰 <b>Стоимость смены ника:</b> {cost}\n\n<i>Выбери действие:</i>",
             reply_markup=nickname_keyboard(),
@@ -314,3 +318,19 @@ async def cmd_nickname(message: types.Message):
     except Exception as e:
         print(f"Ошибка в команде /nickname: {e}")
         await message.answer("❌ Ошибка при загрузке меню никнейма.\nПопробуйте позже.", parse_mode="HTML")
+
+@router.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    """Вернуться в главное меню"""
+    patsan = await get_patsan(message.from_user.id)
+    rank_emoji, rank_name = get_user_rank(patsan)
+    atm_count, max_atm = patsan.get('atm_count', 0), patsan.get('max_atm', 12)
+    
+    await message.answer(
+        f"<b>Главное меню</b>\n{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan.get('avtoritet', 1)} | 📈 Ур. {patsan.get('level', 1)}\n\n"
+        f"🌀 Атмосферы: [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
+        f"💸 Деньги: {patsan.get('dengi', 0)}р | 🐍 Змий: {patsan.get('zmiy', 0.0):.1f}кг\n\n"
+        f"<i>Выбери действие, пацан:</i>",
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
+    )
