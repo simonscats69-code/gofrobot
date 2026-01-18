@@ -416,7 +416,7 @@ async def cb_show_top(c):
         if st == "rademka_wins":
             cn = await get_connection()
             cur = await cn.execute('SELECT u.user_id,u.nickname,u.avtoritet,COUNT(rf.id)as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.avtoritet ORDER BY wins DESC LIMIT 10')
-            tp = [dict(r)|{"wins":r["wins"]or0,"rank":"?","zmiy":0,"dengi":0,"level":1} for r in await cur.fetchall()]
+            tp = [dict(r)|{"wins":r["wins"]or 0,"rank":"?","zmiy":0,"dengi":0,"level":1} for r in await cur.fetchall()]
             await cn.close()
         else:
             tp = await get_top_players(limit=10, sort_by=dk)
