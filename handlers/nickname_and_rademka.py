@@ -9,7 +9,7 @@ from database.db_manager import (
     rademka_scout, get_specialization_bonuses
 )
 from keyboards.keyboards import main_keyboard
-from keyboards.new_keyboards import (
+from keyboards.keyboards import (
     nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, 
     back_to_rademka_keyboard, rademka_scout_keyboard
 )
