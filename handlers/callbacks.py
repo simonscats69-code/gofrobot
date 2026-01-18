@@ -17,7 +17,7 @@ from keyboards.keyboards import (
     specialization_confirmation_keyboard,
     inventory_management_keyboard, back_to_craft_keyboard, back_to_specializations_keyboard
 )
-from keyboards.new_keyboards import (
+from keyboards.keyboards import (
     daily_keyboard, achievements_keyboard, rademka_keyboard,
     rademka_fight_keyboard, back_to_rademka_keyboard, achievements_progress_keyboard,
     level_stats_keyboard, atm_status_keyboard, specializations_info_keyboard,
