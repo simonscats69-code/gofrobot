@@ -537,6 +537,7 @@ async def save_rademka(win, lose, money=0, item=None, scout=False):
                       (win, lose, money, item, scout))
 
 async def get_top(limit=10, sort="avtoritet"): return await user_manager.get_top_fast(limit, sort)
+         get_top_players = get_top
 async def get_user_ach(uid):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
