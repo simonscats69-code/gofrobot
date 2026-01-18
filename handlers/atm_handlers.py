@@ -1,6 +1,6 @@
 from aiogram import Router, types, F
 from database.db_manager import get_patsan_cached
-from keyboards.new_keyboards import back_to_profile_keyboard
+from keyboards.keyboards import back_to_profile_keyboard
 import time
 
 router = Router()
