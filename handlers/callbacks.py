@@ -1,6 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
+from aiogram import BaseMiddleware
 import time
 from database.db_manager import (
     get_patsan, get_patsan_cached, davka_zmiy, sdat_zmiy, pump_skill,
@@ -26,19 +27,29 @@ from keyboards.new_keyboards import (
 
 router = Router()
 
-def ignore_not_modified_error(func):
-    async def wrapper(*args, **kwargs):
+# Middleware для обработки ошибки "message not modified"
+class IgnoreNotModifiedMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
         try:
-            return await func(*args, **kwargs)
+            return await handler(event, data)
         except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                if len(args) > 0 and hasattr(args[0], 'callback_query'):
-                    await args[0].callback_query.answer()
+            error_message = str(e)
+            if "message is not modified" in error_message or "Bad Request" in error_message and "specified new message content and reply markup are exactly the same" in error_message:
+                # Получаем callback_query из данных или event
+                callback_query = None
+                if hasattr(event, 'callback_query'):
+                    callback_query = event.callback_query
+                elif 'callback_query' in data:
+                    callback_query = data['callback_query']
+                
+                if callback_query and hasattr(callback_query, 'answer'):
+                    await callback_query.answer()
                 return
             raise
-    return wrapper
 
-@ignore_not_modified_error
+# Регистрируем middleware для обработки callback_query
+router.callback_query.middleware(IgnoreNotModifiedMiddleware())
+
 @router.callback_query(F.data == "back_main")
 async def back_to_main(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
@@ -113,7 +124,6 @@ async def callback_sdat(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "pump")
 async def callback_pump(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
@@ -149,7 +159,6 @@ async def callback_pump_skill(callback: types.CallbackQuery):
     await callback.answer(result, show_alert=True)
     await callback_pump(callback)
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "inventory")
 async def callback_inventory(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
@@ -191,7 +200,6 @@ async def callback_inventory(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "profile")
 async def callback_profile(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
@@ -233,7 +241,6 @@ async def callback_profile(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "specializations")
 async def callback_specializations(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -346,7 +353,6 @@ async def callback_specialization_buy(callback: types.CallbackQuery):
         await callback.answer(message, show_alert=True)
         await callback_specializations(callback)
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "craft")
 async def callback_craft(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -366,7 +372,6 @@ async def callback_craft(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "craft_items")
 async def callback_craft_items(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -452,7 +457,6 @@ async def callback_craft_recipes(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "rademka_scout_menu")
 async def callback_rademka_scout_menu(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -563,7 +567,6 @@ async def callback_rademka_scout_target(callback: types.CallbackQuery):
         except ValueError:
             await callback.answer("Ошибка: неверный ID цели", show_alert=True)
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "achievements_progress")
 async def callback_achievements_progress(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -721,7 +724,6 @@ async def callback_atm_status(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "top")
 async def callback_top_menu(callback: types.CallbackQuery):
     await callback.message.edit_text(
