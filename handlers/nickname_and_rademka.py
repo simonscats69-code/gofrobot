@@ -3,1092 +3,335 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
+import time, random
 
-# Создаём роутер В САМОМ НАЧАЛЕ
 router = Router()
 
-# Декоратор для обработки ошибки "message is not modified"
+class NicknameChange(StatesGroup):
+    waiting_for_nickname = State()
+
 def ignore_not_modified_error(func):
     async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
+        try: return await func(*args, **kwargs)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                if len(args) > 0 and hasattr(args[0], 'callback_query'):
+                if args and hasattr(args[0], 'callback_query'):
                     await args[0].callback_query.answer()
                 return
             raise
     return wrapper
 
-# Состояние для смены ника
-class NicknameChange(StatesGroup):
-    waiting_for_nickname = State()
-
-# Импортируем ВСЕ необходимые функции с обработкой ошибок
+# Импорты с заглушками
 try:
-    from database.db_manager import (
-        get_patsan_cached, change_nickname, get_connection, get_patsan, 
-        save_patsan, unlock_achievement, save_rademka_fight, get_top_players,
-        rademka_scout, get_specialization_bonuses, check_level_up, get_rank
-    )
+    from database.db_manager import (get_patsan_cached, change_nickname, get_connection, 
+                                    get_patsan, save_patsan, unlock_achievement, save_rademka_fight, 
+                                    get_top_players, rademka_scout, get_specialization_bonuses, 
+                                    check_level_up, get_rank)
     DB_IMPORTS_OK = True
 except ImportError as e:
-    print(f"Ошибка импорта из db_manager: {e}")
+    print(f"Import error: {e}")
     DB_IMPORTS_OK = False
-    # Создаём заглушки для функций
-    async def get_patsan_cached(*args, **kwargs): return {}
-    async def change_nickname(*args, **kwargs): return False, "База недоступна"
-    async def get_connection(*args, **kwargs): return None
-    async def get_patsan(*args, **kwargs): return {}
-    async def save_patsan(*args, **kwargs): pass
-    async def unlock_achievement(*args, **kwargs): pass
-    async def save_rademka_fight(*args, **kwargs): pass
-    async def get_top_players(*args, **kwargs): return []
-    async def rademka_scout(*args, **kwargs): return False, "Ошибка", {}
-    def get_specialization_bonuses(*args, **kwargs): return {}
-    async def check_level_up(*args, **kwargs): return False, {}
-    def get_rank(*args, **kwargs): return "Пацанчик", "👶"
+    async def get_patsan_cached(*a,**k):return{}
+    async def change_nickname(*a,**k):return False,"DB недоступна"
+    async def get_connection(*a,**k):return None
+    async def get_patsan(*a,**k):return{}
+    async def save_patsan(*a,**k):pass
+    async def unlock_achievement(*a,**k):pass
+    async def save_rademka_fight(*a,**k):pass
+    async def get_top_players(*a,**k):return[]
+    async def rademka_scout(*a,**k):return False,"Ошибка",{}
+    def get_specialization_bonuses(*a,**k):return{}
+    async def check_level_up(*a,**k):return False,{}
+    def get_rank(*a,**k):return"Пацанчик","👶"
 
 try:
-    from keyboards.keyboards import (
-        main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard,
-        back_to_rademka_keyboard, rademka_scout_keyboard, achievements_keyboard,
-        daily_keyboard
-    )
+    from keyboards.keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
+                                    rademka_fight_keyboard, back_to_rademka_keyboard, 
+                                    rademka_scout_keyboard, achievements_keyboard, daily_keyboard)
     KEYBOARDS_OK = True
 except ImportError as e:
-    print(f"Ошибка импорта клавиатур: {e}")
+    print(f"Keyboard import error: {e}")
     KEYBOARDS_OK = False
-    # Создаём заглушки для клавиатур
-    def main_keyboard(): return None
-    def nickname_keyboard(): return None
-    def rademka_keyboard(): return None
-    def rademka_fight_keyboard(*args, **kwargs): return None
-    def back_to_rademka_keyboard(): return None
-    def rademka_scout_keyboard(): return None
-    def achievements_keyboard(): return None
-    def daily_keyboard(): return None
+    def main_keyboard():return None
+    def nickname_keyboard():return None
+    def rademka_keyboard():return None
+    def rademka_fight_keyboard(*a,**k):return None
+    def back_to_rademka_keyboard():return None
+    def rademka_scout_keyboard():return None
+    def achievements_keyboard():return None
+    def daily_keyboard():return None
 
+# Никнейм функции
 @router.message(Command("nickname"))
-async def cmd_nickname(message: types.Message, state: FSMContext):
-    """Команда /nickname - меню никнейма"""
-    user_id = message.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await message.answer(
-            "👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n"
-            "База данных временно недоступна. Попробуйте позже.",
-            parse_mode="HTML"
-        )
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    message_text = (
-        f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n"
-        f"📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
-        f"⭐ <b>Авторитет:</b> {patsan.get('avtoritet', 1)} (используется как репутация)\n"
-        f"💰 <b>Стоимость смены ника:</b> {'Бесплатно (первый раз)' if not patsan.get('nickname_changed', False) else '5000 руб.'}\n\n"
-        f"<i>Выбери действие:</i>"
-    )
-    
-    reply_markup = nickname_keyboard() if KEYBOARDS_OK else None
-    
-    await message.answer(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
+async def cmd_nickname(m: types.Message, state: FSMContext):
+    if not DB_IMPORTS_OK: return await m.answer("👤 <b>НИКНЕЙМ</b>\n\nБаза недоступна.", parse_mode="HTML")
+    p = await get_patsan_cached(m.from_user.id)
+    c = 'Бесплатно (первый раз)' if not p.get('nickname_changed') else '5000 руб.'
+    await m.answer(f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💰 <b>Стоимость смены ника:</b> {c}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
 
 @router.callback_query(F.data == "nickname_menu")
-async def nickname_menu(callback: types.CallbackQuery):
-    """Меню никнейма"""
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    message_text = (
-        f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n"
-        f"📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
-        f"⭐ <b>Авторитет:</b> {patsan.get('avtoritet', 1)} (используется как репутация)\n"
-        f"💰 <b>Стоимость смены ника:</b> {'Бесплатно (первый раз)' if not patsan.get('nickname_changed', False) else '5000 руб.'}\n\n"
-        f"<i>Выбери действие:</i>"
-    )
-    
-    reply_markup = nickname_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+async def nickname_menu(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    p = await get_patsan_cached(c.from_user.id)
+    cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed') else '5000 руб.'
+    await c.message.edit_text(f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💰 <b>Стоимость смены ника:</b> {cst}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @router.callback_query(F.data == "my_reputation")
-async def my_reputation(callback: types.CallbackQuery):
-    """Моя репутация - используем авторитет"""
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    rank_name, rank_emoji = get_rank(patsan.get('avtoritet', 1))
-    
-    message_text = (
-        f"⭐ <b>МОЯ РЕПУТАЦИЯ</b>\n\n"
-        f"{rank_emoji} <b>Звание:</b> {rank_name}\n"
-        f"📊 <b>Авторитет:</b> {patsan.get('avtoritet', 1)}\n\n"
-        f"<b>Как повысить репутацию?</b>\n"
-        f"• Побеждай в радёмках (+1 авторитет за победу)\n"
-        f"• Покупай курвасаны в магазине (+2 авторитета)\n"
-        f"• Выполняй достижения\n\n"
-        f"<i>Чем выше авторитет, тем больше уважения среди пацанов!</i>"
-    )
-    
-    reply_markup = nickname_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+async def my_reputation(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    p = await get_patsan_cached(c.from_user.id)
+    rn, re = get_rank(p.get('avtoritet',1))
+    await c.message.edit_text(f"⭐ <b>МОЯ РЕПУТАЦИЯ</b>\n\n{re} <b>Звание:</b> {rn}\n📊 <b>Авторитет:</b> {p.get('avtoritet',1)}\n\n<b>Как повысить?</b>\n• Побеждай в радёмках (+1)\n• Покупай курвасаны (+2)\n• Выполняй достижения\n\n<i>Чем выше авторитет, тем больше уважения!</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @router.callback_query(F.data == "top_reputation")
-async def top_reputation(callback: types.CallbackQuery):
-    """Топ репутации - используем топ по авторитету"""
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    top_players = await get_top_players(limit=10, sort_by="avtoritet")
-    
-    if not top_players:
-        message_text = (
-            f"👑 <b>ТОП АВТОРИТЕТА</b>\n\n"
-            f"Пока никого нет в топе!\n"
-            f"Будь первым - повышай свой авторитет!\n\n"
-            f"<i>Слава ждёт самого уважаемого пацана!</i>"
-        )
+async def top_reputation(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    tp = await get_top_players(limit=10, sort_by="avtoritet")
+    if not tp: await c.message.edit_text("👑 <b>ТОП АВТОРИТЕТА</b>\n\nПока никого нет в топе!\nБудь первым!\n\n<i>Слава ждёт!</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
     else:
-        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        message_text = "👑 <b>ТОП АВТОРИТЕТА</b>\n\n"
-        
-        for i, player in enumerate(top_players):
-            medal = medals[i] if i < len(medals) else f"{i+1}."
-            nickname = player.get("nickname", f"Пацан_{player.get('user_id', '?')}")
-            avtoritet = player.get("avtoritet", 0)
-            
-            if len(nickname) > 15:
-                nickname = nickname[:12] + "..."
-            
-            message_text += f"{medal} <code>{nickname}</code> - ⭐ {avtoritet}\n"
-        
-        # Позиция текущего пользователя
-        current_user_id = callback.from_user.id
-        user_position = None
-        for i, player in enumerate(top_players):
-            if player.get('user_id') == current_user_id:
-                user_position = i + 1
-                break
-        
-        if user_position:
-            user_medal = medals[user_position-1] if user_position-1 < len(medals) else str(user_position)
-            message_text += f"\n🎯 <b>Твоя позиция:</b> {user_medal}"
-        
-        message_text += f"\n📊 <i>Всего пацанов в системе: {len(top_players)}</i>"
-    
-    reply_markup = nickname_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+        mds, txt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], "👑 <b>ТОП АВТОРИТЕТА</b>\n\n"
+        for i, p in enumerate(tp):
+            md = mds[i] if i<len(mds) else f"{i+1}."
+            nn = p.get("nickname", f"Пацан_{p.get('user_id','?')}")[:12]+("..." if len(p.get('nickname',''))>15 else "")
+            txt += f"{md} <code>{nn}</code> - ⭐ {p.get('avtoritet',0)}\n"
+        uid = c.from_user.id
+        for i, p in enumerate(tp):
+            if p.get('user_id')==uid: txt+=f"\n🎯 <b>Твоя позиция:</b> {mds[i] if i<len(mds) else str(i+1)}"; break
+        txt+=f"\n📊 <i>Всего пацанов: {len(tp)}</i>"
+        await c.message.edit_text(txt, reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @router.callback_query(F.data == "change_nickname")
-async def callback_change_nickname(callback: types.CallbackQuery, state: FSMContext):
-    """Кнопка смены ника"""
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных временно недоступна", show_alert=True)
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    current_state = await state.get_state()
-    if current_state == NicknameChange.waiting_for_nickname.state:
-        await callback.answer("Ты уже в процессе смены ника! Напиши новый ник.", show_alert=True)
-        return
-    
-    nickname_changed = patsan.get("nickname_changed", False)
-    cost = 0 if not nickname_changed else 5000
-    
-    if nickname_changed:
-        message_text = (
-            f"🏷️ <b>СМЕНА НИКА</b>\n\n"
-            f"Твой текущий ник: <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
-            f"Ты уже менял ник ранее.\n"
-            f"Стоимость смены: <b>{cost} руб.</b>\n\n"
-            f"Напиши новый ник (3-20 символов, только буквы и цифры):"
-        )
-    else:
-        message_text = (
-            f"🏷️ <b>СМЕНА НИКА</b>\n\n"
-            f"Твой текущий ник: <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
-            f"🎉 <b>Первая смена - БЕСПЛАТНО!</b>\n"
-            f"Потом будет стоить 5000 руб.\n\n"
-            f"Напиши новый ник (3-20 символов, только буквы и цифры):"
-        )
-    
-    reply_markup = nickname_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.answer(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    
+async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    p = await get_patsan_cached(c.from_user.id)
+    if await state.get_state() == NicknameChange.waiting_for_nickname.state:
+        return await c.answer("Ты уже в процессе смены ника!", show_alert=True)
+    nc, cost = p.get("nickname_changed", False), 0 if not p.get("nickname_changed") else 5000
+    txt = (f"🏷️ <b>СМЕНА НИКА</b>\n\nТвой текущий ник: <code>{p.get('nickname','Неизвестно')}</code>\n" +
+           (f"Ты уже менял ник.\nСтоимость: <b>{cost} руб.</b>\n" if nc else f"🎉 <b>Первая смена - БЕСПЛАТНО!</b>\nПотом 5000 руб.\n") +
+           f"\nНапиши новый ник (3-20 символов, буквы и цифры):")
+    await c.message.answer(txt, reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
     await state.set_state(NicknameChange.waiting_for_nickname)
-    await callback.answer("Введи новый ник в чат")
+    await c.answer("Введи новый ник")
 
 @router.message(NicknameChange.waiting_for_nickname)
-async def process_nickname(message: types.Message, state: FSMContext):
-    """Обработка нового ника"""
-    user_id = message.from_user.id
-    new_nickname = message.text.strip()
-    
-    if len(new_nickname) < 3:
-        await message.answer(
-            "❌ Слишком короткий ник! Минимум 3 символа.\n"
-            "Попробуй ещё раз:"
-        )
-        return
-    
-    if len(new_nickname) > 20:
-        await message.answer(
-            "❌ Слишком длинный ник! Максимум 20 символов.\n"
-            "Попробуй ещё раз:"
-        )
-        return
-    
-    if not all(c.isalnum() or c in "_- " for c in new_nickname):
-        await message.answer(
-            "❌ Используй только буквы, цифры, пробелы, дефисы и подчёркивания!\n"
-            "Попробуй ещё раз:"
-        )
-        return
-    
-    if not DB_IMPORTS_OK:
-        await message.answer(
-            "❌ База данных временно недоступна.\n"
-            "Попробуйте позже."
-        )
-        return
-    
-    success, result_message = await change_nickname(user_id, new_nickname)
-    
-    reply_markup = main_keyboard() if KEYBOARDS_OK else None
-    
-    if success:
-        await message.answer(
-            f"✅ {result_message}\n"
-            f"Теперь ты известен как: <code>{new_nickname}</code>",
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    else:
-        await message.answer(
-            f"❌ {result_message}\n"
-            f"Попробуй снова:",
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    
+async def process_nickname(m: types.Message, state: FSMContext):
+    nn = m.text.strip()
+    if len(nn)<3: return await m.answer("❌ Слишком короткий! Минимум 3 символа.\nПопробуй:")
+    if len(nn)>20: return await m.answer("❌ Слишком длинный! Максимум 20 символов.\nПопробуй:")
+    if not all(c.isalnum() or c in "_- " for c in nn): return await m.answer("❌ Только буквы, цифры, пробелы, дефисы, подчёркивания!\nПопробуй:")
+    if not DB_IMPORTS_OK: return await m.answer("❌ База недоступна.\nПопробуйте позже.")
+    ok, msg = await change_nickname(m.from_user.id, nn)
+    kb = main_keyboard() if KEYBOARDS_OK else None
+    await m.answer(f"{'✅' if ok else '❌'} {msg}\nТеперь ты: <code>{nn}</code>" if ok else f"❌ {msg}\nПопробуй:", reply_markup=kb, parse_mode="HTML")
     await state.clear()
 
 @router.message(Command("cancel"))
-async def cmd_cancel(message: types.Message, state: FSMContext):
-    """Отмена смены ника"""
-    current_state = await state.get_state()
-    if current_state is None:
-        await message.answer("Нечего отменять.")
-        return
-    
+async def cmd_cancel(m: types.Message, state: FSMContext):
+    if await state.get_state() is None: return await m.answer("Нечего отменять.")
     await state.clear()
-    
-    reply_markup = main_keyboard() if KEYBOARDS_OK else None
-    await message.answer(
-        "Смена ника отменена.",
-        reply_markup=reply_markup
-    )
+    await m.answer("Смена ника отменена.", reply_markup=main_keyboard() if KEYBOARDS_OK else None)
 
+# Радёмка функции
 @router.message(Command("rademka"))
-async def cmd_rademka(message: types.Message):
-    """Команда /rademka - радёмка"""
-    user_id = message.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await message.answer(
-            "👊 <b>РАДЁМКА</b>\n\n"
-            "База данных временно недоступна. Попробуйте позже.",
-            parse_mode="HTML"
-        )
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_scouts_left = max(0, 5 - scouts_used)
-    
-    message_text = (
-        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n"
-        f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
-        f"Выбери пацана и протащи его по гофроцентралу!\n"
-        f"За успешную радёмку получишь:\n"
-        f"• +1 авторитет\n"
-        f"• 10% его денег\n"
-        f"• Шанс забрать двенашку\n\n"
-        f"<b>Риски:</b>\n"
-        f"• Можешь потерять 5% своих денег\n"
-        f"• -1 авторитет при неудаче\n"
-        f"• Отжатый пацан может отомстить\n\n"
-        f"🎯 <b>НОВОЕ: Разведка!</b>\n"
-        f"• Узнай точный шанс победы\n"
-        f"• {free_scouts_left}/5 бесплатных разведок\n"
-        f"• Потом 50р за разведку\n\n"
-        f"<b>Твои статы:</b>\n"
-        f"⭐ Авторитет: {patsan.get('avtoritet', 1)}\n"
-        f"💰 Деньги: {patsan.get('dengi', 0)}р\n"
-        f"📈 Уровень: {patsan.get('level', 1)}\n"
-        f"🌳 Специализация: {patsan.get('specialization', 'нет')}"
-    )
-    
-    reply_markup = rademka_keyboard() if KEYBOARDS_OK else None
-    
-    await message.answer(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
+async def cmd_rademka(m: types.Message):
+    if not DB_IMPORTS_OK: return await m.answer("👊 <b>РАДЁМКА</b>\n\nБаза недоступна.", parse_mode="HTML")
+    p = await get_patsan_cached(m.from_user.id)
+    su, fl = p.get("rademka_scouts", 0), max(0, 5-p.get("rademka_scouts", 0))
+    txt = (f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\nВыбери пацана!\nЗа успех:\n• +1 авторитет\n• 10% его денег\n• Шанс на двенашку\n\n<b>Риски:</b>\n• -5% своих денег\n• -1 авторитет при неудаче\n\n🎯 <b>Разведка!</b>\n• Узнай шанс\n• {fl}/5 бесплатных\n• Потом 50р\n\n<b>Твои статы:</b>\n⭐ {p.get('avtoritet',1)}\n💰 {p.get('dengi',0)}р\n📈 {p.get('level',1)}")
+    await m.answer(txt, reply_markup=rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
-async def callback_rademka(callback: types.CallbackQuery):
-    """Кнопка радёмки"""
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_scouts_left = max(0, 5 - scouts_used)
-    
-    message_text = (
-        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n"
-        f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
-        f"Выбери пацана и протащи его по гофроцентралу!\n"
-        f"За успешную радёмку получишь:\n"
-        f"• +1 авторитет\n"
-        f"• 10% его денег\n"
-        f"• Шанс забрать двенашку\n\n"
-        f"<b>Риски:</b>\n"
-        f"• Можешь потерять 5% своих денег\n"
-        f"• -1 авторитет при неудаче\n"
-        f"• Отжатый пацан может отомстить\n\n"
-        f"🎯 <b>НОВОЕ: Разведка!</b>\n"
-        f"• Узнай точный шанс победы\n"
-        f"• {free_scouts_left}/5 бесплатных разведок\n"
-        f"• Потом 50р за разведку\n\n"
-        f"<b>Твои статы:</b>\n"
-        f"⭐ Авторитет: {patsan.get('avtoritet', 1)}\n"
-        f"💰 Деньги: {patsan.get('dengi', 0)}р\n"
-        f"📈 Уровень: {patsan.get('level', 1)}"
-    )
-    
-    reply_markup = rademka_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
+async def callback_rademka(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    p = await get_patsan_cached(c.from_user.id)
+    su, fl = p.get("rademka_scouts", 0), max(0, 5-p.get("rademka_scouts", 0))
+    await c.message.edit_text(f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\nВыбери пацана!\nЗа успех: +1 авторитет, 10% его денег, шанс на двенашку\n\nРиски: -5% денег, -1 авторитет\n\n🎯 <b>Разведка:</b> {fl}/5 бесплатных\n\n<b>Твои статы:</b>\n⭐ {p.get('avtoritet',1)} | 💰 {p.get('dengi',0)}р | 📈 {p.get('level',1)}", reply_markup=rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
 
 @router.callback_query(F.data == "rademka_scout_menu")
-async def rademka_scout_menu(callback: types.CallbackQuery):
-    """Меню разведки радёмки"""
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    patsan = await get_patsan_cached(user_id)
-    
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_scouts_left = max(0, 5 - scouts_used)
-    
-    text = (
-        f"🕵️ <b>РАЗВЕДКА РАДЁМКИ</b>\n\n"
-        f"<i>Узнай точный шанс успеха перед атакой!</i>\n\n"
-        f"📊 <b>Твоя статистика:</b>\n"
-        f"• Использовано разведок: {scouts_used}\n"
-        f"• Бесплатных осталось: {free_scouts_left}/5\n"
-        f"• Стоимость разведки: {0 if free_scouts_left > 0 else 50}р\n\n"
-        f"<b>Преимущества разведки:</b>\n"
-        f"• Узнаешь точный шанс победы\n"
-        f"• Увидишь все факторы влияния\n"
-        f"• Принимай обдуманные решения!\n\n"
-        f"<i>Выбери действие:</i>"
-    )
-    
-    reply_markup = rademka_scout_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+async def rademka_scout_menu(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    p = await get_patsan_cached(c.from_user.id)
+    su, fl = p.get("rademka_scouts", 0), max(0, 5-p.get("rademka_scouts", 0))
+    await c.message.edit_text(f"🕵️ <b>РАЗВЕДКА РАДЁМКИ</b>\n\n<i>Узнай шанс перед атакой!</i>\n\n📊 <b>Статистика:</b>\n• Использовано: {su}\n• Бесплатных: {fl}/5\n• Стоимость: {0 if fl>0 else 50}р\n\n<b>Преимущества:</b>\n• Точно знаешь шанс\n• Видишь факторы\n• Принимаешь решение!\n\n<i>Выбери:</i>", reply_markup=rademka_scout_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @router.callback_query(F.data == "rademka_random")
-async def rademka_random(callback: types.CallbackQuery):
-    """Случайная цель для радёмки"""
-    import random
-    
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    top_players = await get_top_players(limit=50, sort_by="avtoritet")
-    
-    possible_targets = [p for p in top_players if p.get("user_id") != user_id]
-    
-    if not possible_targets:
-        await callback.message.edit_text(
-            "😕 <b>НЕКОГО ПРОТАСКИВАТЬ!</b>\n\n"
-            "На гофроцентрале кроме тебя никого нет...\n"
-            "Приведи друзей, чтобы было кого радёмить!",
-            reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None,
-            parse_mode="HTML"
-        )
-        return
-    
-    target = random.choice(possible_targets)
-    target_id = target.get("user_id")
-    target_name = target.get("nickname", "Неизвестно")
-    target_avtoritet = target.get("avtoritet", 1)
-    
-    patsan = await get_patsan_cached(user_id)
-    attacker_avtoritet = patsan.get("avtoritet", 1)
-    
-    base_chance = 50
-    
-    if attacker_avtoritet > target_avtoritet:
-        chance = base_chance + min(30, (attacker_avtoritet - target_avtoritet) * 5)
-    elif target_avtoritet > attacker_avtoritet:
-        chance = base_chance + 20 - min(30, (target_avtoritet - attacker_avtoritet) * 5)
-    else:
-        chance = base_chance
-    
-    if patsan.get("specialization") == "непробиваемый":
-        chance += 5
-    
-    import time
-    target_data = await get_patsan(target_id)
-    if target_data:
-        last_active = target_data.get("last_update", time.time())
-        if time.time() - last_active > 86400:
-            chance += 15
-    
-    chance = max(10, min(95, chance))
-    
-    attacker_rank_name, attacker_rank_emoji = get_rank(attacker_avtoritet)
-    target_rank_name, target_rank_emoji = get_rank(target_avtoritet)
-    
-    target_money = target.get('dengi_formatted', target.get('dengi', 0))
-    
-    message_text = (
-        f"🎯 <b>НАШЁЛ ЦЕЛЬ ДЛЯ РАДЁМКИ!</b>\n\n"
-        f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
-        f"🔴 <b>Цель:</b> {target_name}\n"
-        f"{target_rank_emoji} <b>Звание:</b> {target_rank_name}\n"
-        f"⭐ <b>Его авторитет:</b> {target_avtoritet}\n"
-        f"💰 <b>Его деньги:</b> {target_money}р\n"
-        f"📈 <b>Его уровень:</b> {target.get('level', 1)}\n\n"
-        f"🟢 <b>Твой авторитет:</b> {attacker_avtoritet}\n"
-        f"{attacker_rank_emoji} <b>Твоё звание:</b> {attacker_rank_name}\n"
-        f"🎲 <b>Примерный шанс успеха:</b> {chance}%\n\n"
-        f"<b>Награда за успех:</b>\n"
-        f"• +1 авторитет\n"
-        f"• 10% его денег\n"
-        f"• Шанс забрать двенашку\n\n"
-        f"<b>Риск при провале:</b>\n"
-        f"• -1 авторитет\n"
-        f"• Потеря 5% своих денег\n\n"
-        f"<i>Хочешь точно узнать шанс? Используй разведку!</i>\n\n"
-        f"Протащить этого пацана?"
-    )
-    
-    reply_markup = rademka_fight_keyboard(target_id, scouted=False) if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
+async def rademka_random(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    tp = await get_top_players(limit=50, sort_by="avtoritet")
+    tg = [p for p in tp if p.get("user_id")!=c.from_user.id]
+    if not tg: return await c.message.edit_text("😕 <b>НЕКОГО ПРОТАСКИВАТЬ!</b>\n\nПриведи друзей!", reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    t = random.choice(tg)
+    pid, tn, tav = t.get("user_id"), t.get("nickname","Неизвестно"), t.get("avtoritet",1)
+    p = await get_patsan_cached(c.from_user.id)
+    av, ch = p.get("avtoritet",1), 50
+    if av > tav: ch += min(30, (av-tav)*5)
+    elif tav > av: ch += 20-min(30, (tav-av)*5)
+    if p.get("specialization")=="непробиваемый": ch += 5
+    td = await get_patsan(pid)
+    if td and time.time()-td.get("last_update", time.time())>86400: ch += 15
+    ch = max(10, min(95, ch))
+    ar, ae = get_rank(av); tr, te = get_rank(tav)
+    tm = t.get('dengi_formatted', t.get('dengi',0))
+    await c.message.edit_text(f"🎯 <b>НАШЁЛ ЦЕЛЬ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n🔴 <b>Цель:</b> {tn}\n{te} <b>Звание:</b> {tr}\n⭐ {tav} | 💰 {tm}р | 📈 {t.get('level',1)}\n\n🟢 <b>Ты:</b> {ae} {ar}\n⭐ {av}\n🎲 <b>Шанс:</b> {ch}%\n\n<b>Награда:</b> +1 авторитет, 10% его денег\n<b>Риск:</b> -1 авторитет, -5% денег\n\n<i>Хочешь точно узнать шанс? Разведка!</i>\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid, scouted=False) if KEYBOARDS_OK else None, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("rademka_scout_"))
-async def rademka_scout_callback(callback: types.CallbackQuery):
-    """Обработка действий разведки"""
-    import random
-    
-    data = callback.data.replace("rademka_scout_", "")
-    
-    if data == "menu":
-        await rademka_scout_menu(callback)
-        return
-    
-    elif data == "random":
-        user_id = callback.from_user.id
-        
-        if not DB_IMPORTS_OK:
-            await callback.answer("База данных недоступна", show_alert=True)
-            return
-        
-        top_players = await get_top_players(limit=50, sort_by="avtoritet")
-        possible_targets = [p for p in top_players if p.get("user_id") != user_id]
-        
-        if not possible_targets:
-            await callback.message.edit_text(
-                "😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>\n\n"
-                "На гофроцентрале кроме тебя никого нет...",
-                reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None,
-                parse_mode="HTML"
-            )
-            return
-        
-        target = random.choice(possible_targets)
-        target_id = target.get("user_id")
-        
-        success, message, scout_data = await rademka_scout(user_id, target_id)
-        
-        if not success:
-            await callback.answer(message, show_alert=True)
-            return
-        
-        target_name = target.get("nickname", "Неизвестно")
-        chance = scout_data.get("chance", 50)
-        
-        factors = scout_data.get("factors", [])
-        factors_text = "\n".join([f"• {f}" for f in factors]) if factors else "• Нет дополнительных факторов"
-        
-        text = (
-            f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n"
-            f"<b>Цель:</b> {target_name}\n"
-            f"🎲 <b>Точный шанс победы:</b> {chance}%\n\n"
-            f"<b>📊 Факторы:</b>\n{factors_text}\n\n"
-            f"💸 Стоимость разведки: {'Бесплатно' if scout_data.get('cost', 0) == 0 else '50р'}\n"
-            f"🕵️ Бесплатных разведок осталось: {scout_data.get('free_scouts_left', 0)}\n\n"
-            f"<i>Атаковать эту цель?</i>"
-        )
-        
-        reply_markup = rademka_fight_keyboard(target_id, scouted=True) if KEYBOARDS_OK else None
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-        return
-    
-    elif data == "choose":
-        await callback.message.edit_text(
-            "🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\n"
-            "Для точного выбора цели используй кнопку 'Случайная цель'.\n"
-            "В будущем будет возможность выбрать конкретного игрока.",
-            reply_markup=rademka_scout_keyboard() if KEYBOARDS_OK else None,
-            parse_mode="HTML"
-        )
-        return
-    
-    elif data == "stats":
-        user_id = callback.from_user.id
-        
-        if not DB_IMPORTS_OK:
-            await callback.answer("База данных недоступна", show_alert=True)
-            return
-        
-        patsan = await get_patsan_cached(user_id)
-        
-        scouts_used = patsan.get("rademka_scouts", 0)
-        free_used = min(5, scouts_used)
-        paid_used = max(0, scouts_used - 5)
-        
-        conn = await get_connection()
-        scout_history = []
-        
+async def rademka_scout_callback(c: types.CallbackQuery):
+    d = c.data.replace("rademka_scout_", "")
+    if d == "menu": return await rademka_scout_menu(c)
+    elif d == "random":
+        if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+        tp = await get_top_players(limit=50, sort_by="avtoritet")
+        tg = [p for p in tp if p.get("user_id")!=c.from_user.id]
+        if not tg: return await c.message.edit_text("😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>", reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+        t = random.choice(tg)
+        ok, msg, sd = await rademka_scout(c.from_user.id, t.get("user_id"))
+        if not ok: return await c.answer(msg, show_alert=True)
+        tn, ch, f = t.get("nickname","Неизвестно"), sd.get("chance",50), sd.get("factors",[])
+        ftxt = "\n".join(f"• {x}" for x in f) if f else "• Нет факторов"
+        await c.message.edit_text(f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n<b>Цель:</b> {tn}\n🎲 <b>Шанс:</b> {ch}%\n\n<b>Факторы:</b>\n{ftxt}\n\n💸 Стоимость: {'Бесплатно' if sd.get('cost',0)==0 else '50р'}\n🕵️ Осталось: {sd.get('free_scouts_left',0)}\n\n<i>Атаковать?</i>", reply_markup=rademka_fight_keyboard(t.get("user_id"), scouted=True) if KEYBOARDS_OK else None, parse_mode="HTML")
+    elif d == "choose": await c.message.edit_text("🎯 <b>ВЫБОР ЦЕЛИ</b>\n\nИспользуй 'Случайная цель'.", reply_markup=rademka_scout_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    elif d == "stats":
+        if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+        p = await get_patsan_cached(c.from_user.id)
+        su, fu, pu = p.get("rademka_scouts",0), min(5,p.get("rademka_scouts",0)), max(0,p.get("rademka_scouts",0)-5)
+        txt = f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n🕵️ Всего: {su}\n🎯 Бесплатных: {fu}/5\n💰 Платных: {pu}\n💸 Потрачено: {pu*50}р\n\n"
+        cn = await get_connection()
         try:
-            cursor = await conn.execute('''
-                SELECT rf.winner_id, rf.loser_id, rf.scouted, u.nickname
-                FROM rademka_fights rf
-                JOIN users u ON rf.loser_id = u.user_id
-                WHERE (rf.winner_id = ? OR rf.loser_id = ?) AND rf.scouted = TRUE
-                ORDER BY rf.created_at DESC
-                LIMIT 5
-            ''', (user_id, user_id))
-            
-            scout_history = await cursor.fetchall()
-        except Exception as e:
-            print(f"Ошибка при получении истории разведок: {e}")
-        finally:
-            await conn.close()
-        
-        text = (
-            f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n"
-            f"🕵️ Всего разведок: {scouts_used}\n"
-            f"🎯 Бесплатных: {free_used}/5\n"
-            f"💰 Платных: {paid_used}\n"
-            f"💸 Потрачено на разведки: {paid_used * 50}р\n\n"
-        )
-        
-        if scout_history:
-            text += "<b>📜 Последние разведанные цели:</b>\n"
-            for i, scout in enumerate(scout_history[:3], 1):
-                target_id = scout["loser_id"] if scout["winner_id"] == user_id else scout["winner_id"]
-                nickname = scout.get("nickname", "Неизвестно")
-                result = "✅ Победа" if scout.get("winner_id") == user_id else "❌ Поражение"
-                
-                if len(nickname) > 15:
-                    nickname = nickname[:12] + "..."
-                
-                text += f"{i}. {nickname} - {result}\n"
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=rademka_scout_keyboard() if KEYBOARDS_OK else None,
-            parse_mode="HTML"
-        )
-        return
+            cur = await cn.execute('SELECT rf.winner_id, rf.loser_id, rf.scouted, u.nickname FROM rademka_fights rf JOIN users u ON rf.loser_id = u.user_id WHERE (rf.winner_id = ? OR rf.loser_id = ?) AND rf.scouted = TRUE ORDER BY rf.created_at DESC LIMIT 5', (c.from_user.id, c.from_user.id))
+            sh = await cur.fetchall()
+            if sh:
+                txt += "<b>📜 Последние цели:</b>\n"
+                for i, s in enumerate(sh[:3], 1):
+                    tid = s["loser_id"] if s["winner_id"] == c.from_user.id else s["winner_id"]
+                    nn = s.get("nickname", "Неизвестно")[:12]+("..." if len(s.get('nickname',''))>15 else "")
+                    rs = "✅ Победа" if s.get("winner_id") == c.from_user.id else "❌ Поражение"
+                    txt += f"{i}. {nn} - {rs}\n"
+        except Exception as e: print(f"Ошибка истории: {e}")
+        finally: await cn.close()
+        await c.message.edit_text(txt, reply_markup=rademka_scout_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("rademka_confirm_"))
-async def rademka_confirm(callback: types.CallbackQuery):
-    """Подтверждение радёмки"""
-    import random
-    import time
-    
-    user_id = callback.from_user.id
-    target_id = int(callback.data.replace("rademka_confirm_", ""))
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
-    attacker = await get_patsan(user_id)
-    target = await get_patsan(target_id)
-    
-    if not attacker or not target:
-        await callback.answer("Ошибка: один из пацанов не найден!", show_alert=True)
-        return
-    
-    base_chance = 50
-    avtoritet_diff = attacker.get("avtoritet", 1) - target.get("avtoritet", 1)
-    chance = base_chance + (avtoritet_diff * 5)
-    
-    if attacker.get("avtoritet", 1) < target.get("avtoritet", 1):
-        chance += 20
-    
-    if attacker.get("specialization") == "непробиваемый":
-        chance += 5
-    
-    attacker_level = attacker.get("level", 1)
-    target_level = target.get("level", 1)
-    level_diff = target_level - attacker_level
-    if level_diff > 0:
-        chance -= min(15, level_diff * 3)
-    
-    last_active = target.get("last_update", time.time())
-    if time.time() - last_active > 86400:
-        chance += 15
-    
-    chance = max(10, min(95, chance))
-    
-    success = random.random() < (chance / 100)
-    
-    money_taken = 0
-    item_stolen = None
-    exp_gained = 0
-    
-    if success:
-        money_taken = int(target.get("dengi", 0) * 0.1)
-        attacker["dengi"] = attacker.get("dengi", 0) + money_taken
-        target["dengi"] = target.get("dengi", 0) - money_taken
-        
-        if target.get("dengi", 0) < 10:
-            target["dengi"] = 10
-        
-        attacker["avtoritet"] = attacker.get("avtoritet", 1) + 1
-        
-        if target.get("inventory") and "двенашка" in target["inventory"] and random.random() < 0.3:
-            target["inventory"].remove("двенашка")
-            attacker["inventory"].append("двенашка")
-            item_stolen = "двенашка"
-            item_stolen_text = "\n🎒 <b>Забрал двенашку!</b>"
-        else:
-            item_stolen_text = ""
-        
-        exp_gained = 25 + (target.get("avtoritet", 1) // 10)
-        attacker["experience"] = attacker.get("experience", 0) + exp_gained
-        
-        if target.get("avtoritet", 1) > attacker.get("avtoritet", 1):
-            bonus_exp = (target.get("avtoritet", 1) - attacker.get("avtoritet", 1)) * 2
-            attacker["experience"] += bonus_exp
-            exp_gained += bonus_exp
-        
-        result_text = (
-            f"✅ <b>УСПЕШНАЯ РАДЁМКА!</b>\n\n"
-            f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ! ТЫ ПРОТАЩИЛ ЕГО!</i>\n\n"
-            f"Ты унизил {target.get('nickname', 'Неизвестно')} на глазах у всех!\n"
-            f"⭐ <b>+1 авторитет</b> (теперь {attacker.get('avtoritet', 1)})\n"
-            f"💰 <b>+{money_taken}р</b> (отжал у пацана)\n"
-            f"📚 <b>+{exp_gained} опыта</b>{item_stolen_text}\n\n"
-            f"🎲 <b>Шанс был:</b> {chance}%\n"
-            f"<i>Он теперь будет тебя бояться!</i>"
-        )
-        
-        await unlock_achievement(user_id, "first_rademka", "Первая радёмка", 200)
-        
-        if target.get("avtoritet", 1) > attacker.get("avtoritet", 1) + 20:
-            await unlock_achievement(user_id, "rademka_underdog", "Победа над сильнейшим", 500)
-        
+async def rademka_confirm(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
+    uid, tid = c.from_user.id, int(c.data.replace("rademka_confirm_", ""))
+    a, t = await get_patsan(uid), await get_patsan(tid)
+    if not a or not t: return await c.answer("Ошибка: пацан не найден!", show_alert=True)
+    ch = 50 + (a.get("avtoritet",1)-t.get("avtoritet",1))*5
+    if a.get("avtoritet",1)<t.get("avtoritet",1): ch+=20
+    if a.get("specialization")=="непробиваемый": ch+=5
+    if t.get("level",1)>a.get("level",1): ch-=min(15, (t.get("level",1)-a.get("level",1))*3)
+    if time.time()-t.get("last_update", time.time())>86400: ch+=15
+    ch = max(10, min(95, ch))
+    suc = random.random() < (ch/100)
+    mt, it, eg = 0, None, 0
+    if suc:
+        mt = int(t.get("dengi",0)*0.1)
+        a["dengi"], t["dengi"] = a.get("dengi",0)+mt, max(10, t.get("dengi",0)-mt)
+        a["avtoritet"] = a.get("avtoritet",1)+1
+        if t.get("inventory") and "двенашка" in t["inventory"] and random.random()<0.3:
+            t["inventory"].remove("двенашка"); a["inventory"].append("двенашка"); it="двенашка"
+        eg = 25+(t.get("avtoritet",1)//10)
+        a["experience"] = a.get("experience",0)+eg
+        if t.get("avtoritet",1)>a.get("avtoritet",1):
+            be = (t.get("avtoritet",1)-a.get("avtoritet",1))*2
+            a["experience"]+=be; eg+=be
+        txt = f"✅ <b>УСПЕХ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ! ТЫ ПРОТАЩИЛ!</i>\n\nТы унизил {t.get('nickname','Неизвестно')}!\n⭐ <b>+1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>+{mt}р</b>\n📚 <b>+{eg} опыта</b>{'\n🎒 <b>Забрал двенашку!</b>' if it else ''}\n🎲 <b>Шанс:</b> {ch}%\n<i>Он теперь боится!</i>"
+        await unlock_achievement(uid, "first_rademka", "Первая радёмка", 200)
+        if t.get("avtoritet",1)>a.get("avtoritet",1)+20: await unlock_achievement(uid, "rademka_underdog", "Победа над сильнейшим", 500)
     else:
-        money_penalty = int(attacker.get("dengi", 0) * 0.05)
-        attacker["dengi"] = attacker.get("dengi", 0) - money_penalty
-        
-        attacker["avtoritet"] = max(1, attacker.get("avtoritet", 1) - 1)
-        
-        exp_gained = 5
-        attacker["experience"] = attacker.get("experience", 0) + exp_gained
-        
-        revenge_text = ""
-        revenge_money = 0
-        if random.random() < 0.2:
-            revenge_money = int(attacker.get("dengi", 0) * 0.05)
-            attacker["dengi"] = attacker.get("dengi", 0) - revenge_money
-            target["dengi"] = target.get("dengi", 0) + revenge_money
-            revenge_text = f"\n💥 <b>Он отомстил и забрал {revenge_money}р!</b>"
-        
-        result_text = (
-            f"❌ <b>ПРОВАЛ РАДЁМКИ!</b>\n\n"
-            f"<i>Сам оказался радёмкой... Стыдоба!</i>\n\n"
-            f"{target.get('nickname', 'Неизвестно')} оказался круче тебя!\n"
-            f"⭐ <b>-1 авторитет</b> (теперь {attacker.get('avtoritet', 1)})\n"
-            f"💰 <b>-{money_penalty}р</b> (потерял при позоре)\n"
-            f"📚 <b>+{exp_gained} опыта</b> (учись на ошибках){revenge_text}\n\n"
-            f"🎲 <b>Шанс был:</b> {chance}%\n"
-            f"<i>Теперь над тобой смеются...</i>"
-        )
-    
-    await save_patsan(attacker)
-    await save_patsan(target)
-    
-    await save_rademka_fight(
-        winner_id=user_id if success else target_id,
-        loser_id=target_id if success else user_id,
-        money_taken=money_taken,
-        item_stolen=item_stolen,
-        scouted=False
-    )
-    
-    level_up_result = await check_level_up(attacker)
-    level_up_text = ""
-    
-    if level_up_result[0]:
-        new_level = attacker.get("level", 1)
-        level_up_text = f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {new_level} уровня!"
-        await save_patsan(attacker)
-    
-    reply_markup = back_to_rademka_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        result_text + level_up_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+        mp = int(a.get("dengi",0)*0.05)
+        a["dengi"], a["avtoritet"] = a.get("dengi",0)-mp, max(1, a.get("avtoritet",1)-1)
+        eg, rt = 5, ""
+        if random.random()<0.2:
+            rm = int(a.get("dengi",0)*0.05)
+            a["dengi"], t["dengi"] = a.get("dengi",0)-rm, t.get("dengi",0)+rm
+            rt = f"\n💥 <b>Он отомстил и забрал {rm}р!</b>"
+        a["experience"] = a.get("experience",0)+eg
+        txt = f"❌ <b>ПРОВАЛ!</b>\n\n<i>Сам оказался радёмкой...</i>\n\n{t.get('nickname','Неизвестно')} круче!\n⭐ <b>-1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>-{mp}р</b>\n📚 <b>+{eg} опыта</b>{rt}\n🎲 <b>Шанс:</b> {ch}%\n<i>Теперь смеются...</i>"
+    await save_patsan(a); await save_patsan(t)
+    await save_rademka_fight(winner_id=uid if suc else tid, loser_id=tid if suc else uid, money_taken=mt, item_stolen=it, scouted=False)
+    lup, ltxt = await check_level_up(a), ""
+    if lup[0]: ltxt=f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {a.get('level',1)} уровня!"; await save_patsan(a)
+    await c.message.edit_text(txt+ltxt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @router.callback_query(F.data == "rademka_stats")
-async def rademka_stats(callback: types.CallbackQuery):
-    """Статистика радёмок"""
-    user_id = callback.from_user.id
-    
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
+async def rademka_stats(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
     try:
-        conn = await get_connection()
-        
-        cursor = await conn.execute('''
-            SELECT 
-                COUNT(*) as total_fights,
-                SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN loser_id = ? THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN winner_id = ? THEN money_taken ELSE 0 END) as total_money_taken,
-                SUM(CASE WHEN loser_id = ? THEN money_taken ELSE 0 END) as total_money_lost
-            FROM rademka_fights 
-            WHERE winner_id = ? OR loser_id = ?
-        ''', (user_id, user_id, user_id, user_id, user_id, user_id))
-        
-        stats = await cursor.fetchone()
-        
-        if stats and stats.get("total_fights") and stats["total_fights"] > 0:
-            total = stats["total_fights"]
-            wins = stats.get("wins", 0) or 0
-            losses = stats.get("losses", 0) or 0
-            win_rate = (wins / total * 100) if total > 0 else 0
-            money_taken = stats.get("total_money_taken", 0) or 0
-            money_lost = stats.get("total_money_lost", 0) or 0
-            net_profit = money_taken - money_lost
-            
-            message_text = (
-                f"📊 <b>ТВОЯ СТАТИСТИКА РАДЁМОК</b>\n\n"
-                f"🎮 <b>Всего радёмок:</b> {total}\n"
-                f"✅ <b>Побед:</b> {wins}\n"
-                f"❌ <b>Поражений:</b> {losses}\n"
-                f"📈 <b>Винрейт:</b> {win_rate:.1f}%\n"
-                f"💰 <b>Всего отжато:</b> {money_taken}р\n"
-                f"💸 <b>Всего потеряно:</b> {money_lost}р\n"
-                f"💎 <b>Чистая прибыль:</b> {net_profit}р\n\n"
-            )
-            
-            if wins > 0:
-                cursor = await conn.execute('''
-                    SELECT loser_id, COUNT(*) as fights, SUM(money_taken) as total_money
-                    FROM rademka_fights 
-                    WHERE winner_id = ?
-                    GROUP BY loser_id 
-                    ORDER BY fights DESC, total_money DESC
-                    LIMIT 3
-                ''', (user_id,))
-                
-                top_targets = await cursor.fetchall()
-                
-                if top_targets:
-                    message_text += "<b>🎯 Любимые цели:</b>\n"
-                    for i, target in enumerate(top_targets, 1):
-                        user_cursor = await conn.execute(
-                            "SELECT nickname, avtoritet FROM users WHERE user_id = ?",
-                            (target.get("loser_id"),)
-                        )
-                        target_user = await user_cursor.fetchone()
-                        nickname = target_user.get("nickname") if target_user else f"Пацан_{target.get('loser_id')}"
-                        avtoritet = target_user.get("avtoritet") if target_user else 1
-                        
-                        if len(nickname) > 20:
-                            nickname = nickname[:17] + "..."
-                        
-                        message_text += f"{i}. {nickname} (⭐{avtoritet}) - {target.get('fights', 0)} раз, +{target.get('total_money', 0) or 0}р\n"
-            
-            if losses > 0:
-                cursor = await conn.execute('''
-                    SELECT winner_id, COUNT(*) as fights, SUM(money_taken) as total_money
-                    FROM rademka_fights 
-                    WHERE loser_id = ?
-                    GROUP BY winner_id 
-                    ORDER BY fights DESC, total_money DESC
-                    LIMIT 2
-                ''', (user_id,))
-                
-                top_opponents = await cursor.fetchall()
-                
-                if top_opponents:
-                    message_text += "\n<b>💥 Частые противники:</b>\n"
-                    for i, opponent in enumerate(top_opponents, 1):
-                        user_cursor = await conn.execute(
-                            "SELECT nickname, avtoritet FROM users WHERE user_id = ?",
-                            (opponent.get("winner_id"),)
-                        )
-                        opponent_user = await user_cursor.fetchone()
-                        nickname = opponent_user.get("nickname") if opponent_user else f"Пацан_{opponent.get('winner_id')}"
-                        
-                        if len(nickname) > 20:
-                            nickname = nickname[:17] + "..."
-                        
-                        message_text += f"{i}. {nickname} - {opponent.get('fights', 0)} раз, -{opponent.get('total_money', 0) or 0}р\n"
-        
-        else:
-            message_text = (
-                f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
-                f"У тебя ещё не было радёмок!\n"
-                f"Выбери цель и протащи кого-нибудь!\n\n"
-                f"<i>Пока все думают, что ты мирный пацан...</i>"
-            )
-        
-        await conn.close()
-        
+        cn = await get_connection()
+        cur = await cn.execute('SELECT COUNT(*) as tf, SUM(CASE WHEN winner_id=? THEN 1 ELSE 0 END) as w, SUM(CASE WHEN loser_id=? THEN 1 ELSE 0 END) as l, SUM(CASE WHEN winner_id=? THEN money_taken ELSE 0 END) as mt, SUM(CASE WHEN loser_id=? THEN money_taken ELSE 0 END) as ml FROM rademka_fights WHERE winner_id=? OR loser_id=?', (c.from_user.id,)*6)
+        s = await cur.fetchone()
+        if s and s.get("tf") and s["tf"]>0:
+            t, w, l, mt, ml, wr = s["tf"], s.get("w",0) or 0, s.get("l",0) or 0, s.get("mt",0) or 0, s.get("ml",0) or 0, (s.get("w",0)/s["tf"]*100) if s["tf"]>0 else 0
+            txt = f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n🎮 <b>Всего:</b> {t}\n✅ <b>Побед:</b> {w}\n❌ <b>Поражений:</b> {l}\n📈 <b>Винрейт:</b> {wr:.1f}%\n💰 <b>Отжато:</b> {mt}р\n💸 <b>Потеряно:</b> {ml}р\n💎 <b>Прибыль:</b> {mt-ml}р\n\n"
+            if w>0:
+                cur = await cn.execute('SELECT loser_id, COUNT(*) as f, SUM(money_taken) as tm FROM rademka_fights WHERE winner_id=? GROUP BY loser_id ORDER BY f DESC, tm DESC LIMIT 3', (c.from_user.id,))
+                tt = await cur.fetchall()
+                if tt:
+                    txt+="<b>🎯 Любимые цели:</b>\n"
+                    for i, tg in enumerate(tt,1):
+                        cur2 = await cn.execute("SELECT nickname, avtoritet FROM users WHERE user_id=?", (tg.get("loser_id"),))
+                        tu = await cur2.fetchone()
+                        nn = (tu.get("nickname") if tu else f"Пацан_{tg.get('loser_id')}")[:17]+("..." if len(tu.get('nickname',''))>20 else "")
+                        txt+=f"{i}. {nn} (⭐{tu.get('avtoritet',1) if tu else 1}) - {tg.get('f',0)} раз, +{tg.get('tm',0) or 0}р\n"
+            if l>0:
+                cur = await cn.execute('SELECT winner_id, COUNT(*) as f, SUM(money_taken) as tm FROM rademka_fights WHERE loser_id=? GROUP BY winner_id ORDER BY f DESC, tm DESC LIMIT 2', (c.from_user.id,))
+                to = await cur.fetchall()
+                if to:
+                    txt+="\n<b>💥 Противники:</b>\n"
+                    for i, op in enumerate(to,1):
+                        cur2 = await cn.execute("SELECT nickname FROM users WHERE user_id=?", (op.get("winner_id"),))
+                        ou = await cur2.fetchone()
+                        nn = (ou.get("nickname") if ou else f"Пацан_{op.get('winner_id')}")[:17]+("..." if len(ou.get('nickname',''))>20 else "")
+                        txt+=f"{i}. {nn} - {op.get('f',0)} раз, -{op.get('tm',0) or 0}р\n"
+        else: txt = f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\nНет радёмок!\nВыбери цель!\n\n<i>Пока мирный пацан...</i>"
+        await cn.close()
     except Exception as e:
-        print(f"Ошибка при получении статистики: {e}")
-        message_text = (
-            f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
-            f"База данных статистики готовится...\n"
-            f"Проведи первую радёмку - статистика появится автоматически!\n\n"
-            f"<i>Система учится считать твои победы!</i>"
-        )
-    
-    reply_markup = back_to_rademka_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+        print(f"Ошибка статистики: {e}")
+        txt = f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\nБаза готовится...\n\n<i>Система учится считать!</i>"
+    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @router.callback_query(F.data == "rademka_top")
-async def rademka_top(callback: types.CallbackQuery):
-    """Топ радёмщиков"""
-    if not DB_IMPORTS_OK:
-        await callback.answer("База данных недоступна", show_alert=True)
-        return
-    
+async def rademka_top(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK: return await c.answer("База недоступна", show_alert=True)
     try:
-        conn = await get_connection()
-        
-        cursor = await conn.execute('''
-            SELECT 
-                u.nickname,
-                u.user_id,
-                u.avtoritet,
-                u.level,
-                COUNT(CASE WHEN rf.winner_id = u.user_id THEN 1 END) as wins,
-                COUNT(CASE WHEN rf.loser_id = u.user_id THEN 1 END) as losses,
-                SUM(CASE WHEN rf.winner_id = u.user_id THEN rf.money_taken ELSE 0 END) as total_money_taken
-            FROM users u
-            LEFT JOIN rademka_fights rf ON u.user_id = rf.winner_id OR u.user_id = rf.loser_id
-            GROUP BY u.user_id, u.nickname, u.avtoritet, u.level
-            HAVING wins > 0
-            ORDER BY wins DESC, total_money_taken DESC
-            LIMIT 10
-        ''')
-        
-        top_players = await cursor.fetchall()
-        
-        if top_players:
-            message_text = "👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-            
-            medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-            
-            for i, player in enumerate(top_players):
-                if i >= len(medals):
-                    break
-                    
-                medal = medals[i]
-                nickname = player.get("nickname", "Неизвестно")
-                wins = player.get("wins", 0) or 0
-                losses = player.get("losses", 0) or 0
-                total = wins + losses
-                win_rate = (wins / total * 100) if total > 0 else 0
-                money = player.get("total_money_taken", 0) or 0
-                avtoritet = player.get("avtoritet", 1)
-                level = player.get("level", 1) or 1
-                
-                rank_name, rank_emoji = get_rank(avtoritet)
-                
-                if len(nickname) > 15:
-                    nickname = nickname[:12] + "..."
-                
-                message_text += (
-                    f"{medal} <code>{nickname}</code> {rank_emoji}\n"
-                    f"   📈 {level} ур. | ⭐ {avtoritet}\n"
-                    f"   ✅ {wins} побед ({win_rate:.0f}%) | 💰 {money}р\n\n"
-                )
-            
-            message_text += "<i>Топ по количеству побед в радёмках</i>"
-            
-        else:
-            message_text = (
-                f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-                f"Пока никого нет в топе!\n"
-                f"Будь первым - протащи кого-нибудь!\n\n"
-                f"<i>Слава ждёт самого дерзкого пацана!</i>"
-            )
-            
-        await conn.close()
-        
+        cn = await get_connection()
+        cur = await cn.execute('SELECT u.nickname, u.user_id, u.avtoritet, u.level, COUNT(CASE WHEN rf.winner_id=u.user_id THEN 1 END) as w, COUNT(CASE WHEN rf.loser_id=u.user_id THEN 1 END) as l, SUM(CASE WHEN rf.winner_id=u.user_id THEN rf.money_taken ELSE 0 END) as tm FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id OR u.user_id=rf.loser_id GROUP BY u.user_id, u.nickname, u.avtoritet, u.level HAVING w>0 ORDER BY w DESC, tm DESC LIMIT 10')
+        tp = await cur.fetchall()
+        if tp:
+            mds, txt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], "👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
+            for i, p in enumerate(tp):
+                if i>=len(mds): break
+                md, nn, w, l, tm, av, lv = mds[i], p.get("nickname","Неизвестно"), p.get("w",0) or 0, p.get("l",0) or 0, p.get("tm",0) or 0, p.get("avtoritet",1), p.get("level",1) or 1
+                rn, re = get_rank(av)
+                if len(nn)>15: nn=nn[:12]+"..."
+                txt+=f"{md} <code>{nn}</code> {re}\n   📈 {lv} ур. | ⭐ {av}\n   ✅ {w} ({0 if w+l==0 else (w/(w+l)*100):.0f}%) | 💰 {tm}р\n\n"
+            txt+="<i>Топ по победам</i>"
+        else: txt = f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\nПока никого!\nБудь первым!\n\n<i>Слава ждёт!</i>"
+        await cn.close()
     except Exception as e:
-        print(f"Ошибка при получении топа: {e}")
-        message_text = (
-            f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-            f"Рейтинг формируется...\n\n"
-            f"Чтобы попасть в топ, нужно:\n"
-            f"1. Провести несколько радёмок\n"
-            f"2. Побеждать чаще, чем проигрывать\n"
-            f"3. Отжимать больше денег\n\n"
-            f"<i>Первые места скоро будут заняты!</i>"
-        )
-    
-    reply_markup = back_to_rademka_keyboard() if KEYBOARDS_OK else None
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-    await callback.answer()
+        print(f"Ошибка топа: {e}")
+        txt = f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\nРейтинг формируется...\n\n<i>Места скоро будут!</i>"
+    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.answer()
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
-async def back_to_main(callback: types.CallbackQuery):
-    """Возврат в главное меню"""
-    if not DB_IMPORTS_OK or not KEYBOARDS_OK:
-        await callback.message.edit_text(
-            "<b>Главное меню</b>\n\nБот работает, некоторые функции в разработке!",
-            parse_mode="HTML"
-        )
-        return
-    
+async def back_to_main(c: types.CallbackQuery):
+    if not DB_IMPORTS_OK or not KEYBOARDS_OK: return await c.message.edit_text("<b>Главное меню</b>\n\nБот работает!", parse_mode="HTML")
     try:
-        patsan = await get_patsan_cached(callback.from_user.id)
-        
-        atm_count = patsan.get('atm_count', 0)
-        max_atm = patsan.get('max_atm', 12)
-        progress = int((atm_count / max_atm) * 10) if max_atm > 0 else 0
-        progress_bar = "█" * progress + "░" * (10 - progress)
-        
-        rank_emoji = patsan.get('rank_emoji', '👶')
-        rank_name = patsan.get('rank_name', 'Пацанчик')
-        
-        await callback.message.edit_text(
-            f"<b>Главное меню</b>\n"
-            f"{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan.get('avtoritet', 1)} | 📈 Ур. {patsan.get('level', 1)}\n\n"
-            f"🌀 Атмосферы: [{progress_bar}] {atm_count}/{max_atm}\n"
-            f"💸 Деньги: {patsan.get('dengi', 0)}р | 🐍 Змий: {patsan.get('zmiy', 0):.1f}кг\n\n"
-            f"<i>Выбери действие, пацан:</i>",
-            reply_markup=main_keyboard(),
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        print(f"Ошибка при возврате в главное меню: {e}")
-        await callback.message.edit_text(
-            "<b>Главное меню</b>\n\nБот работает!",
-            reply_markup=main_keyboard(),
-            parse_mode="HTML"
-        )
+        p = await get_patsan_cached(c.from_user.id)
+        a, m, pb = p.get('atm_count',0), p.get('max_atm',12), "█"*int((a/m)*10) + "░"*(10-int((a/m)*10)) if m>0 else "░"*10
+        rn, re = p.get('rank_name','Пацанчик'), p.get('rank_emoji','👶')
+        await c.message.edit_text(f"<b>Главное меню</b>\n{re} <b>{rn}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n🌀 Атмосферы: [{pb}] {a}/{m}\n💸 {p.get('dengi',0)}р | 🐍 {p.get('zmiy',0):.1f}кг\n\n<i>Выбери действие:</i>", reply_markup=main_keyboard(), parse_mode="HTML")
+    except Exception as e: print(f"Ошибка главного: {e}"); await c.message.edit_text("<b>Главное меню</b>\n\nБот работает!", reply_markup=main_keyboard(), parse_mode="HTML")
 
-# Экспортируем роутер
 __all__ = ["router"]
