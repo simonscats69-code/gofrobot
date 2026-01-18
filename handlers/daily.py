@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_patsan_cached, get_daily_reward
 from keyboards.keyboards import main_keyboard
-from keyboards.new_keyboards import daily_keyboard, achievements_keyboard
+from keyboards.keyboards import daily_keyboard, achievements_keyboard
 
 router = Router()
 
