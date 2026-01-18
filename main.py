@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from handlers.commands import router as commands_router
-from handlers.callbacks import router as callbacks_router
+from handlers.callbacks import r as callbacks_router  # ИСПРАВЛЕНО: router -> r
 from handlers.shop import router as shop_router
 from handlers.top import router as top_router
 from handlers.daily import router as daily_router
