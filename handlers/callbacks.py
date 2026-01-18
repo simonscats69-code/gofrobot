@@ -9,25 +9,25 @@ router = Router()
 
 def get_user_rank(p):
     if 'rank_emoji' in p and 'rank_name' in p: return p['rank_emoji'], p['rank_name']
-    av = p.get('avtoritet',1)
-    RANKS = {1:("👶","Пацанчик"),11:("👊","Браток"),51:("👑","Авторитет"),201:("🐉","Царь гофры"),501:("🏛️","Император"),1001:("💩","БОГ ГОВНА")}
-    rn, re = "Пацанчик", "👶"
-    for thr, (e,n) in sorted(RANKS.items()):
-        if av >= thr: rn, re = n, e
-    p['rank_emoji'], p['rank_name'] = re, rn
-    return re, rn
+    av=p.get('avtoritet',1)
+    R={1:("👶","Пацанчик"),11:("👊","Браток"),51:("👑","Авторитет"),201:("🐉","Царь гофры"),501:("🏛️","Император"),1001:("💩","БОГ ГОВНА")}
+    rn,re="Пацанчик","👶"
+    for t,(e,n) in sorted(R.items()):
+        if av>=t: rn,re=n,e
+    p['rank_emoji'],p['rank_name']=re,rn
+    return re,rn
 
 async def edit_or_answer(c,t,kb=None,p="HTML"):
-    try: await c.message.edit_text(t,reply_markup=kb,parse_mode=p)
+    try:await c.message.edit_text(t,reply_markup=kb,parse_mode=p)
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e): raise
 
-def pb(c,t,l=10): 
+def pb(c,t,l=10):
     f=int((c/t)*l) if t>0 else 0
     return "█"*f+"░"*(l-f)
 
 def ft(s):
-    if s<60: return f"{s}с"
+    if s<60:return f"{s}с"
     m,h=s//60,s//3600
     return f"{h}ч {m%60}м" if h>0 else f"{m}м {s%60}с"
 
@@ -37,14 +37,13 @@ def get_emoji(i):
 
 class IgnoreNotModifiedMiddleware(BaseMiddleware):
     async def __call__(self,h,e,d):
-        try: return await h(e,d)
+        try:return await h(e,d)
         except TelegramBadRequest as ex:
             if "message is not modified" in str(ex) or ("Bad Request" in str(ex) and "exactly the same" in str(ex)):
                 if cb:=d.get('callback_query',getattr(e,'callback_query',None)):
                     if hasattr(cb,'answer'): await cb.answer()
                 return
             raise
-
 router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
 async def mm_text(p):
@@ -53,33 +52,29 @@ async def mm_text(p):
     return f"<b>Главное меню</b>\n{re} <b>{rn}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n🌀 Атмосферы: [{pb(a,m)}] {a}/{m}\n💸 Деньги: {p.get('dengi',0)}р | 🐍 Змий: {p.get('zmiy',0):.1f}кг\n\n<i>Выбери действие, пацан:</i>"
 
 @router.callback_query(F.data=="back_main")
-async def back_main(c): 
-    p = await get_patsan_cached(c.from_user.id)
-    await edit_or_answer(c, await mm_text(p), main_keyboard())
+async def back_main(c):
+    p=await get_patsan_cached(c.from_user.id)
+    await edit_or_answer(c,await mm_text(p),main_keyboard())
 
 @router.callback_query(F.data=="nickname_menu")
 async def nickname_menu(c):
     from handlers.commands import cmd_nickname
-    await cmd_nickname(c.message)
-    await c.answer()
+    await cmd_nickname(c.message);await c.answer()
 
 @router.callback_query(F.data=="daily")
-async def callback_daily(callback: types.CallbackQuery):
+async def callback_daily(c):
     from handlers.commands import cmd_daily
-    await cmd_daily(callback.message)
-    await callback.answer()
+    await cmd_daily(c.message);await c.answer()
 
 @router.callback_query(F.data=="achievements")
-async def callback_achievements(callback: types.CallbackQuery):
+async def callback_achievements(c):
     from handlers.commands import cmd_achievements
-    await cmd_achievements(callback.message)
-    await callback.answer()
+    await cmd_achievements(c.message);await c.answer()
 
 @router.callback_query(F.data=="rademka")
-async def callback_rademka(callback: types.CallbackQuery):
+async def callback_rademka(c):
     from handlers.commands import cmd_rademka
-    await cmd_rademka(callback.message)
-    await callback.answer()
+    await cmd_rademka(c.message);await c.answer()
 
 ACTION_HANDLERS={"davka":{"func":davka_zmiy,"t":"<b>Заварвариваем дело...</b>{nm}{sm}\n🔄 Потрачено атмосфер: {cost}\n<i>\"{wm} говна за 25 секунд высрал я сейчас\"</i>\n➕ {tg:.3f} кг коричневага{dm}{rm}{em}\nВсего змия накоплено: {zmiy:.3f} кг\n⚡ Осталось атмосфер: {atm_count}/{max_atm}"},"sdat":{"func":sdat_zmiy,"t":"<b>Сдал коричневага на металлолом</b>\n📦 Сдано: {oz:.3f} кг змия\n💰 <b>Получил: {tm} руб.</b>{abt}{em}\n💸 Теперь на кармане: {dengi} руб.\n📈 Уровень: {level} ({experience}/?? опыта)\n<i>Приёмщик: \"Опять эту дрянь принёс... Но плачу больше!\"</i>"}}
 
@@ -311,13 +306,13 @@ async def cb_show_top(c):
         if st=="avtoritet":
             v=f"⭐ {pl.get('avtoritet',0)}"
         elif st=="dengi":
-            dengi_value = pl.get("dengi", 0)
-            dengi_formatted = f'{dengi_value}р'
-            v=f"💰 {dengi_formatted}"
+            dv = pl.get("dengi", 0)
+            df = f'{dv}р'
+            v=f"💰 {df}"
         elif st=="zmiy":
-            zmiy_value = pl.get("zmiy", 0)
-            zmiy_formatted = f'{zmiy_value:.1f}кг'
-            v=f"🐍 {zmiy_formatted}"
+            zv = pl.get("zmiy", 0)
+            zf = f'{zv:.1f}кг'
+            v=f"🐍 {zf}"
         elif st=="total_skill":
             v=f"💪 {pl.get('total_skill',0)} ур."
         elif st=="level":
@@ -356,97 +351,92 @@ async def cb_confirm_trash(c):
         await edit_or_answer(c,f"✅ <b>МУСОР ВЫБРОШЕН!</b>\n\nВыброшено предметов: {r}\nОсталось в инвентаре: {len(n)}\n\n<i>Теперь есть место для чего-то полезного!</i>",main_keyboard())
     else:await edit_or_answer(c,"🤷 <b>НЕТ МУСОРА</b>\n\nВ твоём инвентаре не нашлось мусора.\nВсё полезное, всё пригодится!",main_keyboard())
 
-# ========== НОВЫЕ ХЕНДЛЕРЫ ДЛЯ КНОПОК ==========
-
 @router.callback_query(F.data == "shop")
-async def callback_shop(callback: types.CallbackQuery):
+async def callback_shop(c):
     from handlers.shop import callback_shop as shop_handler
-    await shop_handler(callback)
+    await shop_handler(c)
 
 @router.callback_query(F.data == "achievements_progress_all")
-async def callback_achievements_progress_all(callback: types.CallbackQuery):
-    await cb_ach_progress(callback)
+async def callback_achievements_progress_all(c):
+    await cb_ach_progress(c)
 
 @router.callback_query(F.data == "level_progress")
-async def callback_level_progress(callback: types.CallbackQuery):
-    await cb_level_stats(callback)
+async def callback_level_progress(c):
+    await cb_level_stats(c)
 
 @router.callback_query(F.data == "level_next")
-async def callback_level_next(callback: types.CallbackQuery):
-    await cb_level_stats(callback)
+async def callback_level_next(c):
+    await cb_level_stats(c)
 
 @router.callback_query(F.data == "atm_regen_time")
-async def callback_atm_regen_time(callback: types.CallbackQuery):
-    await cb_atm_status(callback)
+async def callback_atm_regen_time(c):
+    await cb_atm_status(c)
 
 @router.callback_query(F.data == "atm_max_info")
-async def callback_atm_max_info(callback: types.CallbackQuery):
-    await cb_atm_status(callback)
+async def callback_atm_max_info(c):
+    await cb_atm_status(c)
 
 @router.callback_query(F.data == "atm_boosters")
-async def callback_atm_boosters(callback: types.CallbackQuery):
-    await cb_atm_status(callback)
+async def callback_atm_boosters(c):
+    await cb_atm_status(c)
 
 @router.callback_query(F.data == "craft_history")
-async def callback_craft_history(callback: types.CallbackQuery):
-    await callback.answer("История крафта пока недоступна", show_alert=True)
+async def callback_craft_history(c):
+    await c.answer("История крафта пока недоступна", show_alert=True)
 
 @router.callback_query(F.data.startswith("buy_"))
-async def callback_buy(callback: types.CallbackQuery):
+async def callback_buy(c):
     from handlers.shop import callback_buy as shop_buy_handler
-    await shop_buy_handler(callback)
+    await shop_buy_handler(c)
 
 @router.callback_query(F.data.startswith("spec_info_"))
-async def callback_spec_info(callback: types.CallbackQuery):
-    spec_id = callback.data.replace("spec_info_", "")
-    await callback.answer(f"Информация о специализации {spec_id}", show_alert=True)
+async def callback_spec_info(c):
+    spec_id = c.data.replace("spec_info_", "")
+    await c.answer(f"Информация о специализации {spec_id}", show_alert=True)
 
 @router.callback_query(F.data.startswith("recipe_"))
-async def callback_recipe_info(callback: types.CallbackQuery):
-    await callback.answer("Информация о рецепте", show_alert=True)
+async def callback_recipe_info(c):
+    await c.answer("Информация о рецепте", show_alert=True)
 
 @router.callback_query(F.data == "rademka_stats")
-async def callback_rademka_stats(callback: types.CallbackQuery):
-    await callback.answer("Статистика радёмок пока недоступна", show_alert=True)
+async def callback_rademka_stats(c):
+    await c.answer("Статистика радёмок пока недоступна", show_alert=True)
 
 @router.callback_query(F.data == "rademka_top")
-async def callback_rademka_top(callback: types.CallbackQuery):
-    await callback.answer("Топ радёмок пока недоступен", show_alert=True)
+async def callback_rademka_top(c):
+    await c.answer("Топ радёмок пока недоступен", show_alert=True)
 
 @router.callback_query(F.data == "rademka_random")
-async def callback_rademka_random(callback: types.CallbackQuery):
-    await callback.answer("Случайная цель пока недоступна", show_alert=True)
+async def callback_rademka_random(c):
+    await c.answer("Случайная цель пока недоступна", show_alert=True)
 
 @router.callback_query(F.data == "my_reputation")
-async def callback_my_reputation(callback: types.CallbackQuery):
-    p = await get_patsan_cached(callback.from_user.id)
-    await callback.answer(f"Твоя репутация (авторитет): {p.get('avtoritet', 1)}", show_alert=True)
+async def callback_my_reputation(c):
+    p = await get_patsan_cached(c.from_user.id)
+    await c.answer(f"Твоя репутация (авторитет): {p.get('avtoritet', 1)}", show_alert=True)
 
 @router.callback_query(F.data == "top_reputation")
-async def callback_top_reputation(callback: types.CallbackQuery):
+async def callback_top_reputation(c):
     from handlers.commands import cmd_top
-    await cmd_top(callback.message)
-    await callback.answer()
+    await cmd_top(c.message);await c.answer()
 
 @router.callback_query(F.data == "change_nickname")
-async def callback_change_nickname(callback: types.CallbackQuery, state: FSMContext):
+async def callback_change_nickname(c, state: FSMContext):
     from handlers.nickname_and_rademka import process_nickname
-    await process_nickname(callback.message, state)
-    await callback.answer()
+    await process_nickname(c.message, state);await c.answer()
 
 @router.callback_query(F.data == "specialization_info")
-async def callback_specialization_info(callback: types.CallbackQuery):
-    await cb_spec_detail(callback)
+async def callback_specialization_info(c):
+    await cb_spec_detail(c)
 
 @router.callback_query(F.data.startswith("craft_"))
-async def callback_craft_specific(callback: types.CallbackQuery):
-    if callback.data in ["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]:
-        item_id = callback.data.replace("craft_", "")
-        await callback.answer(f"Крафт {item_id} начат", show_alert=True)
+async def callback_craft_specific(c):
+    if c.data in ["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]:
+        item_id = c.data.replace("craft_", "")
+        await c.answer(f"Крафт {item_id} начат", show_alert=True)
     else:
-        await callback.answer("Неизвестный предмет для крафта", show_alert=True)
+        await c.answer("Неизвестный предмет для крафта", show_alert=True)
 
 @router.callback_query()
-async def unknown_callback(callback: types.CallbackQuery):
-    """Хендлер для всех необработанных callback_data"""
-    await callback.answer(f"Кнопка '{callback.data}' пока не работает. Разработчик в курсе!", show_alert=True)
+async def unknown_callback(c):
+    await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
