@@ -536,18 +536,32 @@ async def save_rademka(win, lose, money=0, item=None, scout=False):
     await pool.execute('INSERT INTO rademka_fights (winner_id,loser_id,money_taken,item_stolen,scouted) VALUES (?,?,?,?,?)',
                       (win, lose, money, item, scout))
 
-async def get_top(limit=10, sort="avtoritet"): return await user_manager.get_top_fast(limit, sort)
-         get_top_players = get_top
-async def get_user_ach(uid):
+async def get_top_players(limit=10, sort="avtoritet"):
+    """Возвращает топ игроков по указанному критерию"""
+    return await user_manager.get_top_fast(limit, sort)
+
+async def get_top(limit=10, sort="avtoritet"):
+    """Алиас для get_top_players (обратная совместимость)"""
+    return await get_top_players(limit, sort)
+
+async def get_user_achievements(uid):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
-        u = await c.fetchone(); return json.loads(u["achievements"]) if u and u["achievements"] else []
+        u = await c.fetchone()
+        return json.loads(u["achievements"]) if u and u["achievements"] else []
 
-async def get_connection(): return await DatabaseManager.get_pool()
-async def init_bot(): await DatabaseManager.get_pool(); await user_manager.start_batch_saver()
+async def get_connection(): 
+    return await DatabaseManager.get_pool()
+
+async def init_bot(): 
+    await DatabaseManager.get_pool()
+    await user_manager.start_batch_saver()
+
 async def shutdown(): 
     await user_manager._save_dirty()
-    if DatabaseManager._pool: await DatabaseManager._pool.close(); DatabaseManager._pool = None
+    if DatabaseManager._pool: 
+        await DatabaseManager._pool.close()
+        DatabaseManager._pool = None
 
 if __name__ == "__main__":
     async def test():
