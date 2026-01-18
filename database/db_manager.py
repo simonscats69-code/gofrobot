@@ -1,8 +1,5 @@
-import asyncio, time, random, json, aiosqlite, logging
-from typing import Optional, List, Dict, Any, Tuple
-from contextlib import asynccontextmanager
-
-logger = logging.getLogger(__name__)
+import asyncio, time, random, json, aiosqlite
+from typing import Optional, List, Dict, Any
 
 ATM_MAX, ATM_TIME, DB_NAME = 12, 600, "bot_database.db"
 CACHE_TTL, MAX_CACHE, BATCH_INT = 30, 500, 5
@@ -92,7 +89,6 @@ class DatabaseManager:
                 created_at INTEGER DEFAULT (strftime('%s','now'))
             );
         ''')
-        logger.info("Таблицы созданы")
 
 class UserCache:
     def __init__(self, data, timestamp):
@@ -100,9 +96,7 @@ class UserCache:
 
 class UserDataManager:
     def __init__(self):
-        self._cache, self._dirty = {}, set()
-        self._lock, self._save_task = asyncio.Lock(), None
-        self._db = DatabaseManager()
+        self._cache, self._dirty, self._lock, self._save_task = {}, set(), asyncio.Lock(), None
     
     async def start_batch_saver(self):
         if not self._save_task:
@@ -121,7 +115,7 @@ class UserDataManager:
             self._dirty.clear()
     
     async def _batch_save(self, users):
-        pool = await self._db.get_pool()
+        pool = await DatabaseManager.get_pool()
         vals = []
         for uid, d in users:
             vals.append((d.get("nickname",""), d.get("avtoritet",1), d.get("zmiy",0.0), d.get("dengi",150),
@@ -144,7 +138,7 @@ class UserDataManager:
         if not force and uid in self._cache and now - self._cache[uid].timestamp < CACHE_TTL:
             return self._cache[uid].data
         
-        pool = await self._db.get_pool()
+        pool = await DatabaseManager.get_pool()
         async with pool.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
             row = await c.fetchone()
             if row: user = dict(row); await self._process_user(user)
@@ -163,12 +157,9 @@ class UserDataManager:
             "inventory": ["двенашка", "энергетик"], "upgrades": {}, "active_boosts": {},
             "achievements": [], "crafted_items": [], "rademka_scouts": 0, "nickname_changed": False
         }
-        pool = await self._db.get_pool()
-        await pool.execute('''
-            INSERT OR IGNORE INTO users 
-            (user_id, nickname, last_update, inventory) 
-            VALUES (?,?,?,?)
-        ''', (uid, user["nickname"], now, json.dumps(user["inventory"])))
+        pool = await DatabaseManager.get_pool()
+        await pool.execute('INSERT OR IGNORE INTO users (user_id, nickname, last_update, inventory) VALUES (?,?,?,?)',
+                          (uid, user["nickname"], now, json.dumps(user["inventory"])))
         return user
     
     async def _process_user(self, user):
@@ -187,9 +178,8 @@ class UserDataManager:
                 try: user[field] = json.loads(val) if val else ([] if field in ["inventory","achievements","crafted_items"] else {})
                 except: user[field] = [] if field in ["inventory","achievements","crafted_items"] else {}
         
-        # ИСПРАВЛЕННАЯ ЧАСТЬ: Определение ранга с гарантированными значениями
         av = user.get("avtoritet", 1)
-        rank_name, rank_emoji = get_rank(av)  # Используем исправленную функцию get_rank
+        rank_name, rank_emoji = get_rank(av)
         user.update({"rank_emoji": rank_emoji, "rank_name": rank_name})
     
     def mark_dirty(self, uid):
@@ -210,7 +200,7 @@ class UserDataManager:
             for uid, _ in sorted_c[:MAX_CACHE//2]: del self._cache[uid]
     
     async def get_top_fast(self, limit=10, sort="avtoritet"):
-        pool = await self._db.get_pool()
+        pool = await DatabaseManager.get_pool()
         async with pool.execute(f'SELECT * FROM users ORDER BY {sort} DESC LIMIT ?', (limit,)) as c:
             rows = await c.fetchall()
             result = []
@@ -223,27 +213,10 @@ class UserDataManager:
 user_manager = UserDataManager()
 
 def get_rank(av):
-    """ИСПРАВЛЕННАЯ функция определения ранга. Всегда возвращает гарантированные значения."""
-    # Сортируем ранги по возрастанию порогов
     for threshold, (emoji, name) in sorted(RANKS.items()):
         if av >= threshold:
             return name, emoji
-    # Возвращаем значения по умолчанию, если не найдено
     return "Пацанчик", "👶"
-
-def calc_atm_time(user):
-    t = ATM_TIME
-    if user.get("skill_zashita",1) >= 10: t *= 0.9
-    if user.get("specialization") == "непробиваемый": t *= 0.9
-    boosts = user.get("active_boosts",{})
-    if isinstance(boosts, str):
-        try: boosts = json.loads(boosts) if boosts else {}
-        except: boosts = {}
-    if boosts.get("вечный_двигатель"): t *= 0.7
-    return int(max(60, t))
-
-def get_spec_bonuses(spec):
-    return SPECS.get(spec, {}).get("bon", {})
 
 async def get_patsan(uid): return await user_manager.get_user(uid)
 async def get_patsan_cached(uid): return await user_manager.get_user(uid)
@@ -257,7 +230,7 @@ async def davka_zmiy(uid):
     p = await user_manager.get_user(uid)
     cost = 2
     if p["upgrades"].get("tea_slivoviy"): cost = max(1, cost-1)
-    bon = get_spec_bonuses(p.get("specialization",""))
+    bon = SPECS.get(p.get("specialization",""),{}).get("bon",{})
     if bon.get("atm_red"): cost = max(1, cost-bon["atm_red"])
     
     if p["atm_count"] < cost: return None, "Не хватает атмосфер!"
@@ -512,7 +485,7 @@ async def get_daily(uid):
             return {"ok":False, "wait":f"{h}ч {m}м", "next":last+86400}
         
         lvl = u["level"] or 1; base = 100 + lvl*10
-        streak = 1  # упрощённо
+        streak = 1
         mul = 1.0
         if streak >= 30: mul = 4.0
         elif streak >= 7: mul = 3.0
@@ -528,10 +501,6 @@ async def get_daily(uid):
         
         p = await user_manager.get_user(uid, True)
         return {"ok":True, "money":total, "item":item, "streak":streak, "base":base, "bonus":bonus, "lvl":lvl}
-
-async def get_daily_reward(uid):
-    """Алиас для get_daily (для обратной совместимости)"""
-    return await get_daily(uid)
 
 async def unlock_ach(uid, aid, name, rew=0):
     pool = await DatabaseManager.get_pool()
@@ -549,10 +518,6 @@ async def unlock_ach(uid, aid, name, rew=0):
             await pool.execute('UPDATE users SET achievements=? WHERE user_id=?', (json.dumps(ach), uid))
         await user_manager.get_user(uid, True); return True
 
-async def unlock_achievement(uid, aid, name, rew=0):
-    """Алиас для unlock_ach (для обратной совместимости)"""
-    return await unlock_ach(uid, aid, name, rew)
-
 async def change_nick(uid, nick):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT nickname_changed,dengi FROM users WHERE user_id=?', (uid,)) as c:
@@ -568,31 +533,19 @@ async def change_nick(uid, nick):
         await user_manager.get_user(uid, True)
         return True, f"Ник изменён! -{cost}р"
 
-async def change_nickname(uid, nick):
-    """Алиас для change_nick (для обратной совместимости)"""
-    return await change_nick(uid, nick)
-
 async def save_rademka(win, lose, money=0, item=None, scout=False):
     pool = await DatabaseManager.get_pool()
     await pool.execute('INSERT INTO rademka_fights (winner_id,loser_id,money_taken,item_stolen,scouted) VALUES (?,?,?,?,?)',
                       (win, lose, money, item, scout))
 
 async def get_top_players(limit=10, sort="avtoritet"):
-    """Возвращает топ игроков по указанному критерию"""
     return await user_manager.get_top_fast(limit, sort)
-
-async def get_top(limit=10, sort="avtoritet"):
-    """Алиас для get_top_players (обратная совместимость)"""
-    return await get_top_players(limit, sort)
 
 async def get_user_achievements(uid):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
         u = await c.fetchone()
         return json.loads(u["achievements"]) if u and u["achievements"] else []
-
-async def get_connection(): 
-    return await DatabaseManager.get_pool()
 
 async def init_bot(): 
     await DatabaseManager.get_pool()
@@ -604,56 +557,28 @@ async def shutdown():
         await DatabaseManager._pool.close()
         DatabaseManager._pool = None
 
-# =================== НЕДОСТАЮЩИЕ ФУНКЦИИ ДЛЯ ИМПОРТОВ ===================
-
-async def get_craftable_items(uid):
-    """Алиас для get_craftable"""
-    return await get_craftable(uid)
-
-async def get_available_specializations(uid):
-    """Алиас для get_available_specs"""
-    return await get_available_specs(uid)
-
-async def buy_specialization(uid, spec):
-    """Алиас для buy_spec"""
-    return await buy_spec(uid, spec)
-
-async def get_achievement_progress(uid):
-    """Алиас для get_ach_progress"""
-    return await get_ach_progress(uid)
+async def get_craftable_items(uid): return await get_craftable(uid)
+async def get_available_specializations(uid): return await get_available_specs(uid)
+async def buy_specialization(uid, spec): return await buy_spec(uid, spec)
+async def get_achievement_progress(uid): return await get_ach_progress(uid)
+async def get_daily_reward(uid): return await get_daily(uid)
+async def unlock_achievement(uid, aid, name, rew=0): return await unlock_ach(uid, aid, name, rew)
+async def change_nickname(uid, nick): return await change_nick(uid, nick)
+async def get_top(limit=10, sort="avtoritet"): return await get_top_players(limit, sort)
+async def get_connection(): return await DatabaseManager.get_pool()
+async def save_rademka_fight(win, lose, money=0, item=None, scout=False): return await save_rademka(win, lose, money, item, scout)
+async def check_level_up(user): return await check_lvl(user)
 
 def calculate_atm_regen_time(user):
-    """Рассчитывает время восстановления атмосфер"""
-    base_time = 600  # 10 минут в секундах
-    
-    # Бонусы от навыка защиты
-    if user.get("skill_zashita", 1) >= 10:
-        base_time *= 0.9
-    
-    # Бонус от специализации
-    if user.get("specialization") == "непробиваемый":
-        base_time *= 0.9
-    
-    # Бонус от буста "вечный двигатель"
+    base_time = 600
+    if user.get("skill_zashita", 1) >= 10: base_time *= 0.9
+    if user.get("specialization") == "непробиваемый": base_time *= 0.9
     boosts = user.get("active_boosts", {})
-    if isinstance(boosts, dict) and "вечный_двигатель" in boosts:
-        base_time *= 0.7
-    elif isinstance(boosts, str) and "вещий_двигатель" in boosts:
-        base_time *= 0.7
-    
-    return int(max(60, base_time))  # Не меньше 60 секунд
+    if isinstance(boosts, dict) and "вечный_двигатель" in boosts: base_time *= 0.7
+    elif isinstance(boosts, str) and "вечный_двигатель" in boosts: base_time *= 0.7
+    return int(max(60, base_time))
 
-async def save_rademka_fight(winner_id, loser_id, money_taken=0, item_stolen=None, scouted=False):
-    """Алиас для save_rademka"""
-    return await save_rademka(winner_id, loser_id, money_taken, item_stolen, scouted)
-
-def get_specialization_bonuses(spec):
-    """Возвращает бонусы специализации"""
-    return SPECS.get(spec, {}).get("bon", {})
-
-async def check_level_up(user):
-    """Алиас для check_lvl"""
-    return await check_lvl(user)
+def get_specialization_bonuses(spec): return SPECS.get(spec, {}).get("bon", {})
 
 if __name__ == "__main__":
     async def test():
