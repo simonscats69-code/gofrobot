@@ -2,12 +2,21 @@ import asyncio
 import time
 import random
 import json
-from typing import Optional, List, Dict, Any, Tuple
+import sqlite3
+from typing import Optional, List, Dict, Any, Tuple, Set
+from contextlib import asynccontextmanager
+from collections import defaultdict
 import aiosqlite
+import logging
+
+logger = logging.getLogger(__name__)
 
 ATM_MAX = 12
 ATM_TIME = 600
 DB_NAME = "bot_database.db"
+CACHE_TTL = 30
+MAX_CACHE_SIZE = 500
+BATCH_SAVE_INTERVAL = 5
 
 RANKS = {
     1: ("Пацанчик", "👶"),
@@ -115,24 +124,43 @@ LEVELED_ACHIEVEMENTS = {
     }
 }
 
-async def get_connection():
-    conn = await aiosqlite.connect(DB_NAME)
-    conn.row_factory = aiosqlite.Row
-    return conn
-
-async def init_db():
-    conn = await aiosqlite.connect(DB_NAME)
+class DatabaseManager:
+    _instance = None
+    _pool = None
     
-    try:
-        await conn.execute('''
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    @classmethod
+    async def get_pool(cls):
+        if cls._pool is None:
+            cls._pool = await aiosqlite.connect(DB_NAME, timeout=30, isolation_level=None)
+            cls._pool.row_factory = aiosqlite.Row
+            
+            await cls._pool.execute("PRAGMA journal_mode = WAL")
+            await cls._pool.execute("PRAGMA synchronous = NORMAL")
+            await cls._pool.execute("PRAGMA cache_size = -10000")
+            await cls._pool.execute("PRAGMA foreign_keys = ON")
+            await cls._pool.execute("PRAGMA temp_store = MEMORY")
+            
+            await cls._instance._create_tables()
+        
+        return cls._pool
+    
+    @staticmethod
+    async def _create_tables():
+        pool = await DatabaseManager.get_pool()
+        
+        async with pool.executescript('''
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER UNIQUE NOT NULL,
-                nickname TEXT,
+                user_id INTEGER PRIMARY KEY,
+                nickname TEXT NOT NULL DEFAULT '',
                 avtoritet INTEGER DEFAULT 1,
                 zmiy REAL DEFAULT 0.0,
-                dengi INTEGER DEFAULT 100,
-                last_update INTEGER,
+                dengi INTEGER DEFAULT 150,
+                last_update INTEGER DEFAULT 0,
                 last_daily INTEGER DEFAULT 0,
                 atm_count INTEGER DEFAULT 12,
                 max_atm INTEGER DEFAULT 12,
@@ -142,18 +170,79 @@ async def init_db():
                 specialization TEXT DEFAULT '',
                 experience INTEGER DEFAULT 0,
                 level INTEGER DEFAULT 1,
-                inventory TEXT,
-                upgrades TEXT,
+                inventory TEXT DEFAULT '[]',
+                upgrades TEXT DEFAULT '{}',
                 active_boosts TEXT DEFAULT '{}',
                 achievements TEXT DEFAULT '[]',
-                nickname_changed BOOLEAN DEFAULT FALSE,
                 crafted_items TEXT DEFAULT '[]',
                 rademka_scouts INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        await conn.execute('''
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                dirty_flag INTEGER DEFAULT 0
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_users_avtoritet ON users(avtoritet DESC);
+            CREATE INDEX IF NOT EXISTS idx_users_dengi ON users(dengi DESC);
+            CREATE INDEX IF NOT EXISTS idx_users_level ON users(level DESC);
+            CREATE INDEX IF NOT EXISTS idx_users_updated ON users(last_update);
+            
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                user_id INTEGER,
+                achievement_id TEXT,
+                unlocked_at INTEGER,
+                progress REAL DEFAULT 0,
+                level INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, achievement_id)
+            );
+            
+            CREATE TABLE IF NOT EXISTS active_boosts_cache (
+                user_id INTEGER PRIMARY KEY,
+                boosts_json TEXT DEFAULT '{}',
+                expires_at INTEGER DEFAULT 0
+            );
+            
+            CREATE VIEW IF NOT EXISTS leaderboard_view AS
+            SELECT 
+                user_id,
+                nickname,
+                avtoritet,
+                dengi,
+                zmiy,
+                level,
+                (skill_davka + skill_zashita + skill_nahodka) as total_skill,
+                ROW_NUMBER() OVER (ORDER BY avtoritet DESC) as rank
+            FROM users;
+            
+            CREATE TABLE IF NOT EXISTS cart (
+                user_id INTEGER,
+                item_id TEXT,
+                quantity INTEGER DEFAULT 1,
+                price INTEGER,
+                added_at INTEGER DEFAULT (strftime('%s', 'now')),
+                PRIMARY KEY (user_id, item_id)
+            ) WITHOUT ROWID;
+            
+            CREATE TABLE IF NOT EXISTS craft_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                recipe_id TEXT NOT NULL,
+                success BOOLEAN,
+                crafted_at INTEGER DEFAULT (strftime('%s', 'now'))
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_craft_user ON craft_history(user_id, crafted_at DESC);
+            
+            CREATE TABLE IF NOT EXISTS rademka_fights (
+                winner_id INTEGER NOT NULL,
+                loser_id INTEGER NOT NULL,
+                money_taken INTEGER DEFAULT 0,
+                item_stolen TEXT,
+                scouted BOOLEAN DEFAULT FALSE,
+                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_rademka_winner ON rademka_fights(winner_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_rademka_loser ON rademka_fights(loser_id, created_at DESC);
+            
             CREATE TABLE IF NOT EXISTS achievement_progress (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -161,41 +250,16 @@ async def init_db():
                 progress REAL DEFAULT 0,
                 current_level INTEGER DEFAULT 0,
                 UNIQUE(user_id, achievement_id)
-            )
-        ''')
-        
-        await conn.execute('''
+            );
+            
             CREATE TABLE IF NOT EXISTS stolen_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 thief_id INTEGER NOT NULL,
                 victim_id INTEGER NOT NULL,
                 item_name TEXT NOT NULL,
                 stolen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS craft_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                recipe_id TEXT NOT NULL,
-                success BOOLEAN,
-                crafted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS cart (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                item_name TEXT NOT NULL,
-                quantity INTEGER NOT NULL,
-                price INTEGER NOT NULL,
-                UNIQUE(user_id, item_name)
-            )
-        ''')
-        
-        await conn.execute('''
+            );
+            
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -203,53 +267,301 @@ async def init_db():
                 total INTEGER NOT NULL,
                 status TEXT DEFAULT 'новый',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        await conn.execute('''
+            );
+            
             CREATE TABLE IF NOT EXISTS achievements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 achievement_id TEXT NOT NULL,
                 unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, achievement_id)
-            )
-        ''')
+            );
+        '''):
+            pass
         
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS rademka_fights (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                winner_id INTEGER NOT NULL,
-                loser_id INTEGER NOT NULL,
-                money_taken INTEGER DEFAULT 0,
-                item_stolen TEXT,
-                scouted BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        logger.info("Таблицы созданы")
+    
+    @asynccontextmanager
+    async def transaction(self):
+        pool = await self.get_pool()
+        try:
+            await pool.execute("BEGIN IMMEDIATE")
+            yield pool
+            await pool.commit()
+        except Exception as e:
+            await pool.rollback()
+            raise e
+
+class UserCache:
+    def __init__(self, data: Dict[str, Any], timestamp: float):
+        self.data = data
+        self.timestamp = timestamp
+        self.dirty = False
+
+class UserDataManager:
+    def __init__(self):
+        self._cache: Dict[int, UserCache] = {}
+        self._dirty_users: Set[int] = set()
+        self._batch_lock = asyncio.Lock()
+        self._save_task = None
+        self._db = DatabaseManager()
+    
+    async def start_batch_saver(self):
+        if self._save_task is None:
+            self._save_task = asyncio.create_task(self._batch_save_loop())
+    
+    async def stop_batch_saver(self):
+        if self._save_task:
+            self._save_task.cancel()
+            try:
+                await self._save_task
+            except asyncio.CancelledError:
+                pass
+            self._save_task = None
+    
+    async def _batch_save_loop(self):
+        while True:
+            try:
+                await asyncio.sleep(BATCH_SAVE_INTERVAL)
+                await self._save_dirty_users()
+            except asyncio.CancelledError:
+                await self._save_dirty_users()
+                raise
+            except Exception as e:
+                logger.error(f"Ошибка сохранения: {e}")
+    
+    async def _save_dirty_users(self):
+        async with self._batch_lock:
+            if not self._dirty_users:
+                return
+            
+            users_to_save = []
+            user_ids = list(self._dirty_users)
+            
+            for user_id in user_ids:
+                if user_id in self._cache:
+                    cache_entry = self._cache[user_id]
+                    if cache_entry.dirty:
+                        users_to_save.append((user_id, cache_entry.data))
+                        cache_entry.dirty = False
+            
+            if users_to_save:
+                await self._batch_save_users(users_to_save)
+            
+            self._dirty_users.clear()
+    
+    async def _batch_save_users(self, users_data: List[Tuple[int, Dict]]):
+        pool = await self._db.get_pool()
         
-        indexes = [
-            ('idx_users_user_id', 'users(user_id)'),
-            ('idx_users_specialization', 'users(specialization)'),
-            ('idx_achievement_progress', 'achievement_progress(user_id, achievement_id)'),
-            ('idx_stolen_items', 'stolen_items(thief_id, victim_id)'),
-            ('idx_craft_history', 'craft_history(user_id)'),
-            ('idx_cart_user_id', 'cart(user_id)'),
-            ('idx_orders_user_id', 'orders(user_id)'),
-            ('idx_rademka_winner', 'rademka_fights(winner_id)'),
-            ('idx_rademka_loser', 'rademka_fights(loser_id)'),
-            ('idx_rademka_scouted', 'rademka_fights(scouted)')
-        ]
+        values = []
+        now = int(time.time())
         
-        for idx_name, idx_query in indexes:
-            await conn.execute(f'CREATE INDEX IF NOT EXISTS {idx_name} ON {idx_query}')
+        for user_id, data in users_data:
+            values.append((
+                data.get("nickname", ""),
+                data.get("avtoritet", 1),
+                data.get("zmiy", 0.0),
+                data.get("dengi", 150),
+                now,
+                data.get("last_daily", 0),
+                data.get("atm_count", 12),
+                data.get("max_atm", 12),
+                data.get("skill_davka", 1),
+                data.get("skill_zashita", 1),
+                data.get("skill_nahodka", 1),
+                data.get("specialization", ""),
+                data.get("experience", 0),
+                data.get("level", 1),
+                json.dumps(data.get("inventory", [])),
+                json.dumps(data.get("upgrades", {})),
+                json.dumps(data.get("active_boosts", {})),
+                json.dumps(data.get("achievements", [])),
+                json.dumps(data.get("crafted_items", [])),
+                data.get("rademka_scouts", 0),
+                user_id
+            ))
         
-        await conn.commit()
-        print("✅ База данных инициализирована с новыми функциями")
-        print("✅ Добавлены: специализации, уровни, крафт, прогресс достижений")
+        await pool.executemany('''
+            UPDATE users SET 
+                nickname = ?, avtoritet = ?, zmiy = ?, dengi = ?,
+                last_update = ?, last_daily = ?, atm_count = ?, max_atm = ?,
+                skill_davka = ?, skill_zashita = ?, skill_nahodka = ?,
+                specialization = ?, experience = ?, level = ?,
+                inventory = ?, upgrades = ?, active_boosts = ?,
+                achievements = ?, crafted_items = ?, rademka_scouts = ?
+            WHERE user_id = ?
+        ''', values)
+    
+    async def get_user(self, user_id: int, force_fresh: bool = False) -> Optional[Dict[str, Any]]:
+        now = time.time()
         
-    finally:
-        await conn.close()
+        if not force_fresh and user_id in self._cache:
+            cache_entry = self._cache[user_id]
+            if now - cache_entry.timestamp < CACHE_TTL:
+                return cache_entry.data
+        
+        pool = await self._db.get_pool()
+        
+        async with pool.execute('''
+            SELECT 
+                u.*,
+                COALESCE(ab.boosts_json, '{}') as cached_boosts,
+                COALESCE(
+                    (SELECT json_group_array(achievement_id) 
+                     FROM user_achievements ua 
+                     WHERE ua.user_id = u.user_id),
+                    '[]'
+                ) as achievement_ids
+            FROM users u
+            LEFT JOIN active_boosts_cache ab ON u.user_id = ab.user_id
+            WHERE u.user_id = ?
+        ''', (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            
+            if row:
+                user = dict(row)
+                await self._post_process_user(user)
+                
+                self._cache[user_id] = UserCache(
+                    data=user,
+                    timestamp=now
+                )
+                
+                if len(self._cache) > MAX_CACHE_SIZE:
+                    self._clean_old_cache()
+                
+                return user
+            else:
+                return await self._create_new_user(user_id)
+    
+    async def _create_new_user(self, user_id: int) -> Dict[str, Any]:
+        now = int(time.time())
+        new_user = {
+            "user_id": user_id,
+            "nickname": f"Пацанчик_{user_id}",
+            "avtoritet": 1,
+            "zmiy": 0.0,
+            "dengi": 150,
+            "last_update": now,
+            "last_daily": 0,
+            "atm_count": 12,
+            "max_atm": 12,
+            "skill_davka": 1,
+            "skill_zashita": 1,
+            "skill_nahodka": 1,
+            "specialization": "",
+            "experience": 0,
+            "level": 1,
+            "inventory": ["двенашка", "энергетик"],
+            "upgrades": {},
+            "active_boosts": {},
+            "achievements": [],
+            "crafted_items": [],
+            "rademka_scouts": 0,
+            "rank_name": "Пацанчик",
+            "rank_emoji": "👶",
+            "cached_boosts": {},
+            "achievement_ids": []
+        }
+        
+        pool = await self._db.get_pool()
+        
+        async with pool.execute('''
+            INSERT OR IGNORE INTO users 
+            (user_id, nickname, last_update, inventory, upgrades, active_boosts, achievements)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            new_user["nickname"],
+            now,
+            json.dumps(new_user["inventory"]),
+            json.dumps(new_user["upgrades"]),
+            json.dumps(new_user["active_boosts"]),
+            json.dumps(new_user["achievements"])
+        )):
+            pass
+        
+        self._cache[user_id] = UserCache(
+            data=new_user,
+            timestamp=time.time()
+        )
+        
+        return new_user
+    
+    async def _post_process_user(self, user: Dict[str, Any]):
+        now = time.time()
+        last_update = user.get("last_update", now)
+        passed = now - last_update
+        
+        if passed >= ATM_TIME:
+            max_atm = user.get("max_atm", ATM_MAX)
+            current_atm = user.get("atm_count", 0)
+            regen_count = passed // ATM_TIME
+            
+            if regen_count > 0:
+                new_atm = min(max_atm, current_atm + regen_count)
+                user["atm_count"] = new_atm
+                user["last_update"] = now - (passed % ATM_TIME)
+        
+        json_fields = ["inventory", "upgrades", "active_boosts", "achievements", "crafted_items"]
+        
+        for field in json_fields:
+            value = user.get(field)
+            if isinstance(value, str):
+                try:
+                    if value:
+                        user[field] = json.loads(value)
+                    else:
+                        user[field] = [] if field in ["inventory", "achievements", "crafted_items"] else {}
+                except:
+                    user[field] = [] if field in ["inventory", "achievements", "crafted_items"] else {}
+        
+        user["rank_name"], user["rank_emoji"] = get_rank(user.get("avtoritet", 1))
+    
+    def mark_dirty(self, user_id: int):
+        if user_id in self._cache:
+            self._cache[user_id].dirty = True
+            self._dirty_users.add(user_id)
+    
+    async def save_user(self, user_id: int):
+        if user_id in self._cache:
+            self.mark_dirty(user_id)
+            await self._save_dirty_users()
+    
+    def _clean_old_cache(self):
+        now = time.time()
+        to_delete = []
+        
+        for user_id, cache_entry in self._cache.items():
+            if now - cache_entry.timestamp > CACHE_TTL * 2:
+                to_delete.append(user_id)
+        
+        for user_id in to_delete:
+            del self._cache[user_id]
+        
+        if len(self._cache) > MAX_CACHE_SIZE:
+            sorted_items = sorted(self._cache.items(), key=lambda x: x[1].timestamp)
+            for user_id, _ in sorted_items[:MAX_CACHE_SIZE // 2]:
+                del self._cache[user_id]
+    
+    async def get_top_players_fast(self, limit: int = 10, sort_by: str = "avtoritet") -> List[Dict]:
+        pool = await self._db.get_pool()
+        
+        valid_columns = ["avtoritet", "dengi", "zmiy", "level", "total_skill"]
+        if sort_by not in valid_columns:
+            sort_by = "avtoritet"
+        
+        query = f'''
+            SELECT * FROM leaderboard_view 
+            ORDER BY {sort_by} DESC 
+            LIMIT ?
+        '''
+        
+        async with pool.execute(query, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+user_manager = UserDataManager()
 
 def get_rank(avtoritet: int) -> Tuple[str, str]:
     for threshold, (name, emoji) in sorted(RANKS.items(), reverse=True):
@@ -268,7 +580,6 @@ def calculate_atm_regen_time(user_data: Dict[str, Any]) -> int:
     
     boosts = user_data.get("active_boosts", {})
     
-    # Безопасное получение бустеров (может быть строкой или словарем)
     if isinstance(boosts, str):
         try:
             boosts = json.loads(boosts) if boosts else {}
@@ -285,171 +596,18 @@ def get_specialization_bonuses(specialization: str) -> Dict[str, Any]:
     return spec.get("bonuses", {})
 
 async def get_patsan(user_id: int) -> Optional[Dict[str, Any]]:
-    conn = await get_connection()
-    try:
-        cursor = await conn.execute(
-            'SELECT * FROM users WHERE user_id = ?', 
-            (user_id,)
-        )
-        user_row = await cursor.fetchone()
-        
-        if user_row:
-            user = dict(user_row)
-            
-            now = int(time.time())
-            last = user.get("last_update", now)
-            passed = now - last
-            
-            regen_time = calculate_atm_regen_time(user)
-            if passed >= regen_time:
-                new_atm = min(
-                    user.get("max_atm", ATM_MAX),
-                    user["atm_count"] + (passed // regen_time)
-                )
-                if new_atm != user["atm_count"]:
-                    user["atm_count"] = new_atm
-                    user["last_update"] = now - (passed % regen_time)
-                    await conn.execute('''
-                        UPDATE users SET atm_count = ?, last_update = ? 
-                        WHERE user_id = ?
-                    ''', (user["atm_count"], user["last_update"], user_id))
-                    await conn.commit()
-            
-            user["inventory"] = json.loads(user["inventory"]) if user["inventory"] else []
-            user["upgrades"] = json.loads(user["upgrades"]) if user["upgrades"] else {}
-            user["achievements"] = json.loads(user["achievements"]) if user.get("achievements") else []
-            
-            # Безопасное преобразование active_boosts
-            active_boosts_raw = user.get("active_boosts")
-            if isinstance(active_boosts_raw, str):
-                try:
-                    user["active_boosts"] = json.loads(active_boosts_raw) if active_boosts_raw else {}
-                except:
-                    user["active_boosts"] = {}
-            elif active_boosts_raw is None:
-                user["active_boosts"] = {}
-            else:
-                # Если это уже словарь, оставляем как есть
-                user["active_boosts"] = active_boosts_raw
-            
-            # Безопасное преобразование crafted_items
-            crafted_items_raw = user.get("crafted_items")
-            if isinstance(crafted_items_raw, str):
-                try:
-                    user["crafted_items"] = json.loads(crafted_items_raw) if crafted_items_raw else []
-                except:
-                    user["crafted_items"] = []
-            elif crafted_items_raw is None:
-                user["crafted_items"] = []
-            else:
-                user["crafted_items"] = crafted_items_raw
-            
-            user["rank_name"], user["rank_emoji"] = get_rank(user["avtoritet"])
-            
-            return user
-        else:
-            new_user = {
-                "user_id": user_id,
-                "nickname": f"Пацанчик_{user_id}",
-                "avtoritet": 1,
-                "zmiy": 0.0,
-                "dengi": 150,
-                "last_update": int(time.time()),
-                "last_daily": 0,
-                "atm_count": 12,
-                "max_atm": 12,
-                "skill_davka": 1,
-                "skill_zashita": 1,
-                "skill_nahodka": 1,
-                "specialization": "",
-                "experience": 0,
-                "level": 1,
-                "inventory": ["двенашка", "энергетик"],
-                "upgrades": {
-                    "ryazhenka": False,
-                    "tea_slivoviy": False,
-                    "bubbleki": False,
-                    "kuryasany": False
-                },
-                "active_boosts": {},
-                "achievements": [],
-                "nickname_changed": False,
-                "crafted_items": [],
-                "rademka_scouts": 0,
-                "rank_name": "Пацанчик",
-                "rank_emoji": "👶"
-            }
-            
-            await conn.execute('''
-                INSERT INTO users 
-                (user_id, nickname, avtoritet, zmiy, dengi, last_update, 
-                 last_daily, atm_count, max_atm, skill_davka, skill_zashita, skill_nahodka,
-                 specialization, experience, level, inventory, upgrades, active_boosts,
-                 achievements, nickname_changed, crafted_items, rademka_scouts)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                new_user["user_id"], new_user["nickname"], new_user["avtoritet"],
-                new_user["zmiy"], new_user["dengi"], new_user["last_update"],
-                new_user["last_daily"], new_user["atm_count"], new_user["max_atm"],
-                new_user["skill_davka"], new_user["skill_zashita"], new_user["skill_nahodka"],
-                new_user["specialization"], new_user["experience"], new_user["level"],
-                json.dumps(new_user["inventory"]), 
-                json.dumps(new_user["upgrades"]),
-                json.dumps(new_user["active_boosts"]),
-                json.dumps(new_user["achievements"]),
-                new_user["nickname_changed"],
-                json.dumps(new_user["crafted_items"]),
-                new_user["rademka_scouts"]
-            ))
-            
-            await conn.commit()
-            return new_user
-    finally:
-        await conn.close()
+    return await user_manager.get_user(user_id)
 
 async def save_patsan(user_data: Dict[str, Any]):
-    conn = await get_connection()
-    try:
-        await conn.execute('''
-            UPDATE users SET
-                nickname = ?, avtoritet = ?, zmiy = ?, dengi = ?,
-                last_update = ?, last_daily = ?, atm_count = ?, max_atm = ?,
-                skill_davka = ?, skill_zashita = ?, skill_nahodka = ?,
-                specialization = ?, experience = ?, level = ?,
-                inventory = ?, upgrades = ?, active_boosts = ?,
-                achievements = ?, nickname_changed = ?, crafted_items = ?,
-                rademka_scouts = ?
-            WHERE user_id = ?
-        ''', (
-            user_data.get("nickname"),
-            user_data.get("avtoritet", 1),
-            user_data.get("zmiy", 0.0),
-            user_data.get("dengi", 150),
-            user_data.get("last_update", int(time.time())),
-            user_data.get("last_daily", 0),
-            user_data.get("atm_count", 12),
-            user_data.get("max_atm", 12),
-            user_data.get("skill_davka", 1),
-            user_data.get("skill_zashita", 1),
-            user_data.get("skill_nahodka", 1),
-            user_data.get("specialization", ""),
-            user_data.get("experience", 0),
-            user_data.get("level", 1),
-            json.dumps(user_data.get("inventory", [])),
-            json.dumps(user_data.get("upgrades", {})),
-            json.dumps(user_data.get("active_boosts", {})),
-            json.dumps(user_data.get("achievements", [])),
-            user_data.get("nickname_changed", False),
-            json.dumps(user_data.get("crafted_items", [])),
-            user_data.get("rademka_scouts", 0),
-            user_data["user_id"]
-        ))
-        await conn.commit()
-    finally:
-        await conn.close()
+    user_id = user_data.get("user_id")
+    if user_id:
+        if user_id in user_manager._cache:
+            user_manager._cache[user_id].data.update(user_data)
+            user_manager._cache[user_id].dirty = True
+        await user_manager.save_user(user_id)
 
 async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     
     base_cost = 2
     
@@ -461,7 +619,7 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
         base_cost = max(1, base_cost - bonuses["atm_cost_reduction"])
     
     if patsan["atm_count"] < base_cost:
-        return None, "Не хватает атмосфер в кишке!"
+        return None, "Не хватает атмосфер!"
     
     patsan["atm_count"] -= base_cost
     
@@ -505,7 +663,7 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
             patsan["inventory"].append(rare_item)
             rare_item_found = rare_item
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     
     await update_achievement_progress(user_id, "zmiy_collector", total_grams / 1000)
     
@@ -531,9 +689,9 @@ async def davka_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     return patsan, result_data
 
 async def buy_specialization(user_id: int, specialization: str) -> Tuple[bool, str]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     
-    if not specialization in SPECIALIZATIONS:
+    if specialization not in SPECIALIZATIONS:
         return False, "Неизвестная специализация"
     
     spec = SPECIALIZATIONS[specialization]
@@ -549,18 +707,18 @@ async def buy_specialization(user_id: int, specialization: str) -> Tuple[bool, s
         return False, f"Не хватает {spec['price'] - patsan['dengi']}р"
     
     if patsan.get("specialization"):
-        return False, "У тебя уже есть специализация. Можно иметь только одну."
+        return False, "У тебя уже есть специализация"
     
     patsan["dengi"] -= spec["price"]
     patsan["specialization"] = specialization
     
     await unlock_achievement(user_id, "first_specialization", "Первая специализация", 500)
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     return True, f"✅ Куплена специализация '{spec['name']}' за {spec['price']}р!"
 
 async def get_available_specializations(user_id: int) -> List[Dict[str, Any]]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     available = []
     
     for spec_id, spec_data in SPECIALIZATIONS.items():
@@ -589,7 +747,7 @@ async def get_available_specializations(user_id: int) -> List[Dict[str, Any]]:
     return available
 
 async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     
     if recipe_id not in CRAFT_RECIPES:
         return False, "Неизвестный рецепт", {}
@@ -643,23 +801,22 @@ async def craft_item(user_id: int, recipe_id: str) -> Tuple[bool, str, Dict]:
         
         message = f"✅ Успешно скрафчено: {recipe['name']}!"
     else:
-        message = f"❌ Неудачная попытка крафта {recipe['name']}... Ингредиенты потеряны."
+        message = f"❌ Неудачная попытка крафта {recipe['name']}"
     
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        await conn.execute('''
+        await pool.execute('''
             INSERT INTO craft_history (user_id, recipe_id, success)
             VALUES (?, ?, ?)
         ''', (user_id, recipe_id, success))
-        await conn.commit()
     finally:
-        await conn.close()
+        pass
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     return success, message, recipe.get("result", {})
 
 async def get_craftable_items(user_id: int) -> List[Dict[str, Any]]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     inventory = patsan.get("inventory", [])
     inventory_count = {}
     
@@ -695,7 +852,7 @@ async def get_craftable_items(user_id: int) -> List[Dict[str, Any]]:
     return craftable
 
 async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     
     if patsan["zmiy"] <= 0:
         return None, "Нечего сдавать!"
@@ -714,7 +871,7 @@ async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     patsan["experience"] += exp_gained
     await check_level_up(patsan)
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     
     await update_achievement_progress(user_id, "money_maker", total_money)
     
@@ -726,7 +883,7 @@ async def sdat_zmiy(user_id: int) -> Tuple[Optional[Dict[str, Any]], Any]:
     }
 
 async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, Any]], str]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     
     upgrades_data = {
         "ryazhenka": {
@@ -768,7 +925,7 @@ async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, An
     if upgrade_data["bonus_func"]:
         upgrade_data["bonus_func"](patsan)
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     
     all_upgrades = ["ryazhenka", "tea_slivoviy", "bubbleki", "kuryasany"]
     if all(patsan["upgrades"].get(upg, False) for upg in all_upgrades):
@@ -777,7 +934,7 @@ async def buy_upgrade(user_id: int, upgrade: str) -> Tuple[Optional[Dict[str, An
     return patsan, f"✅ Куплено '{upgrade}' за {upgrade_data['price']}р! {upgrade_data['effect']}"
 
 async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]], str]:
-    patsan = await get_patsan(user_id)
+    patsan = await user_manager.get_user(user_id)
     
     skill_costs = {
         "davka": 180,
@@ -800,7 +957,7 @@ async def pump_skill(user_id: int, skill: str) -> Tuple[Optional[Dict[str, Any]]
     
     await check_level_up(patsan)
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     
     new_level = patsan[f"skill_{skill}"]
     if new_level >= 10:
@@ -848,25 +1005,24 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
     if achievement_id not in LEVELED_ACHIEVEMENTS:
         return
     
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT progress, current_level FROM achievement_progress 
             WHERE user_id = ? AND achievement_id = ?
-        ''', (user_id, achievement_id))
-        
-        row = await cursor.fetchone()
-        
-        if row:
-            current_progress = row["progress"] + progress_increment
-            current_level = row["current_level"]
-        else:
-            current_progress = progress_increment
-            current_level = 0
-            await conn.execute('''
-                INSERT INTO achievement_progress (user_id, achievement_id, progress)
-                VALUES (?, ?, ?)
-            ''', (user_id, achievement_id, current_progress))
+        ''', (user_id, achievement_id)) as cursor:
+            row = await cursor.fetchone()
+            
+            if row:
+                current_progress = row["progress"] + progress_increment
+                current_level = row["current_level"]
+            else:
+                current_progress = progress_increment
+                current_level = 0
+                await pool.execute('''
+                    INSERT INTO achievement_progress (user_id, achievement_id, progress)
+                    VALUES (?, ?, ?)
+                ''', (user_id, achievement_id, current_progress))
         
         achievement = LEVELED_ACHIEVEMENTS[achievement_id]
         
@@ -874,17 +1030,17 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
             next_level = achievement["levels"][current_level]
             
             if current_progress >= next_level["goal"]:
-                patsan = await get_patsan(user_id)
+                patsan = await user_manager.get_user(user_id)
                 patsan["dengi"] += next_level["reward"]
                 patsan["experience"] += next_level["exp"]
                 
-                await conn.execute('''
+                await pool.execute('''
                     UPDATE achievement_progress 
                     SET progress = ?, current_level = ?
                     WHERE user_id = ? AND achievement_id = ?
                 ''', (current_progress, current_level + 1, user_id, achievement_id))
                 
-                await save_patsan(patsan)
+                user_manager.mark_dirty(user_id)
                 
                 achievements = patsan.get("achievements", [])
                 achievements.append({
@@ -895,7 +1051,7 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
                     "exp": next_level["exp"]
                 })
                 patsan["achievements"] = achievements
-                await save_patsan(patsan)
+                user_manager.mark_dirty(user_id)
                 
                 return {
                     "leveled_up": True,
@@ -905,71 +1061,70 @@ async def update_achievement_progress(user_id: int, achievement_id: str, progres
                     "exp": next_level["exp"]
                 }
             else:
-                await conn.execute('''
+                await pool.execute('''
                     UPDATE achievement_progress 
                     SET progress = ?
                     WHERE user_id = ? AND achievement_id = ?
                 ''', (current_progress, user_id, achievement_id))
         else:
-            await conn.execute('''
+            await pool.execute('''
                 UPDATE achievement_progress 
                 SET progress = ?
                 WHERE user_id = ? AND achievement_id = ?
             ''', (current_progress, user_id, achievement_id))
         
-        await conn.commit()
         return {"leveled_up": False, "progress": current_progress}
         
     finally:
-        await conn.close()
+        pass
 
 async def get_achievement_progress(user_id: int) -> Dict[str, Any]:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT achievement_id, progress, current_level 
             FROM achievement_progress WHERE user_id = ?
-        ''', (user_id,))
-        
-        rows = await cursor.fetchall()
-        progress_data = {}
-        
-        for row in rows:
-            ach_id = row["achievement_id"]
-            if ach_id in LEVELED_ACHIEVEMENTS:
-                achievement = LEVELED_ACHIEVEMENTS[ach_id]
-                current_level = row["current_level"]
-                current_progress = row["progress"]
-                
-                if current_level < len(achievement["levels"]):
-                    next_level = achievement["levels"][current_level]
-                    progress_percent = (current_progress / next_level["goal"]) * 100
-                else:
-                    next_level = None
-                    progress_percent = 100
-                
-                progress_data[ach_id] = {
-                    "name": achievement["name"],
-                    "current_level": current_level,
-                    "current_progress": current_progress,
-                    "next_level": next_level,
-                    "progress_percent": min(100, progress_percent),
-                    "all_levels": achievement["levels"]
-                }
-        
-        return progress_data
+        ''', (user_id,)) as cursor:
+            
+            rows = await cursor.fetchall()
+            progress_data = {}
+            
+            for row in rows:
+                ach_id = row["achievement_id"]
+                if ach_id in LEVELED_ACHIEVEMENTS:
+                    achievement = LEVELED_ACHIEVEMENTS[ach_id]
+                    current_level = row["current_level"]
+                    current_progress = row["progress"]
+                    
+                    if current_level < len(achievement["levels"]):
+                        next_level = achievement["levels"][current_level]
+                        progress_percent = (current_progress / next_level["goal"]) * 100
+                    else:
+                        next_level = None
+                        progress_percent = 100
+                    
+                    progress_data[ach_id] = {
+                        "name": achievement["name"],
+                        "current_level": current_level,
+                        "current_progress": current_progress,
+                        "next_level": next_level,
+                        "progress_percent": min(100, progress_percent),
+                        "all_levels": achievement["levels"]
+                    }
+            
+            return progress_data
     finally:
-        await conn.close()
+        pass
 
 async def rademka_scout(user_id: int, target_id: int) -> Tuple[bool, str, Dict]:
-    patsan = await get_patsan(user_id)
-    target = await get_patsan(target_id)
+    patsan = await user_manager.get_user(user_id)
+    target = await user_manager.get_user(target_id)
     
     if not target:
         return False, "Цель не найдена", {}
     
     if patsan["rademka_scouts"] >= 5 and patsan["dengi"] < 50:
-        return False, "Нужно 50р для разведки (бесплатные разведки закончились)", {}
+        return False, "Нужно 50р для разведки", {}
     
     cost = 0 if patsan["rademka_scouts"] < 5 else 50
     
@@ -997,19 +1152,18 @@ async def rademka_scout(user_id: int, target_id: int) -> Tuple[bool, str, Dict]:
         patsan["dengi"] -= cost
     patsan["rademka_scouts"] += 1
     
-    await save_patsan(patsan)
+    user_manager.mark_dirty(user_id)
     
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        await conn.execute('''
+        await pool.execute('''
             UPDATE rademka_fights 
             SET scouted = TRUE 
             WHERE (winner_id = ? AND loser_id = ?) 
                OR (winner_id = ? AND loser_id = ?)
         ''', (user_id, target_id, target_id, user_id))
-        await conn.commit()
     finally:
-        await conn.close()
+        pass
     
     scout_data = {
         "chance": chance,
@@ -1037,8 +1191,8 @@ async def rademka_scout(user_id: int, target_id: int) -> Tuple[bool, str, Dict]:
     return True, f"Разведка {'бесплатная' if cost == 0 else 'за 50р'} успешна!", scout_data
 
 async def rademka_fight_with_scout(user_id: int, target_id: int, scouted_chance: float = None) -> Dict[str, Any]:
-    attacker = await get_patsan(user_id)
-    target = await get_patsan(target_id)
+    attacker = await user_manager.get_user(user_id)
+    target = await user_manager.get_user(target_id)
     
     if not attacker or not target:
         return {"error": "Один из пацанов не найден"}
@@ -1076,451 +1230,437 @@ async def rademka_fight_with_scout(user_id: int, target_id: int, scouted_chance:
     return result
 
 async def get_daily_reward(user_id: int) -> Dict[str, Any]:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT last_daily, nickname, achievements, level FROM users WHERE user_id = ?
-        ''', (user_id,))
-        user = await cursor.fetchone()
-        
-        if not user:
-            return {"success": False, "error": "Пользователь не найден"}
-        
-        now = int(time.time())
-        last_daily = user["last_daily"] or 0
-        
-        if last_daily > 0 and now - last_daily < 86400:
-            wait_hours = (86400 - (now - last_daily)) // 3600
-            wait_minutes = ((86400 - (now - last_daily)) % 3600) // 60
+        ''', (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            
+            if not user:
+                return {"success": False, "error": "Пользователь не найден"}
+            
+            now = int(time.time())
+            last_daily = user["last_daily"] or 0
+            
+            if last_daily > 0 and now - last_daily < 86400:
+                wait_hours = (86400 - (now - last_daily)) // 3600
+                wait_minutes = ((86400 - (now - last_daily)) % 3600) // 60
+                return {
+                    "success": False, 
+                    "wait_time": f"{wait_hours}ч {wait_minutes}м",
+                    "next_daily": last_daily + 86400
+                }
+            
+            player_level = user["level"] or 1
+            base_reward = 100 + (player_level * 10)
+            
+            achievements = json.loads(user["achievements"]) if user["achievements"] else []
+            streak_key = "daily_streak"
+            current_streak = 1
+            
+            for ach in achievements:
+                if ach.get("id") == streak_key:
+                    current_streak = ach.get("value", 1) + 1
+                    break
+            
+            streak_multiplier = 1.0
+            streak_bonus_text = ""
+            
+            if current_streak >= 30:
+                streak_multiplier = 4.0
+                streak_bonus_text = " (x4 за месячный стрик!)"
+                await unlock_achievement(user_id, "streak_30", "Месяц без пропусков", 1000)
+            elif current_streak >= 7:
+                streak_multiplier = 3.0
+                streak_bonus_text = " (x3 за недельный стрик!)"
+                await unlock_achievement(user_id, "streak_7", "Недельный стрик", 200)
+            elif current_streak >= 3:
+                streak_multiplier = 2.0
+                streak_bonus_text = " (x2 за 3-дневный стрик!)"
+                await unlock_achievement(user_id, "streak_3", "Трёхдневный стрик", 50)
+            
+            base_reward = int(base_reward * streak_multiplier)
+            
+            random_bonus = random.randint(0, base_reward // 10)
+            total_reward = base_reward + random_bonus
+            
+            if player_level >= 20:
+                items = ["двенашка", "атмосфера", "энергетик", "золотая_двенашка", "бустер_атмосфер"]
+                weights = [0.3, 0.25, 0.2, 0.15, 0.1]
+            else:
+                items = ["двенашка", "атмосфера", "энергетик", "перчатки"]
+                weights = [0.4, 0.3, 0.2, 0.1]
+            
+            reward_item = random.choices(items, weights=weights, k=1)[0]
+            
+            streak_updated = False
+            new_achievements = []
+            for ach in achievements:
+                if ach.get("id") == streak_key:
+                    ach["value"] = current_streak
+                    ach["last_updated"] = now
+                    streak_updated = True
+                new_achievements.append(ach)
+            
+            if not streak_updated:
+                new_achievements.append({
+                    "id": streak_key,
+                    "name": f"Стрик {current_streak} дней",
+                    "value": current_streak,
+                    "last_updated": now
+                })
+            
+            await pool.execute('''
+                UPDATE users SET 
+                    dengi = dengi + ?,
+                    last_daily = ?,
+                    inventory = json_insert(
+                        COALESCE(inventory, '[]'), 
+                        '$[#]', 
+                        ?
+                    ),
+                    achievements = ?
+                WHERE user_id = ?
+            ''', (total_reward, now, reward_item, json.dumps(new_achievements), user_id))
+            
+            patsan = await user_manager.get_user(user_id, force_fresh=True)
+            
             return {
-                "success": False, 
-                "wait_time": f"{wait_hours}ч {wait_minutes}м",
-                "next_daily": last_daily + 86400
+                "success": True, 
+                "money": total_reward,
+                "item": reward_item,
+                "streak": current_streak,
+                "streak_bonus": streak_bonus_text,
+                "base": base_reward,
+                "random_bonus": random_bonus,
+                "level_multiplier": player_level
             }
-        
-        player_level = user["level"] or 1
-        base_reward = 100 + (player_level * 10)
-        
-        achievements = json.loads(user["achievements"]) if user["achievements"] else []
-        streak_key = "daily_streak"
-        current_streak = 1
-        
-        for ach in achievements:
-            if ach.get("id") == streak_key:
-                current_streak = ach.get("value", 1) + 1
-                break
-        
-        streak_multiplier = 1.0
-        streak_bonus_text = ""
-        
-        if current_streak >= 30:
-            streak_multiplier = 4.0
-            streak_bonus_text = " (x4 за месячный стрик!)"
-            await unlock_achievement(user_id, "streak_30", "Месяц без пропусков", 1000)
-        elif current_streak >= 7:
-            streak_multiplier = 3.0
-            streak_bonus_text = " (x3 за недельный стрик!)"
-            await unlock_achievement(user_id, "streak_7", "Недельный стрик", 200)
-        elif current_streak >= 3:
-            streak_multiplier = 2.0
-            streak_bonus_text = " (x2 за 3-дневный стрик!)"
-            await unlock_achievement(user_id, "streak_3", "Трёхдневный стрик", 50)
-        
-        base_reward = int(base_reward * streak_multiplier)
-        
-        random_bonus = random.randint(0, base_reward // 10)
-        total_reward = base_reward + random_bonus
-        
-        if player_level >= 20:
-            items = ["двенашка", "атмосфера", "энергетик", "золотая_двенашка", "бустер_атмосфер"]
-            weights = [0.3, 0.25, 0.2, 0.15, 0.1]
-        else:
-            items = ["двенашка", "атмосфера", "энергетик", "перчатки"]
-            weights = [0.4, 0.3, 0.2, 0.1]
-        
-        reward_item = random.choices(items, weights=weights, k=1)[0]
-        
-        streak_updated = False
-        new_achievements = []
-        for ach in achievements:
-            if ach.get("id") == streak_key:
-                ach["value"] = current_streak
-                ach["last_updated"] = now
-                streak_updated = True
-            new_achievements.append(ach)
-        
-        if not streak_updated:
-            new_achievements.append({
-                "id": streak_key,
-                "name": f"Стрик {current_streak} дней",
-                "value": current_streak,
-                "last_updated": now
-            })
-        
-        await conn.execute('''
-            UPDATE users SET 
-                dengi = dengi + ?,
-                last_daily = ?,
-                inventory = json_insert(
-                    COALESCE(inventory, '[]'), 
-                    '$[#]', 
-                    ?
-                ),
-                achievements = ?
-            WHERE user_id = ?
-        ''', (total_reward, now, reward_item, json.dumps(new_achievements), user_id))
-        
-        await conn.commit()
-        
-        return {
-            "success": True, 
-            "money": total_reward,
-            "item": reward_item,
-            "streak": current_streak,
-            "streak_bonus": streak_bonus_text,
-            "base": base_reward,
-            "random_bonus": random_bonus,
-            "level_multiplier": player_level
-        }
-        
+            
     finally:
-        await conn.close()
+        pass
 
 async def unlock_achievement(user_id: int, achievement_id: str, name: str, reward: int = 0):
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT 1 FROM achievements WHERE user_id = ? AND achievement_id = ?
-        ''', (user_id, achievement_id))
+        ''', (user_id, achievement_id)) as cursor:
+            
+            existing = await cursor.fetchone()
+            if existing:
+                return False
         
-        existing = await cursor.fetchone()
-        if existing:
-            return False
-        
-        await conn.execute('''
+        await pool.execute('''
             INSERT INTO achievements (user_id, achievement_id) 
             VALUES (?, ?)
         ''', (user_id, achievement_id))
         
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT achievements FROM users WHERE user_id = ?
-        ''', (user_id,))
-        user = await cursor.fetchone()
-        
-        achievements = json.loads(user["achievements"]) if user and user["achievements"] else []
-        
-        for ach in achievements:
-            if ach.get("id") == achievement_id:
-                return False
-        
-        achievements.append({
-            "id": achievement_id,
-            "name": name,
-            "unlocked_at": int(time.time()),
-            "reward": reward
-        })
-        
-        if reward > 0:
-            await conn.execute('''
-                UPDATE users SET 
-                    dengi = dengi + ?,
-                    achievements = ?
-                WHERE user_id = ?
-            ''', (reward, json.dumps(achievements), user_id))
-        else:
-            await conn.execute('''
-                UPDATE users SET achievements = ? WHERE user_id = ?
-            ''', (json.dumps(achievements), user_id))
-        
-        await conn.commit()
-        return True
-        
+        ''', (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            
+            achievements = json.loads(user["achievements"]) if user and user["achievements"] else []
+            
+            for ach in achievements:
+                if ach.get("id") == achievement_id:
+                    return False
+            
+            achievements.append({
+                "id": achievement_id,
+                "name": name,
+                "unlocked_at": int(time.time()),
+                "reward": reward
+            })
+            
+            if reward > 0:
+                await pool.execute('''
+                    UPDATE users SET 
+                        dengi = dengi + ?,
+                        achievements = ?
+                    WHERE user_id = ?
+                ''', (reward, json.dumps(achievements), user_id))
+            else:
+                await pool.execute('''
+                    UPDATE users SET achievements = ? WHERE user_id = ?
+                ''', (json.dumps(achievements), user_id))
+            
+            patsan = await user_manager.get_user(user_id, force_fresh=True)
+            
+            return True
+            
     finally:
-        await conn.close()
+        pass
 
 async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT nickname_changed, dengi FROM users WHERE user_id = ?
-        ''', (user_id,))
-        user = await cursor.fetchone()
-        
-        if not user:
-            return False, "Пользователь не найден"
-        
-        nickname_changed = user["nickname_changed"]
-        current_money = user["dengi"]
-        
-        if not nickname_changed:
-            await conn.execute('''
+        ''', (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            
+            if not user:
+                return False, "Пользователь не найден"
+            
+            nickname_changed = user["nickname_changed"]
+            current_money = user["dengi"]
+            
+            if not nickname_changed:
+                await pool.execute('''
+                    UPDATE users SET 
+                        nickname = ?,
+                        nickname_changed = TRUE
+                    WHERE user_id = ?
+                ''', (new_nickname, user_id))
+                
+                await unlock_achievement(user_id, "first_nickname", "Первая бирка", 100)
+                patsan = await user_manager.get_user(user_id, force_fresh=True)
+                return True, "Ник успешно изменён! (первая смена бесплатно) +100р"
+            
+            cost = 5000
+            if current_money < cost:
+                return False, f"Не хватает {cost - current_money}р для смены ника"
+            
+            await pool.execute('''
                 UPDATE users SET 
                     nickname = ?,
-                    nickname_changed = TRUE
+                    dengi = dengi - ?
                 WHERE user_id = ?
-            ''', (new_nickname, user_id))
+            ''', (new_nickname, cost, user_id))
             
-            await conn.commit()
-            await unlock_achievement(user_id, "first_nickname", "Первая бирка", 100)
-            return True, "Ник успешно изменён! (первая смена бесплатно) +100р"
-        
-        cost = 5000
-        if current_money < cost:
-            return False, f"Не хватает {cost - current_money}р для смены ника"
-        
-        await conn.execute('''
-            UPDATE users SET 
-                nickname = ?,
-                dengi = dengi - ?
-            WHERE user_id = ?
-        ''', (new_nickname, cost, user_id))
-        
-        await conn.commit()
-        return True, f"Ник изменён! Списано {cost}р"
-        
+            patsan = await user_manager.get_user(user_id, force_fresh=True)
+            return True, f"Ник изменён! Списано {cost}р"
+            
     finally:
-        await conn.close()
+        pass
 
 async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0, item_stolen: str = None, scouted: bool = False):
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        await conn.execute('''
+        await pool.execute('''
             INSERT INTO rademka_fights (winner_id, loser_id, money_taken, item_stolen, scouted)
             VALUES (?, ?, ?, ?, ?)
         ''', (winner_id, loser_id, money_taken, item_stolen, scouted))
-        await conn.commit()
     finally:
-        await conn.close()
-
-_user_cache = {}
-_cache_lock = asyncio.Lock()
+        pass
 
 async def get_patsan_cached(user_id: int) -> Optional[Dict[str, Any]]:
-    async with _cache_lock:
-        now = time.time()
-        cache_key = f"user_{user_id}"
-        
-        if cache_key in _user_cache:
-            user, timestamp = _user_cache[cache_key]
-            if now - timestamp < 30:
-                return user
-        
-        user = await get_patsan(user_id)
-        if user:
-            _user_cache[cache_key] = (user, now)
-        
-        if len(_user_cache) > 100:
-            oldest_key = min(_user_cache.items(), key=lambda x: x[1][1])[0]
-            del _user_cache[oldest_key]
-        
-        return user
+    return await user_manager.get_user(user_id)
 
 async def invalidate_user_cache(user_id: int):
-    async with _cache_lock:
-        cache_key = f"user_{user_id}"
-        if cache_key in _user_cache:
-            del _user_cache[cache_key]
+    if user_id in user_manager._cache:
+        del user_manager._cache[user_id]
 
 async def get_cart(user_id: int) -> List[Dict[str, Any]]:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
-            SELECT item_name, quantity, price 
+        async with pool.execute('''
+            SELECT item_id as item_name, quantity, price 
             FROM cart WHERE user_id = ?
-        ''', (user_id,))
-        
-        cart_items = []
-        rows = await cursor.fetchall()
-        for row in rows:
-            cart_items.append(dict(row))
-        
-        return cart_items
+        ''', (user_id,)) as cursor:
+            
+            rows = await cursor.fetchall()
+            cart_items = []
+            for row in rows:
+                cart_items.append(dict(row))
+            
+            return cart_items
     finally:
-        await conn.close()
+        pass
 
 async def add_to_cart(user_id: int, item_name: str, price: int, quantity: int = 1):
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT quantity FROM cart 
-            WHERE user_id = ? AND item_name = ?
-        ''', (user_id, item_name))
-        
-        existing = await cursor.fetchone()
-        
-        if existing:
-            new_quantity = existing["quantity"] + quantity
-            await conn.execute('''
-                UPDATE cart SET quantity = ? 
-                WHERE user_id = ? AND item_name = ?
-            ''', (new_quantity, user_id, item_name))
-        else:
-            await conn.execute('''
-                INSERT INTO cart (user_id, item_name, price, quantity)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, item_name, price, quantity))
-        
-        await conn.commit()
+            WHERE user_id = ? AND item_id = ?
+        ''', (user_id, item_name)) as cursor:
+            
+            existing = await cursor.fetchone()
+            
+            if existing:
+                new_quantity = existing["quantity"] + quantity
+                await pool.execute('''
+                    UPDATE cart SET quantity = ? 
+                    WHERE user_id = ? AND item_id = ?
+                ''', (new_quantity, user_id, item_name))
+            else:
+                await pool.execute('''
+                    INSERT INTO cart (user_id, item_id, price, quantity)
+                    VALUES (?, ?, ?, ?)
+                ''', (user_id, item_name, price, quantity))
     finally:
-        await conn.close()
+        pass
 
 async def remove_from_cart(user_id: int, item_name: str, quantity: int = 1):
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT quantity FROM cart 
-            WHERE user_id = ? AND item_name = ?
-        ''', (user_id, item_name))
-        
-        existing = await cursor.fetchone()
-        if not existing:
-            return
-        
-        current_qty = existing["quantity"]
-        
-        if current_qty <= quantity:
-            await conn.execute('''
-                DELETE FROM cart 
-                WHERE user_id = ? AND item_name = ?
-            ''', (user_id, item_name))
-        else:
-            await conn.execute('''
-                UPDATE cart SET quantity = ? 
-                WHERE user_id = ? AND item_name = ?
-            ''', (current_qty - quantity, user_id, item_name))
-        
-        await conn.commit()
+            WHERE user_id = ? AND item_id = ?
+        ''', (user_id, item_name)) as cursor:
+            
+            existing = await cursor.fetchone()
+            if not existing:
+                return
+            
+            current_qty = existing["quantity"]
+            
+            if current_qty <= quantity:
+                await pool.execute('''
+                    DELETE FROM cart 
+                    WHERE user_id = ? AND item_id = ?
+                ''', (user_id, item_name))
+            else:
+                await pool.execute('''
+                    UPDATE cart SET quantity = ? 
+                    WHERE user_id = ? AND item_id = ?
+                ''', (current_qty - quantity, user_id, item_name))
     finally:
-        await conn.close()
+        pass
 
 async def clear_cart(user_id: int):
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        await conn.execute('DELETE FROM cart WHERE user_id = ?', (user_id,))
-        await conn.commit()
+        await pool.execute('DELETE FROM cart WHERE user_id = ?', (user_id,))
     finally:
-        await conn.close()
+        pass
 
 async def get_cart_total(user_id: int) -> int:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT SUM(price * quantity) as total 
             FROM cart WHERE user_id = ?
-        ''', (user_id,))
-        
-        result = await cursor.fetchone()
-        return result["total"] if result and result["total"] else 0
+        ''', (user_id,)) as cursor:
+            
+            result = await cursor.fetchone()
+            return result["total"] if result and result["total"] else 0
     finally:
-        await conn.close()
+        pass
 
 async def create_order(user_id: int, items: List[Dict], total: int) -> int:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             INSERT INTO orders (user_id, items, total, status)
             VALUES (?, ?, ?, ?)
-        ''', (user_id, json.dumps(items), total, 'новый'))
-        
-        order_id = cursor.lastrowid
-        
-        await clear_cart(user_id)
-        
-        await conn.commit()
-        return order_id
+        ''', (user_id, json.dumps(items), total, 'новый')) as cursor:
+            
+            order_id = cursor.lastrowid
+            
+            await clear_cart(user_id)
+            
+            return order_id
     finally:
-        await conn.close()
+        pass
 
 async def get_user_orders(user_id: int) -> List[Dict[str, Any]]:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT id, items, total, status, created_at 
             FROM orders WHERE user_id = ? ORDER BY created_at DESC
-        ''', (user_id,))
-        
-        orders = []
-        rows = await cursor.fetchall()
-        for row in rows:
-            order = dict(row)
-            order["items"] = json.loads(order["items"])
-            orders.append(order)
-        
-        return orders
+        ''', (user_id,)) as cursor:
+            
+            orders = []
+            rows = await cursor.fetchall()
+            for row in rows:
+                order = dict(row)
+                order["items"] = json.loads(order["items"])
+                orders.append(order)
+            
+            return orders
     finally:
-        await conn.close()
+        pass
 
 async def get_top_players(limit: int = 10, sort_by: str = "avtoritet") -> List[Dict[str, Any]]:
-    conn = await get_connection()
-    try:
-        valid_columns = ["avtoritet", "dengi", "zmiy", "level"]
-        sort_column = sort_by if sort_by in valid_columns else "avtoritet"
-        
-        if sort_by == "total_skill":
-            query = '''
-                SELECT 
-                    user_id,
-                    nickname, 
-                    avtoritet, 
-                    dengi, 
-                    zmiy,
-                    level,
-                    skill_davka, 
-                    skill_zashita, 
-                    skill_nahodka,
-                    (skill_davka + skill_zashita + skill_nahodka) as total_skill,
-                    ROW_NUMBER() OVER (ORDER BY (skill_davka + skill_zashita + skill_nahodka) DESC) as rank
-                FROM users 
-                ORDER BY total_skill DESC 
-                LIMIT ?
-            '''
-            cursor = await conn.execute(query, (limit,))
-        else:
-            query = f'''
-                SELECT 
-                    user_id,
-                    nickname, 
-                    avtoritet, 
-                    dengi, 
-                    zmiy,
-                    level,
-                    skill_davka, 
-                    skill_zashita, 
-                    skill_nahodka,
-                    (skill_davka + skill_zashita + skill_nahodka) as total_skill,
-                    ROW_NUMBER() OVER (ORDER BY {sort_column} DESC) as rank
-                FROM users 
-                ORDER BY {sort_column} DESC 
-                LIMIT ?
-            '''
-            cursor = await conn.execute(query, (limit,))
-        
-        top_players = []
-        rows = await cursor.fetchall()
-        for row in rows:
-            player = dict(row)
-            player["zmiy_formatted"] = f"{player['zmiy']:.1f}кг"
-            player["dengi_formatted"] = f"{player['dengi']}р"
-            
-            rank_name, rank_emoji = get_rank(player["avtoritet"])
-            player["rank"] = f"{rank_emoji} {rank_name}"
-            
-            top_players.append(player)
-        
-        return top_players
-    finally:
-        await conn.close()
+    return await user_manager.get_top_players_fast(limit, sort_by)
 
 async def get_user_achievements(user_id: int) -> List[Dict[str, Any]]:
-    conn = await get_connection()
+    pool = await DatabaseManager().get_pool()
     try:
-        cursor = await conn.execute('''
+        async with pool.execute('''
             SELECT achievements FROM users WHERE user_id = ?
-        ''', (user_id,))
-        user = await cursor.fetchone()
-        
-        if user and user["achievements"]:
-            return json.loads(user["achievements"])
-        return []
+        ''', (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            
+            if user and user["achievements"]:
+                return json.loads(user["achievements"])
+            return []
     finally:
-        await conn.close()
+        pass
+
+_top_cache = {}
+_top_cache_time = {}
+
+async def get_top_players_cached(limit: int = 10, sort_by: str = "avtoritet"):
+    cache_key = f"{limit}_{sort_by}"
+    now = time.time()
+    
+    if cache_key in _top_cache:
+        if now - _top_cache_time.get(cache_key, 0) < 30:
+            return _top_cache[cache_key]
+    
+    top = await user_manager.get_top_players_fast(limit, sort_by)
+    _top_cache[cache_key] = top
+    _top_cache_time[cache_key] = now
+    
+    if len(_top_cache) > 20:
+        oldest = min(_top_cache_time.items(), key=lambda x: x[1])[0]
+        del _top_cache[oldest]
+        del _top_cache_time[oldest]
+    
+    return top
+
+async def init_bot():
+    await DatabaseManager().get_pool()
+    await user_manager.start_batch_saver()
+    logger.info("Бот инициализирован")
+
+async def shutdown_bot():
+    await user_manager.stop_batch_saver()
+    await user_manager._save_dirty_users()
+    
+    if DatabaseManager._pool:
+        await DatabaseManager._pool.close()
+        DatabaseManager._pool = None
+    
+    logger.info("Бот завершил работу")
+
+async def _clean_expired_boosts():
+    while True:
+        try:
+            pool = await DatabaseManager().get_pool()
+            now = int(time.time())
+            await pool.execute(
+                "DELETE FROM active_boosts_cache WHERE expires_at < ?",
+                (now,)
+            )
+        except Exception as e:
+            logger.error(f"Ошибка очистки бустов: {e}")
+        await asyncio.sleep(3600)
+
+async def start_background_tasks():
+    asyncio.create_task(_clean_expired_boosts())
+
+if __name__ == "__main__":
+    import asyncio
+    
+    async def test():
+        await init_bot()
+        
+        start = time.time()
+        
+        tasks = []
+        for i in range(100):
+            tasks.append(get_patsan(i))
+        
+        results = await asyncio.gather(*tasks)
+        print(f"Загружено 100 пользователей за {time.time() - start:.2f}с")
+        
+        await shutdown_bot()
+    
+    asyncio.run(test())
