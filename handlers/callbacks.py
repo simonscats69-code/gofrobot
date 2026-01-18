@@ -38,7 +38,7 @@ def get_item_emoji(item_name: str) -> str:
     """Получение эмодзи для предмета"""
     emoji_map = {
         "двенашка": "🧱", "атмосфера": "🌀", "энергетик": "⚡",
-        "перчатки": "🧤", "швабра": "🧹", "ведро": "🪣",
+        "первача": "🧤", "швабра": "🧹", "ведро": "🪣",
         "золотая_двенашка": "🌟", "кристалл_атмосферы": "💎",
         "секретная_схема": "📜", "супер_двенашка": "✨",
         "вечный_двигатель": "⚙️", "царский_обед": "👑",
@@ -65,14 +65,19 @@ router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 # =================== ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ ===================
 async def get_main_menu_text(patsan: dict) -> str:
     """Текст главного меню"""
-    atm_count = patsan['atm_count']
+    # ИСПРАВЛЕНО: использование .get() для безопасного доступа к ключам
+    atm_count = patsan.get('atm_count', 0)
     max_atm = patsan.get('max_atm', 12)
     progress = progress_bar(atm_count, max_atm)
     
+    # Используем .get() с значениями по умолчанию
+    rank_emoji = patsan.get('rank_emoji', '👶')
+    rank_name = patsan.get('rank_name', 'Пацанчик')
+    
     return (f"<b>Главное меню</b>\n"
-            f"{patsan['rank_emoji']} <b>{patsan['rank_name']}</b> | ⭐ {patsan['avtoritet']} | 📈 Ур. {patsan.get('level', 1)}\n\n"
+            f"{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan.get('avtoritet', 1)} | 📈 Ур. {patsan.get('level', 1)}\n\n"
             f"🌀 Атмосферы: [{progress}] {atm_count}/{max_atm}\n"
-            f"💸 Деньги: {patsan['dengi']}р | 🐍 Змий: {patsan['zmiy']:.1f}кг\n\n"
+            f"💸 Деньги: {patsan.get('dengi', 0)}р | 🐍 Змий: {patsan.get('zmiy', 0):.1f}кг\n\n"
             f"<i>Выбери действие, пацан:</i>")
 
 @router.callback_query(F.data == "back_main")
@@ -146,20 +151,20 @@ async def handle_action(callback: types.CallbackQuery, action: str):
     extra = {}
     
     if action == "davka":
-        extra["nagnetatel_msg"] = "\n🥛 <i>Ряженка жмёт двенашку как надо! (+75%)</i>" if patsan["upgrades"].get("ryazhenka") else \
-                                 "\n🧋 <i>Бублэки создают нужную турбулентность! (+35% к шансу)</i>" if patsan["upgrades"].get("bubbleki") else ""
+        extra["nagnetatel_msg"] = "\n🥛 <i>Ряженка жмёт двенашку как надо! (+75%)</i>" if patsan.get("upgrades", {}).get("ryazhenka") else \
+                                 "\n🧋 <i>Бублэки создают нужную турбулентность! (+35% к шансу)</i>" if patsan.get("upgrades", {}).get("bubbleki") else ""
         extra["spec_bonus_msg"] = "\n💪 <b>Специализация 'Давила': +50% к давке!</b>" if patsan.get("specialization") == "давила" else ""
         extra["dvenashka_msg"] = "\n✨ <b>Нашёл двенашку в турбулентности!</b>" if result.get("dvenashka_found") else ""
         extra["rare_item_msg"] = f"\n🌟 <b>Редкая находка: {result['rare_item_found']}!</b>" if result.get("rare_item_found") else ""
         extra["exp_msg"] = f"\n📚 +{result.get('exp_gained', 0)} опыта" if result.get('exp_gained', 0) > 0 else ""
         
     elif action == "sdat":
-        extra["avtoritet_bonus_text"] = f"\n⭐ <b>Бонус авторитета:</b> +{result['avtoritet_bonus']}р" if result['avtoritet_bonus'] > 0 else ""
+        extra["avtoritet_bonus_text"] = f"\n⭐ <b>Бонус авторитета:</b> +{result['avtoritet_bonus']}р" if result.get('avtoritet_bonus', 0) > 0 else ""
         extra["exp_msg"] = f"\n📚 +{result.get('exp_gained', 0)} опыта" if result.get('exp_gained', 0) > 0 else ""
     
     # Объединяем данные для форматирования
     format_data = {**patsan, **result, **extra}
-    format_data['total_grams'] = result.get('total_grams', 0) / 1000
+    format_data['total_grams'] = result.get('total_grams', 0) / 1000 if result.get('total_grams') else 0
     
     text = handler["success_template"].format(**format_data)
     await edit_or_answer(callback, text, main_keyboard())
@@ -176,21 +181,25 @@ async def callback_sdat(callback: types.CallbackQuery):
 @router.callback_query(F.data == "pump")
 async def callback_pump(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
+    skill_davka = patsan.get('skill_davka', 1)
+    skill_zashita = patsan.get('skill_zashita', 1)
+    skill_nahodka = patsan.get('skill_nahodka', 1)
+    
     costs = {
-        'davka': 180 + (patsan['skill_davka'] * 10),
-        'zashita': 270 + (patsan['skill_zashita'] * 15),
-        'nahodka': 225 + (patsan['skill_nahodka'] * 12)
+        'davka': 180 + (skill_davka * 10),
+        'zashita': 270 + (skill_zashita * 15),
+        'nahodka': 225 + (skill_nahodka * 12)
     }
     
     text = (f"<b>Прокачка скиллов:</b>\n"
-            f"💰 Деньги: {patsan['dengi']} руб.\n"
+            f"💰 Деньги: {patsan.get('dengi', 0)} руб.\n"
             f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n\n"
             f"💪 <b>Давка змия</b> (+100г за уровень)\n"
-            f"Уровень: {patsan['skill_davka']} | Следующий: {costs['davka']}р/ур\n\n"
+            f"Уровень: {skill_davka} | Следующий: {costs['davka']}р/ур\n\n"
             f"🛡️ <b>Защита атмосфер</b> (ускоряет восстановление)\n"
-            f"Уровень: {patsan['skill_zashita']} | Следующий: {costs['zashita']}р/ур\n\n"
+            f"Уровень: {skill_zashita} | Следующий: {costs['zashita']}р/ур\n\n"
             f"🔍 <b>Находка двенашек</b> (+5% шанс за уровень)\n"
-            f"Уровень: {patsan['skill_nahodka']} | Следующий: {costs['nahodka']}р/ур\n\n"
+            f"Уровень: {skill_nahodka} | Следующий: {costs['nahodka']}р/ур\n\n"
             f"<i>Выбери, что прокачать:</i>")
     
     await edit_or_answer(callback, text, pump_keyboard())
@@ -241,7 +250,7 @@ async def callback_inventory(callback: types.CallbackQuery):
                     boosts_text += f"• {boost}: {hours}ч {minutes}м\n"
     
     text = f"{inv_text}{boosts_text}\n\n"
-    text += f"🐍 Коричневагый змий: {patsan['zmiy']:.3f} кг\n"
+    text += f"🐍 Коричневагый змий: {patsan.get('zmiy', 0):.3f} кг\n"
     text += f"🔨 Скрафчено предметов: {len(patsan.get('crafted_items', []))}"
     
     await edit_or_answer(callback, text, inventory_management_keyboard())
@@ -251,17 +260,23 @@ async def callback_inventory(callback: types.CallbackQuery):
 async def callback_profile(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
     
+    # ИСПРАВЛЕНО: использование .get() для безопасного доступа
+    rank_emoji = patsan.get('rank_emoji', '👶')
+    rank_name = patsan.get('rank_name', 'Пацанчик')
+    
     # Апгрейды
     upgrade_text = ""
-    bought_upgrades = [k for k, v in patsan["upgrades"].items() if v]
+    upgrades = patsan.get("upgrades", {})
+    bought_upgrades = [k for k, v in upgrades.items() if v] if upgrades else []
     if bought_upgrades:
         upgrade_text = "\n<b>🛒 Нагнетатели:</b>\n" + "\n".join([f"• {upg}" for upg in bought_upgrades])
     
     # Специализация
     spec_text = ""
-    if patsan.get("specialization"):
-        spec_bonuses = get_specialization_bonuses(patsan["specialization"])
-        spec_text = f"\n<b>🌳 Специализация:</b> {patsan['specialization']}"
+    specialization = patsan.get("specialization")
+    if specialization:
+        spec_bonuses = get_specialization_bonuses(specialization)
+        spec_text = f"\n<b>🌳 Специализация:</b> {specialization}"
         if spec_bonuses:
             spec_text += f"\n<i>Бонусы: {', '.join(spec_bonuses.keys())}</i>"
     
@@ -269,24 +284,24 @@ async def callback_profile(callback: types.CallbackQuery):
     regen_time = calculate_atm_regen_time(patsan)
     regen_str = format_time(regen_time)
     
-    atm_count = patsan['atm_count']
+    atm_count = patsan.get('atm_count', 0)
     max_atm = patsan.get('max_atm', 12)
     progress = progress_bar(atm_count, max_atm)
     
     text = (f"<b>📊 ПРОФИЛЬ ПАЦАНА:</b>\n\n"
-            f"{patsan['rank_emoji']} <b>{patsan['rank_name']}</b>\n"
-            f"👤 {patsan['nickname']}\n"
-            f"⭐ Авторитет: {patsan['avtoritet']}\n"
+            f"{rank_emoji} <b>{rank_name}</b>\n"
+            f"👤 {patsan.get('nickname', 'Неизвестно')}\n"
+            f"⭐ Авторитет: {patsan.get('avtoritet', 1)}\n"
             f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n\n"
             f"<b>Ресурсы:</b>\n"
             f"🌀 Атмосферы: [{progress}] {atm_count}/{max_atm}\n"
             f"⏱️ Восстановление: {regen_str}\n"
-            f"🐍 Коричневаг: {patsan['zmiy']:.3f} кг\n"
-            f"💰 Деньги: {patsan['dengi']} руб.\n\n"
+            f"🐍 Коричневаг: {patsan.get('zmiy', 0):.3f} кг\n"
+            f"💰 Деньги: {patsan.get('dengi', 0)} руб.\n\n"
             f"<b>Скиллы:</b>\n"
-            f"💪 Давка: {patsan['skill_davka']}\n"
-            f"🛡️ Защита: {patsan['skill_zashita']}\n"
-            f"🔍 Находка: {patsan['skill_nahodka']}"
+            f"💪 Давка: {patsan.get('skill_davka', 1)}\n"
+            f"🛡️ Защита: {patsan.get('skill_zashita', 1)}\n"
+            f"🔍 Находка: {patsan.get('skill_nahodka', 1)}"
             f"{upgrade_text}{spec_text}")
     
     await edit_or_answer(callback, text, profile_extended_keyboard())
@@ -411,7 +426,7 @@ async def callback_craft(callback: types.CallbackQuery):
             f"<i>Создавай мощные предметы из ингредиентов!</i>\n\n"
             f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n"
             f"🔨 Скрафчено: {crafted_count} предметов\n"
-            f"💰 Деньги: {patsan['dengi']}р\n\n"
+            f"💰 Деньги: {patsan.get('dengi', 0)}р\n\n"
             f"<b>Выбери действие:</b>")
     
     await edit_or_answer(callback, text, craft_keyboard())
@@ -513,7 +528,7 @@ async def callback_rademka_scout_menu(callback: types.CallbackQuery):
 async def callback_rademka_scout_random(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     top_players = await get_top_players(limit=50, sort_by="avtoritet")
-    possible_targets = [p for p in top_players if p["user_id"] != user_id]
+    possible_targets = [p for p in top_players if p.get("user_id") != user_id]
     
     if not possible_targets:
         text = ("😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>\n\n"
@@ -523,27 +538,30 @@ async def callback_rademka_scout_random(callback: types.CallbackQuery):
         return
     
     target = random.choice(possible_targets)
-    target_id = target["user_id"]
+    target_id = target.get("user_id")
     
     success, message, scout_data = await rademka_scout(user_id, target_id)
     if not success:
         await callback.answer(message, show_alert=True)
         return
     
-    chance = scout_data["chance"]
-    target_name = target["nickname"]
-    factors_text = "\n".join([f"• {f}" for f in scout_data["factors"]])
+    chance = scout_data.get("chance", 50)
+    target_name = target.get("nickname", "Неизвестно")
+    factors = scout_data.get("factors", [])
+    factors_text = "\n".join([f"• {f}" for f in factors]) if factors else "• Неизвестные факторы"
     
     text = (f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n"
             f"<b>Цель:</b> {target_name}\n"
             f"🎲 <b>Точный шанс победы:</b> {chance}%\n\n"
             f"<b>📊 Факторы:</b>\n{factors_text}\n\n"
             f"<b>📈 Статистика:</b>\n"
-            f"• Твой авторитет: {scout_data['attacker_stats']['avtoritet']} ({scout_data['attacker_stats']['rank'][1]})\n"
-            f"• Его авторитет: {scout_data['target_stats']['avtoritet']} ({scout_data['target_stats']['rank'][1]})\n"
-            f"• Последняя активность: {scout_data['target_stats']['last_active_hours']}ч назад\n\n"
-            f"💸 Стоимость разведки: {'Бесплатно' if scout_data['cost'] == 0 else '50р'}\n"
-            f"🕵️ Бесплатных разведок осталось: {scout_data['free_scouts_left']}\n\n"
+            f"• Твой авторитет: {scout_data.get('attacker_stats', {}).get('avtoritet', 0)} "
+            f"({scout_data.get('attacker_stats', {}).get('rank', ('👶', 'Пацанчик'))[1]})\n"
+            f"• Его авторитет: {scout_data.get('target_stats', {}).get('avtoritet', 0)} "
+            f"({scout_data.get('target_stats', {}).get('rank', ('👶', 'Пацанчик'))[1]})\n"
+            f"• Последняя активность: {scout_data.get('target_stats', {}).get('last_active_hours', 0)}ч назад\n\n"
+            f"💸 Стоимость разведки: {'Бесплатно' if scout_data.get('cost', 0) == 0 else '50р'}\n"
+            f"🕵️ Бесплатных разведок осталось: {scout_data.get('free_scouts_left', 0)}\n\n"
             f"<i>Атаковать эту цель?</i>")
     
     await edit_or_answer(callback, text, rademka_fight_keyboard(target_id, scouted=True))
@@ -704,7 +722,7 @@ async def callback_atm_status(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
     
-    atm_count = patsan['atm_count']
+    atm_count = patsan.get('atm_count', 0)
     max_atm = patsan.get('max_atm', 12)
     regen_time = calculate_atm_regen_time(patsan)
     regen_str = format_time(regen_time)
@@ -824,7 +842,7 @@ async def show_top(callback: types.CallbackQuery):
         
         # Значение в зависимости от типа сортировки
         if sort_type == "avtoritet":
-            value = f"⭐ {player['avtoritet']}"
+            value = f"⭐ {player.get('avtoritet', 0)}"
         elif sort_type == "dengi":
             dengi_value = player.get('dengi', 0)
             dengi_formatted = player.get('dengi_formatted', f"{dengi_value}р")
