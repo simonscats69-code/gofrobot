@@ -69,7 +69,7 @@ async def cmd_nickname(m: types.Message, state: FSMContext):
     if not DB_IMPORTS_OK: 
         return await m.answer("👤 <b>НИКНЕЙМ</b>\n\nБаза недоступна.", parse_mode="HTML")
     p = await get_patsan_cached(m.from_user.id)
-    c = 'Бесплатно (первый раз)' if not p.get('nickname_changed') else '5000 руб.'
+    c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else '5000 руб.'
     await m.answer(f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💰 <b>Стоимость смены ника:</b> {c}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
 
 @router.callback_query(F.data == "nickname_menu")
@@ -77,7 +77,7 @@ async def nickname_menu(c: types.CallbackQuery):
     if not DB_IMPORTS_OK: 
         return await c.answer("База недоступна", show_alert=True)
     p = await get_patsan_cached(c.from_user.id)
-    cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed') else '5000 руб.'
+    cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else '5000 руб.'
     await c.message.edit_text(f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💰 <b>Стоимость смены ника:</b> {cst}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
     await c.answer()
 
@@ -119,7 +119,7 @@ async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     p = await get_patsan_cached(c.from_user.id)
     if await state.get_state() == NicknameChange.waiting_for_nickname.state:
         return await c.answer("Ты уже в процессе смены ника!", show_alert=True)
-    nc, cost = p.get("nickname_changed", False), 0 if not p.get("nickname_changed") else 5000
+    nc, cost = p.get("nickname_changed", False), 0 if not p.get("nickname_changed", False) else 5000
     txt = (f"🏷️ <b>СМЕНА НИКА</b>\n\nТвой текущий ник: <code>{p.get('nickname','Неизвестно')}</code>\n" +
            (f"Ты уже менял ник.\nСтоимость: <b>{cost} руб.</b>\n" if nc else f"🎉 <b>Первая смена - БЕСПЛАТНО!</b>\nПотом 5000 руб.\n") +
            f"\nНапиши новый ник (3-20 символов, буквы и цифры):")
@@ -197,7 +197,7 @@ async def rademka_random(c: types.CallbackQuery):
         ch += min(30, (av-tav)*5)
     elif tav > av: 
         ch += 20-min(30, (tav-av)*5)
-    if p.get("specialization")=="непробиваемый": 
+    if p.get("specialization")=="neprobivaemy": 
         ch += 5
     td = await get_patsan(pid)
     if td and time.time()-td.get("last_update", time.time())>86400: 
@@ -262,7 +262,7 @@ async def rademka_confirm(c: types.CallbackQuery):
     ch = 50 + (a.get("avtoritet",1)-t.get("avtoritet",1))*5
     if a.get("avtoritet",1)<t.get("avtoritet",1): 
         ch+=20
-    if a.get("specialization")=="непробиваемый": 
+    if a.get("specialization")=="neprobivaemy": 
         ch+=5
     if t.get("level",1)>a.get("level",1): 
         ch-=min(15, (t.get("level",1)-a.get("level",1))*3)
@@ -274,38 +274,41 @@ async def rademka_confirm(c: types.CallbackQuery):
     
     if suc:
         mt = int(t.get("dengi",0)*0.1)
-        a["dengi"], t["dengi"] = a.get("dengi",0)+mt, max(10, t.get("dengi",0)-mt)
-        a["avtoritet"] = a.get("avtoritet",1)+1
+        a["dengi"] = a.get("dengi",0) + mt
+        t["dengi"] = max(10, t.get("dengi",0) - mt)
+        a["avtoritet"] = a.get("avtoritet",1) + 1
         if t.get("inventory") and "двенашка" in t["inventory"] and random.random()<0.3:
             t["inventory"].remove("двенашка")
             a["inventory"].append("двенашка")
             it="двенашка"
         eg = 25+(t.get("avtoritet",1)//10)
-        a["experience"] = a.get("experience",0)+eg
-        if t.get("avtoritet",1)>a.get("avtoritet",1):
-            be = (t.get("avtoritet",1)-a.get("avtoritet",1))*2
-            a["experience"]+=be
-            eg+=be
+        a["experience"] = a.get("experience",0) + eg
+        if t.get("avtoritet",1) > a.get("avtoritet",1):
+            be = (t.get("avtoritet",1) - a.get("avtoritet",1)) * 2
+            a["experience"] += be
+            eg += be
         
-        # ИСПРАВЛЕННАЯ СТРОКА 244
+        # ИСПРАВЛЕННАЯ СТРОКА 244 (убрана лишняя фигурная скобка)
         item_text = '\n🎒 <b>Забрал двенашку!</b>' if it else ''
-        txt = f"✅ <b>УСПЕХ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ! ТЫ ПРОТАЩИЛ!</i>\n\nТы унизил {t.get('nickname','Неизвестно')}!\n⭐ <b>+1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>+{mt}р</b>\n📚 <b>+{eg} опыта</b{item_text}\n🎲 <b>Шанс:</b> {ch}%\n<i>Он теперь боится!</i>"
+        txt = f"✅ <b>УСПЕХ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ! ТЫ ПРОТАЩИЛ!</i>\n\nТы унизил {t.get('nickname','Неизвестно')}!\n⭐ <b>+1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>+{mt}р</b>\n📚 <b>+{eg} опыта</b>{item_text}\n🎲 <b>Шанс:</b> {ch}%\n<i>Он теперь боится!</i>"
         
         await unlock_achievement(uid, "first_rademka", "Первая радёмка", 200)
-        if t.get("avtoritet",1)>a.get("avtoritet",1)+20: 
+        if t.get("avtoritet",1) > a.get("avtoritet",1) + 20: 
             await unlock_achievement(uid, "rademka_underdog", "Победа над сильнейшим", 500)
     else:
         mp = int(a.get("dengi",0)*0.05)
-        a["dengi"], a["avtoritet"] = a.get("dengi",0)-mp, max(1, a.get("avtoritet",1)-1)
+        a["dengi"] = a.get("dengi",0) - mp
+        a["avtoritet"] = max(1, a.get("avtoritet",1) - 1)
         eg, rt = 5, ""
         if random.random()<0.2:
             rm = int(a.get("dengi",0)*0.05)
-            a["dengi"], t["dengi"] = a.get("dengi",0)-rm, t.get("dengi",0)+rm
+            a["dengi"] = a.get("dengi",0) - rm
+            t["dengi"] = t.get("dengi",0) + rm
             rt = f"\n💥 <b>Он отомстил и забрал {rm}р!</b>"
-        a["experience"] = a.get("experience",0)+eg
+        a["experience"] = a.get("experience",0) + eg
         
         # ИСПРАВЛЕННАЯ СТРОКА (похожая проблема)
-        txt = f"❌ <b>ПРОВАЛ!</b>\n\n<i>Сам оказался радёмкой...</i>\n\n{t.get('nickname','Неизвестно')} круче!\n⭐ <b>-1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>-{mp}р</b>\n📚 <b>+{eg} опыта</b{rt}\n🎲 <b>Шанс:</b> {ch}%\n<i>Теперь смеются...</i>"
+        txt = f"❌ <b>ПРОВАЛ!</b>\n\n<i>Сам оказался радёмкой...</i>\n\n{t.get('nickname','Неизвестно')} круче!\n⭐ <b>-1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>-{mp}р</b>\n📚 <b>+{eg} опыта</b>{rt}\n🎲 <b>Шанс:</b> {ch}%\n<i>Теперь смеются...</i>"
     
     await save_patsan(a)
     await save_patsan(t)
@@ -313,10 +316,10 @@ async def rademka_confirm(c: types.CallbackQuery):
     
     lup, ltxt = await check_level_up(a), ""
     if lup[0]: 
-        ltxt=f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {a.get('level',1)} уровня!"
+        ltxt = f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {a.get('level',1)} уровня!"
         await save_patsan(a)
     
-    await c.message.edit_text(txt+ltxt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(txt + ltxt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
     await c.answer()
 
 @router.callback_query(F.data == "rademka_stats")
@@ -328,7 +331,8 @@ async def rademka_stats(c: types.CallbackQuery):
         cur = await cn.execute('SELECT COUNT(*) as tf, SUM(CASE WHEN winner_id=? THEN 1 ELSE 0 END) as w, SUM(CASE WHEN loser_id=? THEN 1 ELSE 0 END) as l, SUM(CASE WHEN winner_id=? THEN money_taken ELSE 0 END) as mt, SUM(CASE WHEN loser_id=? THEN money_taken ELSE 0 END) as ml FROM rademka_fights WHERE winner_id=? OR loser_id=?', (c.from_user.id,)*6)
         s = await cur.fetchone()
         if s and s.get("tf") and s["tf"]>0:
-            t, w, l, mt, ml, wr = s["tf"], s.get("w",0) or 0, s.get("l",0) or 0, s.get("mt",0) or 0, s.get("ml",0) or 0, (s.get("w",0)/s["tf"]*100) if s["tf"]>0 else 0
+            t, w, l, mt, ml = s["tf"], s.get("w",0) or 0, s.get("l",0) or 0, s.get("mt",0) or 0, s.get("ml",0) or 0
+            wr = (s.get("w",0)/s["tf"]*100) if s["tf"]>0 else 0
             txt = f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n🎮 <b>Всего:</b> {t}\n✅ <b>Побед:</b> {w}\n❌ <b>Поражений:</b> {l}\n📈 <b>Винрейт:</b> {wr:.1f}%\n💰 <b>Отжато:</b> {mt}р\n💸 <b>Потеряно:</b> {ml}р\n💎 <b>Прибыль:</b> {mt-ml}р\n\n"
             if w>0:
                 cur = await cn.execute('SELECT loser_id, COUNT(*) as f, SUM(money_taken) as tm FROM rademka_fights WHERE winner_id=? GROUP BY loser_id ORDER BY f DESC, tm DESC LIMIT 3', (c.from_user.id,))
@@ -376,7 +380,8 @@ async def rademka_top(c: types.CallbackQuery):
                 rn, re = get_rank(av)
                 if len(nn)>15: 
                     nn=nn[:12]+"..."
-                txt+=f"{md} <code>{nn}</code> {re}\n   📈 {lv} ур. | ⭐ {av}\n   ✅ {w} ({0 if w+l==0 else (w/(w+l)*100):.0f}%) | 💰 {tm}р\n\n"
+                win_rate = 0 if w+l==0 else (w/(w+l)*100)
+                txt+=f"{md} <code>{nn}</code> {re}\n   📈 {lv} ур. | ⭐ {av}\n   ✅ {w} ({win_rate:.0f}%) | 💰 {tm}р\n\n"
             txt+="<i>Топ по победам</i>"
         else: 
             txt = f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\nПока никого!\nБудь первым!\n\n<i>Слава ждёт!</i>"
@@ -397,11 +402,11 @@ async def back_to_main(c: types.CallbackQuery):
         a, m = p.get('atm_count',0), p.get('max_atm',12)
         pb_fill = int((a/m)*10) if m>0 else 0
         pb_empty = 10 - pb_fill
-        pb = "█" * pb_fill + "░" * pb_empty
+        progress_bar = "█" * pb_fill + "░" * pb_empty
         rn, re = p.get('rank_name','Пацанчик'), p.get('rank_emoji','👶')
-        await c.message.edit_text(f"<b>Главное меню</b>\n{re} <b>{rn}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n🌀 Атмосферы: [{pb}] {a}/{m}\n💸 {p.get('dengi',0)}р | 🐍 {p.get('zmiy',0):.1f}кг\n\n<i>Выбери действие:</i>", reply_markup=main_keyboard(), parse_mode="HTML")
+        await c.message.edit_text(f"<b>Главное меню</b>\n{re} <b>{rn}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n🌀 Атмосферы: [{progress_bar}] {a}/{m}\n💸 {p.get('dengi',0)}р | 🐍 {p.get('zmiy',0.0):.1f}кг\n\n<i>Выбери действие:</i>", reply_markup=main_keyboard(), parse_mode="HTML")
     except Exception as e: 
         print(f"Ошибка главного: {e}")
         await c.message.edit_text("<b>Главное меню</b>\n\nБот работает!", reply_markup=main_keyboard(), parse_mode="HTML")
 
-__all__ = ["router"]
+__all__ = ["router", "process_nickname"]
