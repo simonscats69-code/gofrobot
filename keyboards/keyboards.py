@@ -2,54 +2,116 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton as Btn
 from typing import List, Optional
 
 MENUS = {
-    "main": [("🐍 Давить коричневага", "davka"), ("💰 Сдать змия", "sdat"), 
-             ("📈 Прокачать", "pump"), ("🌳 Специализации", "specializations"),
-             ("🛒 Магазин", "shop"), ("🔨 Крафт", "craft"),
-             ("🎁 Ежедневная", "daily"), ("📜 Достижения", "achievements"),
-             ("👊 Радёмка", "rademka"), ("🕵️ Разведка", "rademka_scout_menu"),
-             ("🎒 Инвентарь", "inventory"), ("🏆 Топ", "top"), ("📊 Профиль", "profile")],
+    "main": [
+        ("🐍 Давить коричневага", "davka"), 
+        ("💰 Сдать змия", "sdat"),
+        ("📈 Прокачать", "pump"), 
+        ("🌳 Специализации", "specializations"),
+        ("🛒 Магазин", "shop"), 
+        ("🔨 Крафт", "craft"),
+        ("🎁 Ежедневная", "daily"), 
+        ("📜 Достижения", "achievements"),
+        ("👊 Радёмка", "rademka"), 
+        ("🕵️ Разведка", "rademka_scout_menu"),
+        ("🎒 Инвентарь", "inventory"),
+        ("👤 Никнейм", "nickname_menu"),  # <-- ДОБАВЛЕНА ЭТА СТРОКА
+        ("🏆 Топ", "top"), 
+        ("📊 Профиль", "profile")
+    ],
     
-    "pump": [("💪 Давка", "pump_davka"), ("🛡️ Защита", "pump_zashita"), 
-             ("🔍 Находка", "pump_nahodka")],
+    "nickname": [
+        ("📝 Изменить ник", "change_nickname"),
+        ("⭐ Моя репутация", "my_reputation"),
+        ("👑 Топ репутации", "top_reputation"),
+        ("🔄 Обновить", "nickname_menu")
+    ],
     
-    "shop": [("🥛 Ряженка (300р)", "buy_ryazhenka"), ("🍵 Чай (500р)", "buy_tea_slivoviy"),
-             ("🧋 Бублэки (800р)", "buy_bubbleki"), ("🥐 Курвасаны (1500р)", "buy_kuryasany")],
+    "pump": [
+        ("💪 Давка", "pump_davka"), 
+        ("🛡️ Защита", "pump_zashita"), 
+        ("🔍 Находка", "pump_nahodka")
+    ],
     
-    "shop_cat": [("🥛 Нагнетатели", "shop"), ("⚡ Бустеры", "shop_boosters"),
-                 ("🔧 Инструменты", "shop_tools"), ("🎁 Наборы", "shop_random")],
+    "shop": [
+        ("🥛 Ряженка (300р)", "buy_ryazhenka"), 
+        ("🍵 Чай (500р)", "buy_tea_slivoviy"),
+        ("🧋 Бублэки (800р)", "buy_bubbleki"), 
+        ("🥐 Курвасаны (1500р)", "buy_kuryasany")
+    ],
     
-    "specs": [("💪 Давила", "spec_info_davila"), ("🔍 Охотник", "spec_info_ohotnik"),
-              ("🛡️ Непробиваемый", "spec_info_neprobivaemy"), ("❓ Инфо", "specialization_info")],
+    "shop_cat": [
+        ("🥛 Нагнетатели", "shop"), 
+        ("⚡ Бустеры", "shop_boosters"),
+        ("🔧 Инструменты", "shop_tools"), 
+        ("🎁 Наборы", "shop_random")
+    ],
     
-    "craft": [("🛠️ Крафт", "craft_items"), ("📜 Рецепты", "craft_recipes"),
-              ("📊 История", "craft_history")],
+    "specs": [
+        ("💪 Давила", "spec_info_davila"), 
+        ("🔍 Охотник", "spec_info_ohotnik"),
+        ("🛡️ Непробиваемый", "spec_info_neprobivaemy"), 
+        ("❓ Инфо", "specialization_info")
+    ],
     
-    "rad": [("🎯 Случайная цель", "rademka_random"), ("🕵️ Разведка", "rademka_scout_menu"),
-            ("📊 Статистика", "rademka_stats"), ("👑 Топ", "rademka_top")],
+    "craft": [
+        ("🛠️ Крафт", "craft_items"), 
+        ("📜 Рецепты", "craft_recipes"),
+        ("📊 История", "craft_history")
+    ],
     
-    "scout": [("🎯 Разведать", "rademka_scout_random"), ("🔍 Выбрать", "rademka_scout_choose"),
-              ("📊 Мои разведки", "rademka_scout_stats")],
+    "rad": [
+        ("🎯 Случайная цель", "rademka_random"), 
+        ("🕵️ Разведка", "rademka_scout_menu"),
+        ("📊 Статистика", "rademka_stats"), 
+        ("👑 Топ", "rademka_top")
+    ],
     
-    "ach": [("🔄 Обновить", "achievements"), ("📊 Прогресс", "achievements_progress"),
-            ("🎁 Ежедневная", "daily")],
+    "scout": [
+        ("🎯 Разведать", "rademka_scout_random"), 
+        ("🔍 Выбрать", "rademka_scout_choose"),
+        ("📊 Мои разведки", "rademka_scout_stats")
+    ],
     
-    "daily": [("🔄 Проверить", "daily"), ("📜 Достижения", "achievements"),
-              ("📈 Прогресс", "achievements_progress")],
+    "ach": [
+        ("🔄 Обновить", "achievements"), 
+        ("📊 Прогресс", "achievements_progress"),
+        ("🎁 Ежедневная", "daily")
+    ],
     
-    "profile_ext": [("⭐ Прогресс", "achievements_progress"), ("📈 Уровни", "level_stats"),
-                    ("🌡️ Атмосферы", "atm_status")],
+    "daily": [
+        ("🔄 Проверить", "daily"), 
+        ("📜 Достижения", "achievements"),
+        ("📈 Прогресс", "achievements_progress")
+    ],
     
-    "top": [("⭐ Авторитет", "top_avtoritet"), ("💰 Деньги", "top_dengi"),
-            ("🐍 Змий", "top_zmiy"), ("💪 Скиллы", "top_total_skill"),
-            ("📈 Уровень", "top_level"), ("👊 Победы", "top_rademka_wins")],
+    "profile_ext": [
+        ("⭐ Прогресс", "achievements_progress"), 
+        ("📈 Уровни", "level_stats"),
+        ("🌡️ Атмосферы", "atm_status")
+    ],
     
-    "inv": [("🛠️ Использовать", "inventory_use"), ("🔨 Крафт", "craft"),
-            ("📦 Сортировать", "inventory_sort"), ("🗑️ Выбросить", "inventory_trash")],
+    "top": [
+        ("⭐ Авторитет", "top_avtoritet"), 
+        ("💰 Деньги", "top_dengi"),
+        ("🐍 Змий", "top_zmiy"), 
+        ("💪 Скиллы", "top_total_skill"),
+        ("📈 Уровень", "top_level"), 
+        ("👊 Победы", "top_rademka_wins")
+    ],
     
-    "craft_items": [("✨ Супер-двенашка", "craft_super_dvenashka"),
-                    ("⚡ Вечный двигатель", "craft_vechnyy_dvigatel"),
-                    ("👑 Царский обед", "craft_tarskiy_obed"),
-                    ("🌀 Бустер атмосфер", "craft_booster_atm")]
+    "inv": [
+        ("🛠️ Использовать", "inventory_use"), 
+        ("🔨 Крафт", "craft"),
+        ("📦 Сортировать", "inventory_sort"), 
+        ("🗑️ Выбросить", "inventory_trash")
+    ],
+    
+    "craft_items": [
+        ("✨ Супер-двенашка", "craft_super_dvenashka"),
+        ("⚡ Вечный двигатель", "craft_vechnyy_dvigatel"),
+        ("👑 Царский обед", "craft_tarskiy_obed"),
+        ("🌀 Бустер атмосфер", "craft_booster_atm")
+    ]
 }
 
 # ========== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ==========
@@ -98,6 +160,7 @@ def rad_fight_kb(target: int = None, scouted: bool = False) -> InlineKeyboardMar
 
 # ========== ГОТОВЫЕ КЛАВИАТУРЫ ==========
 def main_kb(): return mk("main")
+def nickname_kb(): return mk("nickname", "back_main", 2)  # <-- ДОБАВЛЕНА
 def pump_kb(): return mk("pump", "back_main", 1)
 def shop_kb(): return mk("shop", "back_main", 1)
 def shop_cat_kb(): return mk("shop_cat", "shop", 1)
@@ -168,6 +231,7 @@ def back_inv(): return back_kb("inventory")
 
 # Алиасы для обратной совместимости
 main_keyboard = main_kb
+nickname_keyboard = nickname_kb  # <-- ДОБАВЛЕНА
 pump_keyboard = pump_kb
 shop_keyboard = shop_kb
 shop_categories_keyboard = shop_cat_kb
