@@ -25,6 +25,7 @@ async def cmd_start(message: types.Message):
         f"🌀 <b>Атмосферы:</b> [{progress_bar}] {atm_count}/{max_atm}\n"
         f"💰 <b>Деньги:</b> {patsan['dengi']}р | 🐍 <b>Змий:</b> {patsan['zmiy']:.1f}кг\n\n"
         f"<i>Иди заварваривай коричневага, а то старшие придут и спросят.</i>\n"
+        f"<i>🔥 Новое в обновлении: специализации, крафт, уровни!</i>",
         reply_markup=main_keyboard(),
         parse_mode="HTML"
     )
@@ -370,7 +371,7 @@ async def cmd_level(message: types.Message):
     text += f"• Достижения: 10-1000 опыта\n"
     text += f"• Ежедневные награды: переменный\n"
     
-    from keyboards.new_keyboards import level_stats_keyboard
+    from keyboards.keyboards import level_stats_keyboard
     
     await message.answer(
         text,
