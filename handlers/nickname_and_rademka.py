@@ -1,835 +1,604 @@
-from aiogram import Router, types, F
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.exceptions import TelegramBadRequest
-from database.db_manager import (
-    get_patsan_cached, change_nickname, get_connection, get_patsan, 
-    save_patsan, unlock_achievement, save_rademka_fight, get_top_players,
-    rademka_scout, get_specialization_bonuses
-)
-from keyboards.keyboards import main_keyboard
-from keyboards.keyboards import (
-    nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, 
-    back_to_rademka_keyboard, rademka_scout_keyboard
-)
+import asyncio, time, random, json, aiosqlite, logging
+from typing import Optional, List, Dict, Any, Tuple
+from contextlib import asynccontextmanager
 
-router = Router()
+logger = logging.getLogger(__name__)
 
-def ignore_not_modified_error(func):
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                if len(args) > 0 and hasattr(args[0], 'callback_query'):
-                    await args[0].callback_query.answer()
-                return
-            raise
-    return wrapper
+ATM_MAX, ATM_TIME, DB_NAME = 12, 600, "bot_database.db"
+CACHE_TTL, MAX_CACHE, BATCH_INT = 30, 500, 5
 
-class NicknameChange(StatesGroup):
-    waiting_for_nickname = State()
+RANKS = {1:("👶","Пацанчик"), 11:("👊","Браток"), 51:("👑","Авторитет"), 
+         201:("🐉","Царь гофры"), 501:("🏛️","Император"), 1001:("💩","БОГ ГОВНА")}
 
-@router.message(Command("nickname"))
-async def cmd_nickname(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    
-    current_state = await state.get_state()
-    if current_state == NicknameChange.waiting_for_nickname.state:
-        await message.answer("Ты уже в процессе смены ника! Напиши новый ник или отмени командой /cancel")
-        return
-    
-    nickname_changed = patsan.get("nickname_changed", False)
-    cost = 0 if not nickname_changed else 5000
-    
-    if nickname_changed:
-        message_text = (
-            f"🏷️ <b>СМЕНА НИКА</b>\n\n"
-            f"Твой текущий ник: <code>{patsan['nickname']}</code>\n"
-            f"Ты уже менял ник ранее.\n"
-            f"Стоимость смены: <b>{cost} руб.</b>\n\n"
-            f"Напиши новый ник (3-20 символов, только буквы и цифры):"
-        )
-    else:
-        message_text = (
-            f"🏷️ <b>СМЕНА НИКА</b>\n\n"
-            f"Твой текущий ник: <code>{patsan['nickname']}</code>\n"
-            f"🎉 <b>Первая смена - БЕСПЛАТНО!</b>\n"
-            f"Потом будет стоить 5000 руб.\n\n"
-            f"Напиши новый ник (3-20 символов, только буквы и цифры):"
-        )
-    
-    await message.answer(
-        message_text,
-        reply_markup=nickname_keyboard(),
-        parse_mode="HTML"
-    )
-    
-    await state.set_state(NicknameChange.waiting_for_nickname)
+SPECS = {
+    "давила": {"name":"Давила", "desc":"Мастер давления", "req":{"skill_davka":5,"zmiy":50.0},
+               "price":1500, "bon":{"davka_mul":1.5, "atm_red":1}},
+    "охотник": {"name":"Охотник", "desc":"Находит двенашки", "req":{"skill_nahodka":5,"inv_contains":"двенашка"},
+                "price":1200, "bon":{"find_chance":0.15, "rare_chance":0.05}},
+    "непробиваемый": {"name":"Непробиваемый", "desc":"Железные кишки", "req":{"skill_zashita":5,"avtoritet":20},
+                      "price":2000, "bon":{"atm_regen":0.9, "rad_def":0.15}}
+}
 
-@router.callback_query(F.data == "change_nickname")
-async def callback_change_nickname(callback: types.CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    
-    current_state = await state.get_state()
-    if current_state == NicknameChange.waiting_for_nickname.state:
-        await callback.answer("Ты уже в процессе смены ника! Напиши новый ник.")
-        return
-    
-    nickname_changed = patsan.get("nickname_changed", False)
-    cost = 0 if not nickname_changed else 5000
-    
-    if nickname_changed:
-        message_text = (
-            f"🏷️ <b>СМЕНА НИКА</b>\n\n"
-            f"Твой текущий ник: <code>{patsan['nickname']}</code>\n"
-            f"Ты уже менял ник ранее.\n"
-            f"Стоимость смены: <b>{cost} руб.</b>\n\n"
-            f"Напиши новый ник (3-20 символов, только буквы и цифры):"
-        )
-    else:
-        message_text = (
-            f"🏷️ <b>СМЕНА НИКА</b>\n\n"
-            f"Твой текущий ник: <code>{patsan['nickname']}</code>\n"
-            f"🎉 <b>Первая смена - БЕСПЛАТНО!</b>\n"
-            f"Потом будет стоить 5000 руб.\n\n"
-            f"Напиши новый ник (3-20 символов, только буквы и цифры):"
-        )
-    
-    await callback.message.answer(
-        message_text,
-        reply_markup=nickname_keyboard(),
-        parse_mode="HTML"
-    )
-    
-    await state.set_state(NicknameChange.waiting_for_nickname)
-    await callback.answer("Введи новый ник в чат")
+CRAFT = {
+    "супер_двенашка": {"name":"Супер-двенашка", "desc":"Удача +1ч", "ing":{"двенашка":3,"деньги":500},
+                       "res":{"item":"супер_двенашка","dur":3600}, "chance":1.0},
+    "вечный_двигатель": {"name":"Вечный двигатель", "desc":"Восстановление атмосфер", "ing":{"атмосфера":5,"энергетик":1},
+                         "res":{"item":"вечный_двигатель","dur":86400}, "chance":0.8},
+    "царский_обед": {"name":"Царский обед", "desc":"Макс буст 30м", "ing":{"курвасаны":1,"ряженка":1,"деньги":300},
+                     "res":{"item":"царский_обед","dur":1800}, "chance":1.0},
+    "бустер_атмосфер": {"name":"Бустер атмосфер", "desc":"+3 к макс атмосферам", "ing":{"энергетик":2,"двенашка":1,"деньги":2000},
+                        "res":{"item":"бустер_атмосфер"}, "chance":0.7}
+}
 
-@router.message(NicknameChange.waiting_for_nickname)
-async def process_nickname(message: types.Message, state: FSMContext):
-    user_id = message.from_user.id
-    new_nickname = message.text.strip()
-    
-    if len(new_nickname) < 3:
-        await message.answer(
-            "❌ Слишком короткий ник! Минимум 3 символа.\n"
-            "Попробуй ещё раз:",
-            reply_markup=nickname_keyboard()
-        )
-        return
-    
-    if len(new_nickname) > 20:
-        await message.answer(
-            "❌ Слишком длинный ник! Максимум 20 символов.\n"
-            "Попробуй ещё раз:",
-            reply_markup=nickname_keyboard()
-        )
-        return
-    
-    if not all(c.isalnum() or c in "_- " for c in new_nickname):
-        await message.answer(
-            "❌ Используй только буквы, цифры, пробелы, дефисы и подчёркивания!\n"
-            "Попробуй ещё раз:",
-            reply_markup=nickname_keyboard()
-        )
-        return
-    
-    success, result_message = await change_nickname(user_id, new_nickname)
-    
-    if success:
-        await message.answer(
-            f"✅ {result_message}\n"
-            f"Теперь ты известен как: <code>{new_nickname}</code>",
-            reply_markup=main_keyboard(),
-            parse_mode="HTML"
-        )
-    else:
-        await message.answer(
-            f"❌ {result_message}\n"
-            f"Попробуй снова:",
-            reply_markup=nickname_keyboard(),
-            parse_mode="HTML"
-        )
-    
-    await state.clear()
+ACH_LEVELS = {
+    "zmiy_collector": {"name":"Коллекционер змия", "lvls":[(10,50,"Новичок",10),(100,300,"Любитель",50),
+                                                          (1000,1500,"Профессионал",200),(10000,5000,"КОРОЛЬ",1000)]},
+    "money_maker": {"name":"Денежный мешок", "lvls":[(1000,100,"Бедолага",10),(10000,1000,"Состоятельный",100),
+                                                    (100000,5000,"Олигарх",500),(1000000,25000,"РОТШИЛЬД",2500)]},
+    "rademka_king": {"name":"Король радёмок", "lvls":[(5,200,"Задира",20),(25,1000,"Гроза района",100),
+                                                     (100,5000,"Неприкасаемый",500),(500,25000,"ЛЕГЕНДА",2500)]}
+}
 
-@router.message(Command("cancel"))
-async def cmd_cancel(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is None:
-        await message.answer("Нечего отменять.")
-        return
+class DatabaseManager:
+    _pool = None
+    @classmethod
+    async def get_pool(cls):
+        if not cls._pool:
+            cls._pool = await aiosqlite.connect(DB_NAME, timeout=30)
+            cls._pool.row_factory = aiosqlite.Row
+            await cls._create_tables()
+        return cls._pool
     
-    await state.clear()
-    await message.answer(
-        "Смена ника отменена.",
-        reply_markup=main_keyboard()
-    )
-
-@router.message(Command("rademka"))
-async def cmd_rademka(message: types.Message):
-    user_id = message.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_scouts_left = max(0, 5 - scouts_used)
-    
-    message_text = (
-        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n"
-        f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
-        f"Выбери пацана и протащи его по гофроцентралу!\n"
-        f"За успешную радёмку получишь:\n"
-        f"• +1 авторитет\n"
-        f"• 10% его денег\n"
-        f"• Шанс забрать двенашку\n\n"
-        f"<b>Риски:</b>\n"
-        f"• Можешь потерять 5% своих денег\n"
-        f"• -1 авторитет при неудаче\n"
-        f"• Отжатый пацан может отомстить\n\n"
-        f"🎯 <b>НОВОЕ: Разведка!</b>\n"
-        f"• Узнай точный шанс победы\n"
-        f"• {free_scouts_left}/5 бесплатных разведок\n"
-        f"• Потом 50р за разведку\n\n"
-        f"<b>Твои статы:</b>\n"
-        f"⭐ Авторитет: {patsan['avtoritet']}\n"
-        f"💰 Деньги: {patsan['dengi']}р\n"
-        f"📈 Уровень: {patsan.get('level', 1)}\n"
-        f"🌳 Специализация: {patsan.get('specialization', 'нет')}"
-    )
-    
-    await message.answer(
-        message_text,
-        reply_markup=rademka_keyboard(),
-        parse_mode="HTML"
-    )
-
-@ignore_not_modified_error
-@router.callback_query(F.data == "rademka")
-async def callback_rademka(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_scouts_left = max(0, 5 - scouts_used)
-    
-    message_text = (
-        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n"
-        f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
-        f"Выбери пацана и протащи его по гофроцентралу!\n"
-        f"За успешную радёмку получишь:\n"
-        f"• +1 авторитет\n"
-        f"• 10% его денег\n"
-        f"• Шанс забрать двенашку\n\n"
-        f"<b>Риски:</b>\n"
-        f"• Можешь потерять 5% своих денег\n"
-        f"• -1 авторитет при неудаче\n"
-        f"• Отжатый пацан может отомстить\n\n"
-        f"🎯 <b>НОВОЕ: Разведка!</b>\n"
-        f"• Узнай точный шанс победы\n"
-        f"• {free_scouts_left}/5 бесплатных разведок\n"
-        f"• Потом 50р за разведку\n\n"
-        f"<b>Твои статы:</b>\n"
-        f"⭐ Авторитет: {patsan['avtoritet']}\n"
-        f"💰 Деньги: {patsan['dengi']}р\n"
-        f"📈 Уровень: {patsan.get('level', 1)}"
-    )
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=rademka_keyboard(),
-        parse_mode="HTML"
-    )
-
-@router.callback_query(F.data == "rademka_scout_menu")
-async def rademka_scout_menu(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_scouts_left = max(0, 5 - scouts_used)
-    
-    text = (
-        f"🕵️ <b>РАЗВЕДКА РАДЁМКИ</b>\n\n"
-        f"<i>Узнай точный шанс успеха перед атакой!</i>\n\n"
-        f"📊 <b>Твоя статистика:</b>\n"
-        f"• Использовано разведок: {scouts_used}\n"
-        f"• Бесплатных осталось: {free_scouts_left}/5\n"
-        f"• Стоимость разведки: {0 if free_scouts_left > 0 else 50}р\n\n"
-        f"<b>Преимущества разведки:</b>\n"
-        f"• Узнаешь точный шанс победы\n"
-        f"• Увидишь все факторы влияния\n"
-        f"• Принимай обдуманные решения!\n\n"
-        f"<i>Выбери действие:</i>"
-    )
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=rademka_scout_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "rademka_random")
-async def rademka_random(callback: types.CallbackQuery):
-    import random
-    
-    user_id = callback.from_user.id
-    
-    top_players = await get_top_players(limit=50, sort_by="avtoritet")
-    
-    possible_targets = [p for p in top_players if p["user_id"] != user_id]
-    
-    if not possible_targets:
-        await callback.message.edit_text(
-            "😕 <b>НЕКОГО ПРОТАСКИВАТЬ!</b>\n\n"
-            "На гофроцентрале кроме тебя никого нет...\n"
-            "Приведи друзей, чтобы было кого радёмить!",
-            reply_markup=back_to_rademka_keyboard(),
-            parse_mode="HTML"
-        )
-        return
-    
-    target = random.choice(possible_targets)
-    target_id = target["user_id"]
-    target_name = target["nickname"]
-    target_avtoritet = target["avtoritet"]
-    
-    patsan = await get_patsan_cached(user_id)
-    attacker_avtoritet = patsan["avtoritet"]
-    
-    base_chance = 50
-    
-    if attacker_avtoritet > target_avtoritet:
-        chance = base_chance + min(30, (attacker_avtoritet - target_avtoritet) * 5)
-    elif target_avtoritet > attacker_avtoritet:
-        chance = base_chance + 20 - min(30, (target_avtoritet - attacker_avtoritet) * 5)
-    else:
-        chance = base_chance
-    
-    if patsan.get("specialization") == "непробиваемый":
-        chance += 5
-    
-    import time
-    target_data = await get_patsan(target_id)
-    if target_data:
-        last_active = target_data.get("last_update", time.time())
-        if time.time() - last_active > 86400:
-            chance += 15
-    
-    chance = max(10, min(95, chance))
-    
-    from database.db_manager import get_rank
-    attacker_rank_name, attacker_rank_emoji = get_rank(attacker_avtoritet)
-    target_rank_name, target_rank_emoji = get_rank(target_avtoritet)
-    
-    message_text = (
-        f"🎯 <b>НАШЁЛ ЦЕЛЬ ДЛЯ РАДЁМКИ!</b>\n\n"
-        f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
-        f"🔴 <b>Цель:</b> {target_name}\n"
-        f"{target_rank_emoji} <b>Звание:</b> {target_rank_name}\n"
-        f"⭐ <b>Его авторитет:</b> {target_avtoritet}\n"
-        f"💰 <b>Его деньги:</b> {target['dengi_formatted']}\n"
-        f"📈 <b>Его уровень:</b> {target.get('level', 1)}\n\n"
-        f"🟢 <b>Твой авторитет:</b> {attacker_avtoritet}\n"
-        f"{attacker_rank_emoji} <b>Твоё звание:</b> {attacker_rank_name}\n"
-        f"🎲 <b>Примерный шанс успеха:</b> {chance}%\n\n"
-        f"<b>Награда за успех:</b>\n"
-        f"• +1 авторитет\n"
-        f"• 10% его денег\n"
-        f"• Шанс забрать двенашку\n\n"
-        f"<b>Риск при провале:</b>\n"
-        f"• -1 авторитет\n"
-        f"• Потеря 5% своих денег\n\n"
-        f"<i>Хочешь точно узнать шанс? Используй разведку!</i>\n\n"
-        f"Протащить этого пацана?"
-    )
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=rademka_fight_keyboard(target_id, scouted=False),
-        parse_mode="HTML"
-    )
-
-@router.callback_query(F.data.startswith("rademka_scout_"))
-async def rademka_scout_callback(callback: types.CallbackQuery):
-    import random
-    
-    data = callback.data.replace("rademka_scout_", "")
-    
-    if data == "menu":
-        await rademka_scout_menu(callback)
-        return
-    
-    elif data == "random":
-        user_id = callback.from_user.id
-        
-        top_players = await get_top_players(limit=50, sort_by="avtoritet")
-        possible_targets = [p for p in top_players if p["user_id"] != user_id]
-        
-        if not possible_targets:
-            await callback.message.edit_text(
-                "😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>\n\n"
-                "На гофроцентрале кроме тебя никого нет...",
-                reply_markup=back_to_rademka_keyboard(),
-                parse_mode="HTML"
-            )
-            return
-        
-        target = random.choice(possible_targets)
-        target_id = target["user_id"]
-        
-        success, message, scout_data = await rademka_scout(user_id, target_id)
-        
-        if not success:
-            await callback.answer(message, show_alert=True)
-            return
-        
-        target_name = target["nickname"]
-        chance = scout_data["chance"]
-        
-        factors_text = "\n".join([f"• {f}" for f in scout_data["factors"]])
-        
-        text = (
-            f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n"
-            f"<b>Цель:</b> {target_name}\n"
-            f"🎲 <b>Точный шанс победы:</b> {chance}%\n\n"
-            f"<b>📊 Факторы:</b>\n{factors_text}\n\n"
-            f"💸 Стоимость разведки: {'Бесплатно' if scout_data['cost'] == 0 else '50р'}\n"
-            f"🕵️ Бесплатных разведок осталось: {scout_data['free_scouts_left']}\n\n"
-            f"<i>Атаковать эту цель?</i>"
-        )
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=rademka_fight_keyboard(target_id, scouted=True),
-            parse_mode="HTML"
-        )
-        return
-    
-    elif data == "choose":
-        await callback.message.edit_text(
-            "🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\n"
-            "Для точного выбора цели используй кнопку 'Случайная цель'.\n"
-            "В будущем будет возможность выбрать конкретного игрока.",
-            reply_markup=rademka_scout_keyboard(),
-            parse_mode="HTML"
-        )
-        return
-    
-    elif data == "stats":
-        user_id = callback.from_user.id
-        patsan = await get_patsan_cached(user_id)
-        
-        scouts_used = patsan.get("rademka_scouts", 0)
-        free_used = min(5, scouts_used)
-        paid_used = max(0, scouts_used - 5)
-        
-        conn = await get_connection()
-        try:
-            cursor = await conn.execute('''
-                SELECT rf.winner_id, rf.loser_id, rf.scouted, u.nickname
-                FROM rademka_fights rf
-                JOIN users u ON rf.loser_id = u.user_id
-                WHERE (rf.winner_id = ? OR rf.loser_id = ?) AND rf.scouted = TRUE
-                ORDER BY rf.created_at DESC
-                LIMIT 5
-            ''', (user_id, user_id))
+    @staticmethod
+    async def _create_tables():
+        pool = await DatabaseManager.get_pool()
+        await pool.executescript('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY, nickname TEXT DEFAULT '', avtoritet INTEGER DEFAULT 1,
+                zmiy REAL DEFAULT 0.0, dengi INTEGER DEFAULT 150, last_update INTEGER DEFAULT 0,
+                last_daily INTEGER DEFAULT 0, atm_count INTEGER DEFAULT 12, max_atm INTEGER DEFAULT 12,
+                skill_davka INTEGER DEFAULT 1, skill_zashita INTEGER DEFAULT 1, skill_nahodka INTEGER DEFAULT 1,
+                specialization TEXT DEFAULT '', experience INTEGER DEFAULT 0, level INTEGER DEFAULT 1,
+                inventory TEXT DEFAULT '[]', upgrades TEXT DEFAULT '{}', active_boosts TEXT DEFAULT '{}',
+                achievements TEXT DEFAULT '[]', crafted_items TEXT DEFAULT '[]', rademka_scouts INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_av ON users(avtoritet DESC);
+            CREATE INDEX IF NOT EXISTS idx_money ON users(dengi DESC);
+            CREATE INDEX IF NOT EXISTS idx_lvl ON users(level DESC);
             
-            scout_history = await cursor.fetchall()
-        finally:
-            await conn.close()
-        
-        text = (
-            f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n"
-            f"🕵️ Всего разведок: {scouts_used}\n"
-            f"🎯 Бесплатных: {free_used}/5\n"
-            f"💰 Платных: {paid_used}\n"
-            f"💸 Потрачено на разведки: {paid_used * 50}р\n\n"
-        )
-        
-        if scout_history:
-            text += "<b>📜 Последние разведанные цели:</b>\n"
-            for i, scout in enumerate(scout_history[:3], 1):
-                target_id = scout["loser_id"] if scout["winner_id"] == user_id else scout["winner_id"]
-                nickname = scout["nickname"]
-                result = "✅ Победа" if scout["winner_id"] == user_id else "❌ Поражение"
-                
-                if len(nickname) > 15:
-                    nickname = nickname[:12] + "..."
-                
-                text += f"{i}. {nickname} - {result}\n"
-        
-        await callback.message.edit_text(
-            text,
-            reply_markup=rademka_scout_keyboard(),
-            parse_mode="HTML"
-        )
-        return
-
-@router.callback_query(F.data.startswith("rademka_confirm_"))
-async def rademka_confirm(callback: types.CallbackQuery):
-    import random
-    import time
-    
-    user_id = callback.from_user.id
-    target_id = int(callback.data.replace("rademka_confirm_", ""))
-    
-    attacker = await get_patsan(user_id)
-    target = await get_patsan(target_id)
-    
-    if not attacker or not target:
-        await callback.answer("Ошибка: один из пацанов не найден!", show_alert=True)
-        return
-    
-    base_chance = 50
-    avtoritet_diff = attacker["avtoritet"] - target["avtoritet"]
-    chance = base_chance + (avtoritet_diff * 5)
-    
-    if attacker["avtoritet"] < target["avtoritet"]:
-        chance += 20
-    
-    if attacker.get("specialization") == "непробиваемый":
-        chance += 5
-    
-    attacker_level = attacker.get("level", 1)
-    target_level = target.get("level", 1)
-    level_diff = target_level - attacker_level
-    if level_diff > 0:
-        chance -= min(15, level_diff * 3)
-    
-    last_active = target.get("last_update", time.time())
-    if time.time() - last_active > 86400:
-        chance += 15
-    
-    chance = max(10, min(95, chance))
-    
-    success = random.random() < (chance / 100)
-    
-    money_taken = 0
-    item_stolen = None
-    exp_gained = 0
-    
-    if success:
-        money_taken = int(target["dengi"] * 0.1)
-        attacker["dengi"] += money_taken
-        target["dengi"] -= money_taken
-        
-        if target["dengi"] < 10:
-            target["dengi"] = 10
-        
-        attacker["avtoritet"] += 1
-        
-        if target.get("inventory") and "двенашка" in target["inventory"] and random.random() < 0.3:
-            target["inventory"].remove("двенашка")
-            attacker["inventory"].append("двенашка")
-            item_stolen = "двенашка"
-            item_stolen_text = "\n🎒 <b>Забрал двенашку!</b>"
-        else:
-            item_stolen_text = ""
-        
-        exp_gained = 25 + (target["avtoritet"] // 10)
-        attacker["experience"] = attacker.get("experience", 0) + exp_gained
-        
-        if target["avtoritet"] > attacker["avtoritet"]:
-            bonus_exp = (target["avtoritet"] - attacker["avtoritet"]) * 2
-            attacker["experience"] += bonus_exp
-            exp_gained += bonus_exp
-        
-        result_text = (
-            f"✅ <b>УСПЕШНАЯ РАДЁМКА!</b>\n\n"
-            f"<i>ИДИ СЮДА РАДЁМКА БАЛЯ! ТЫ ПРОТАЩИЛ ЕГО!</i>\n\n"
-            f"Ты унизил {target['nickname']} на глазах у всех!\n"
-            f"⭐ <b>+1 авторитет</b> (теперь {attacker['avtoritet']})\n"
-            f"💰 <b>+{money_taken}р</b> (отжал у пацана)\n"
-            f"📚 <b>+{exp_gained} опыта</b>{item_stolen_text}\n\n"
-            f"🎲 <b>Шанс был:</b> {chance}%\n"
-            f"<i>Он теперь будет тебя бояться!</i>"
-        )
-        
-        await unlock_achievement(user_id, "first_rademka", "Первая радёмка", 200)
-        
-        if target["avtoritet"] > attacker["avtoritet"] + 20:
-            await unlock_achievement(user_id, "rademka_underdog", "Победа над сильнейшим", 500)
-        
-    else:
-        money_penalty = int(attacker["dengi"] * 0.05)
-        attacker["dengi"] -= money_penalty
-        
-        attacker["avtoritet"] = max(1, attacker["avtoritet"] - 1)
-        
-        exp_gained = 5
-        attacker["experience"] = attacker.get("experience", 0) + exp_gained
-        
-        revenge_text = ""
-        revenge_money = 0
-        if random.random() < 0.2:
-            revenge_money = int(attacker["dengi"] * 0.05)
-            attacker["dengi"] -= revenge_money
-            target["dengi"] += revenge_money
-            revenge_text = f"\n💥 <b>Он отомстил и забрал {revenge_money}р!</b>"
-        
-        result_text = (
-            f"❌ <b>ПРОВАЛ РАДЁМКИ!</b>\n\n"
-            f"<i>Сам оказался радёмкой... Стыдоба!</i>\n\n"
-            f"{target['nickname']} оказался круче тебя!\n"
-            f"⭐ <b>-1 авторитет</b> (теперь {attacker['avtoritet']})\n"
-            f"💰 <b>-{money_penalty}р</b> (потерял при позоре)\n"
-            f"📚 <b>+{exp_gained} опыта</b> (учись на ошибках){revenge_text}\n\n"
-            f"🎲 <b>Шанс был:</b> {chance}%\n"
-            f"<i>Теперь над тобой смеются...</i>"
-        )
-    
-    await save_patsan(attacker)
-    await save_patsan(target)
-    
-    await save_rademka_fight(
-        winner_id=user_id if success else target_id,
-        loser_id=target_id if success else user_id,
-        money_taken=money_taken,
-        item_stolen=item_stolen,
-        scouted=False
-    )
-    
-    from database.db_manager import check_level_up
-    level_up_result = await check_level_up(attacker)
-    level_up_text = ""
-    
-    if level_up_result[0]:
-        new_level = attacker["level"]
-        level_up_text = f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {new_level} уровня!"
-        await save_patsan(attacker)
-    
-    await callback.message.edit_text(
-        result_text + level_up_text,
-        reply_markup=back_to_rademka_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "rademka_stats")
-async def rademka_stats(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    
-    try:
-        conn = await get_connection()
-        
-        cursor = await conn.execute('''
-            SELECT 
-                COUNT(*) as total_fights,
-                SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN loser_id = ? THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN winner_id = ? THEN money_taken ELSE 0 END) as total_money_taken,
-                SUM(CASE WHEN loser_id = ? THEN money_taken ELSE 0 END) as total_money_lost
-            FROM rademka_fights 
-            WHERE winner_id = ? OR loser_id = ?
-        ''', (user_id, user_id, user_id, user_id, user_id, user_id))
-        
-        stats = await cursor.fetchone()
-        
-        if stats and stats["total_fights"] and stats["total_fights"] > 0:
-            total = stats["total_fights"]
-            wins = stats["wins"] or 0
-            losses = stats["losses"] or 0
-            win_rate = (wins / total * 100) if total > 0 else 0
-            money_taken = stats["total_money_taken"] or 0
-            money_lost = stats["total_money_lost"] or 0
-            net_profit = money_taken - money_lost
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                user_id INTEGER, achievement_id TEXT, progress REAL DEFAULT 0,
+                level INTEGER DEFAULT 0, PRIMARY KEY (user_id, achievement_id)
+            );
             
-            message_text = (
-                f"📊 <b>ТВОЯ СТАТИСТИКА РАДЁМОК</b>\n\n"
-                f"🎮 <b>Всего радёмок:</b> {total}\n"
-                f"✅ <b>Побед:</b> {wins}\n"
-                f"❌ <b>Поражений:</b> {losses}\n"
-                f"📈 <b>Винрейт:</b> {win_rate:.1f}%\n"
-                f"💰 <b>Всего отжато:</b> {money_taken}р\n"
-                f"💸 <b>Всего потеряно:</b> {money_lost}р\n"
-                f"💎 <b>Чистая прибыль:</b> {net_profit}р\n\n"
-            )
-            
-            if wins > 0:
-                cursor = await conn.execute('''
-                    SELECT loser_id, COUNT(*) as fights, SUM(money_taken) as total_money
-                    FROM rademka_fights 
-                    WHERE winner_id = ?
-                    GROUP BY loser_id 
-                    ORDER BY fights DESC, total_money DESC
-                    LIMIT 3
-                ''', (user_id,))
-                
-                top_targets = await cursor.fetchall()
-                
-                if top_targets:
-                    message_text += "<b>🎯 Любимые цели:</b>\n"
-                    for i, target in enumerate(top_targets, 1):
-                        user_cursor = await conn.execute(
-                            "SELECT nickname, avtoritet FROM users WHERE user_id = ?",
-                            (target["loser_id"],)
-                        )
-                        target_user = await user_cursor.fetchone()
-                        nickname = target_user["nickname"] if target_user else f"Пацан_{target['loser_id']}"
-                        avtoritet = target_user["avtoritet"] if target_user else 1
-                        
-                        if len(nickname) > 20:
-                            nickname = nickname[:17] + "..."
-                        
-                        message_text += f"{i}. {nickname} (⭐{avtoritet}) - {target['fights']} раз, +{target['total_money'] or 0}р\n"
-            
-            if losses > 0:
-                cursor = await conn.execute('''
-                    SELECT winner_id, COUNT(*) as fights, SUM(money_taken) as total_money
-                    FROM rademka_fights 
-                    WHERE loser_id = ?
-                    GROUP BY winner_id 
-                    ORDER BY fights DESC, total_money DESC
-                    LIMIT 2
-                ''', (user_id,))
-                
-                top_opponents = await cursor.fetchall()
-                
-                if top_opponents:
-                    message_text += "\n<b>💥 Частые противники:</b>\n"
-                    for i, opponent in enumerate(top_opponents, 1):
-                        user_cursor = await conn.execute(
-                            "SELECT nickname, avtoritet FROM users WHERE user_id = ?",
-                            (opponent["winner_id"],)
-                        )
-                        opponent_user = await user_cursor.fetchone()
-                        nickname = opponent_user["nickname"] if opponent_user else f"Пацан_{opponent['winner_id']}"
-                        
-                        if len(nickname) > 20:
-                            nickname = nickname[:17] + "..."
-                        
-                        message_text += f"{i}. {nickname} - {opponent['fights']} раз, -{opponent['total_money'] or 0}р\n"
-        
-        else:
-            message_text = (
-                f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
-                f"У тебя ещё не было радёмок!\n"
-                f"Выбери цель и протащи кого-нибудь!\n\n"
-                f"<i>Пока все думают, что ты мирный пацан...</i>"
-            )
-        
-        await conn.close()
-        
-    except Exception as e:
-        message_text = (
-            f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
-            f"База данных статистики готовится...\n"
-            f"Проведи первую радёмку - статистика появится автоматически!\n\n"
-            f"<i>Система учится считать твои победы!</i>"
-        )
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=back_to_rademka_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "rademka_top")
-async def rademka_top(callback: types.CallbackQuery):
-    try:
-        conn = await get_connection()
-        
-        cursor = await conn.execute('''
-            SELECT 
-                u.nickname,
-                u.user_id,
-                u.avtoritet,
-                u.level,
-                COUNT(CASE WHEN rf.winner_id = u.user_id THEN 1 END) as wins,
-                COUNT(CASE WHEN rf.loser_id = u.user_id THEN 1 END) as losses,
-                SUM(CASE WHEN rf.winner_id = u.user_id THEN rf.money_taken ELSE 0 END) as total_money_taken
-            FROM users u
-            LEFT JOIN rademka_fights rf ON u.user_id = rf.winner_id OR u.user_id = rf.loser_id
-            GROUP BY u.user_id, u.nickname, u.avtoritet, u.level
-            HAVING wins > 0
-            ORDER BY wins DESC, total_money_taken DESC
-            LIMIT 10
+            CREATE TABLE IF NOT EXISTS rademka_fights (
+                winner_id INTEGER, loser_id INTEGER, money_taken INTEGER DEFAULT 0,
+                item_stolen TEXT, scouted BOOLEAN DEFAULT FALSE, created_at INTEGER DEFAULT (strftime('%s','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
+            CREATE INDEX IF NOT EXISTS idx_lose ON rademka_fights(loser_id);
         ''')
-        
-        top_players = await cursor.fetchall()
-        
-        if top_players:
-            message_text = "👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-            
-            medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-            
-            for i, player in enumerate(top_players):
-                if i >= len(medals):
-                    break
-                    
-                medal = medals[i]
-                nickname = player["nickname"]
-                wins = player["wins"] or 0
-                losses = player["losses"] or 0
-                total = wins + losses
-                win_rate = (wins / total * 100) if total > 0 else 0
-                money = player["total_money_taken"] or 0
-                avtoritet = player["avtoritet"]
-                level = player["level"] or 1
-                
-                from database.db_manager import get_rank
-                rank_name, rank_emoji = get_rank(avtoritet)
-                
-                if len(nickname) > 15:
-                    nickname = nickname[:12] + "..."
-                
-                message_text += (
-                    f"{medal} <code>{nickname}</code> {rank_emoji}\n"
-                    f"   📈 {level} ур. | ⭐ {avtoritet}\n"
-                    f"   ✅ {wins} побед ({win_rate:.0f}%) | 💰 {money}р\n\n"
-                )
-            
-            message_text += "<i>Топ по количеству побед в радёмках</i>"
-            
-        else:
-            message_text = (
-                f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-                f"Пока никого нет в топе!\n"
-                f"Будь первым - протащи кого-нибудь!\n\n"
-                f"<i>Слава ждёт самого дерзкого пацана!</i>"
-            )
-            
-        await conn.close()
-        
-    except Exception as e:
-        message_text = (
-            f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
-            f"Рейтинг формируется...\n\n"
-            f"Чтобы попасть в топ, нужно:\n"
-            f"1. Провести несколько радёмок\n"
-            f"2. Побеждать чаще, чем проигрывать\n"
-            f"3. Отжимать больше денег\n\n"
-            f"<i>Первые места скоро будут заняты!</i>"
-        )
-    
-    await callback.message.edit_text(
-        message_text,
-        reply_markup=back_to_rademka_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
+        logger.info("Таблицы созданы")
 
-@ignore_not_modified_error
-@router.callback_query(F.data == "back_main")
-async def back_to_main(callback: types.CallbackQuery):
-    patsan = await get_patsan_cached(callback.from_user.id)
+class UserCache:
+    def __init__(self, data, timestamp):
+        self.data, self.timestamp, self.dirty = data, timestamp, False
+
+class UserDataManager:
+    def __init__(self):
+        self._cache, self._dirty = {}, set()
+        self._lock, self._save_task = asyncio.Lock(), None
+        self._db = DatabaseManager()
     
-    atm_count = patsan['atm_count']
-    max_atm = patsan.get('max_atm', 12)
-    progress = int((atm_count / max_atm) * 10)
-    progress_bar = "█" * progress + "░" * (10 - progress)
+    async def start_batch_saver(self):
+        if not self._save_task:
+            self._save_task = asyncio.create_task(self._save_loop())
     
-    await callback.message.edit_text(
-        f"<b>Главное меню</b>\n"
-        f"{patsan['rank_emoji']} <b>{patsan['rank_name']}</b> | ⭐ {patsan['avtoritet']} | 📈 Ур. {patsan.get('level', 1)}\n\n"
-        f"🌀 Атмосферы: [{progress_bar}] {atm_count}/{max_atm}\n"
-        f"💸 Деньги: {patsan['dengi']}р | 🐍 Змий: {patsan['zmiy']:.1f}кг\n\n"
-        f"<i>Выбери действие, пацан:</i>",
-        reply_markup=main_keyboard(),
-        parse_mode="HTML"
-    )
+    async def _save_loop(self):
+        while True:
+            await asyncio.sleep(BATCH_INT)
+            await self._save_dirty()
+    
+    async def _save_dirty(self):
+        async with self._lock:
+            if not self._dirty: return
+            to_save = [(uid, self._cache[uid].data) for uid in self._dirty if uid in self._cache and self._cache[uid].dirty]
+            if to_save: await self._batch_save(to_save)
+            self._dirty.clear()
+    
+    async def _batch_save(self, users):
+        pool = await self._db.get_pool()
+        vals = []
+        for uid, d in users:
+            vals.append((d.get("nickname",""), d.get("avtoritet",1), d.get("zmiy",0.0), d.get("dengi",150),
+                        int(time.time()), d.get("last_daily",0), d.get("atm_count",12), d.get("max_atm",12),
+                        d.get("skill_davka",1), d.get("skill_zashita",1), d.get("skill_nahodka",1),
+                        d.get("specialization",""), d.get("experience",0), d.get("level",1),
+                        json.dumps(d.get("inventory",[])), json.dumps(d.get("upgrades",{})),
+                        json.dumps(d.get("active_boosts",{})), json.dumps(d.get("achievements",[])),
+                        json.dumps(d.get("crafted_items",[])), d.get("rademka_scouts",0), uid))
+        await pool.executemany('''
+            UPDATE users SET nickname=?, avtoritet=?, zmiy=?, dengi=?, last_update=?, last_daily=?,
+            atm_count=?, max_atm=?, skill_davka=?, skill_zashita=?, skill_nahodka=?, specialization=?,
+            experience=?, level=?, inventory=?, upgrades=?, active_boosts=?, achievements=?,
+            crafted_items=?, rademka_scouts=? WHERE user_id=?
+        ''', vals)
+    
+    async def get_user(self, uid, force=False):
+        now = time.time()
+        if not force and uid in self._cache and now - self._cache[uid].timestamp < CACHE_TTL:
+            return self._cache[uid].data
+        
+        pool = await self._db.get_pool()
+        async with pool.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
+            row = await c.fetchone()
+            if row: user = dict(row); await self._process_user(user)
+            else: user = await self._create_user(uid)
+        
+        self._cache[uid] = UserCache(user, now)
+        if len(self._cache) > MAX_CACHE: self._clean_cache()
+        return user
+    
+    async def _create_user(self, uid):
+        now = int(time.time())
+        user = {
+            "user_id": uid, "nickname": f"Пацанчик_{uid}", "avtoritet": 1, "zmiy": 0.0, "dengi": 150,
+            "last_update": now, "last_daily": 0, "atm_count": 12, "max_atm": 12, "skill_davka": 1,
+            "skill_zashita": 1, "skill_nahodka": 1, "specialization": "", "experience": 0, "level": 1,
+            "inventory": ["двенашка", "энергетик"], "upgrades": {}, "active_boosts": {},
+            "achievements": [], "crafted_items": [], "rademka_scouts": 0
+        }
+        pool = await self._db.get_pool()
+        await pool.execute('INSERT OR IGNORE INTO users (user_id, nickname, last_update) VALUES (?,?,?)',
+                          (uid, user["nickname"], now))
+        return user
+    
+    async def _process_user(self, user):
+        now = time.time()
+        passed = now - user.get("last_update", now)
+        if passed >= ATM_TIME:
+            max_a, cur_a = user.get("max_atm", ATM_MAX), user.get("atm_count", 0)
+            regen = passed // ATM_TIME
+            if regen > 0:
+                user["atm_count"] = min(max_a, cur_a + regen)
+                user["last_update"] = now - (passed % ATM_TIME)
+        
+        for field in ["inventory","upgrades","active_boosts","achievements","crafted_items"]:
+            val = user.get(field)
+            if isinstance(val, str):
+                try: user[field] = json.loads(val) if val else ([] if field in ["inventory","achievements","crafted_items"] else {})
+                except: user[field] = [] if field in ["inventory","achievements","crafted_items"] else {}
+        
+        av = user.get("avtoritet", 1)
+        for thr, (emoji, name) in sorted(RANKS.items(), reverse=True):
+            if av >= thr: user.update({"rank_emoji": emoji, "rank_name": name}); break
+    
+    def mark_dirty(self, uid):
+        if uid in self._cache:
+            self._cache[uid].dirty = True
+            self._dirty.add(uid)
+    
+    async def save_user(self, uid):
+        self.mark_dirty(uid)
+        await self._save_dirty()
+    
+    def _clean_cache(self):
+        now = time.time()
+        del_ids = [uid for uid, ce in self._cache.items() if now - ce.timestamp > CACHE_TTL*2]
+        for uid in del_ids: del self._cache[uid]
+        if len(self._cache) > MAX_CACHE:
+            sorted_c = sorted(self._cache.items(), key=lambda x: x[1].timestamp)
+            for uid, _ in sorted_c[:MAX_CACHE//2]: del self._cache[uid]
+    
+    async def get_top_fast(self, limit=10, sort="avtoritet"):
+        pool = await self._db.get_pool()
+        async with pool.execute(f'SELECT * FROM users ORDER BY {sort} DESC LIMIT ?', (limit,)) as c:
+            return [dict(r) for r in await c.fetchall()]
+
+user_manager = UserDataManager()
+
+def get_rank(av):
+    for thr, (e,n) in sorted(RANKS.items(), reverse=True):
+        if av >= thr: return n, e
+    return "Пацанчик", "👶"
+
+def calc_atm_time(user):
+    t = ATM_TIME
+    if user.get("skill_zashita",1) >= 10: t *= 0.9
+    if user.get("specialization") == "непробиваемый": t *= 0.9
+    boosts = user.get("active_boosts",{})
+    if isinstance(boosts, str):
+        try: boosts = json.loads(boosts) if boosts else {}
+        except: boosts = {}
+    if boosts.get("вечный_двигатель"): t *= 0.7
+    return int(max(60, t))
+
+def get_spec_bonuses(spec):
+    return SPECS.get(spec, {}).get("bon", {})
+
+def get_specialization_bonuses(spec):
+    """Алиас для get_spec_bonuses (для обратной совместимости)"""
+    return get_spec_bonuses(spec)
+
+async def get_patsan(uid): return await user_manager.get_user(uid)
+async def get_patsan_cached(uid): return await user_manager.get_user(uid)
+async def save_patsan(d): 
+    uid = d.get("user_id")
+    if uid: 
+        if uid in user_manager._cache: user_manager._cache[uid].data.update(d); user_manager._cache[uid].dirty = True
+        await user_manager.save_user(uid)
+
+async def davka_zmiy(uid):
+    p = await user_manager.get_user(uid)
+    cost = 2
+    if p["upgrades"].get("tea_slivoviy"): cost = max(1, cost-1)
+    bon = get_spec_bonuses(p.get("specialization",""))
+    if bon.get("atm_red"): cost = max(1, cost-bon["atm_red"])
+    
+    if p["atm_count"] < cost: return None, "Не хватает атмосфер!"
+    p["atm_count"] -= cost
+    
+    base = random.randint(200,1500) + p["skill_davka"]*100
+    mul = 1.0
+    if p["upgrades"].get("ryazhenka"): mul = 1.75
+    if bon.get("davka_mul"): mul *= bon["davka_mul"]
+    total = int(base * mul)
+    
+    exp = min(10, total//100)
+    p["experience"] += exp
+    await check_lvl(p)
+    p["zmiy"] += total/1000
+    
+    chance = p["skill_nahodka"]*0.05
+    if p["upgrades"].get("bubbleki"): chance += 0.35
+    if bon.get("find_chance"): chance += bon["find_chance"]
+    
+    found, rare = False, None
+    if random.random() < chance:
+        p["inventory"].append("двенашка"); found = True
+        if bon.get("rare_chance") and random.random() < bon["rare_chance"]:
+            rare = random.choice(["золотая_двенашка","кристалл_атмосферы","секретная_схема"])
+            p["inventory"].append(rare)
+    
+    user_manager.mark_dirty(uid)
+    await upd_ach(uid, "zmiy_collector", total/1000)
+    
+    kg, g = total//1000, total%1000
+    w = f"{kg}кг {g}г" if g else f"{kg}кг"
+    res = {"cost":cost, "weight":w, "total":total, "found":found, "rare":rare, "exp":exp}
+    return p, res
+
+async def buy_spec(uid, spec):
+    p = await user_manager.get_user(uid)
+    if spec not in SPECS: return False, "Нет такой спецы"
+    s = SPECS[spec]
+    for k,v in s["req"].items():
+        if k == "inv_contains":
+            if v not in p.get("inventory",[]): return False, f"Нужен: {v}"
+        elif p.get(k,0) < v: return False, f"Недостаточно {k}: {v}"
+    if p["dengi"] < s["price"]: return False, f"Не хватает {s['price']-p['dengi']}р"
+    if p.get("specialization"): return False, "Уже есть спеца"
+    p["dengi"] -= s["price"]; p["specialization"] = spec
+    await unlock_ach(uid, "first_spec", "Первая специализация", 500)
+    user_manager.mark_dirty(uid)
+    return True, f"✅ Куплена '{s['name']}' за {s['price']}р!"
+
+async def get_available_specs(uid):
+    p = await user_manager.get_user(uid)
+    avail = []
+    for sid, s in SPECS.items():
+        ok, miss = True, []
+        for k,v in s["req"].items():
+            if k == "inv_contains":
+                if v not in p.get("inventory",[]): ok=False; miss.append(f"Предмет: {v}")
+            elif p.get(k,0) < v: ok=False; miss.append(f"{k}: {p.get(k,0)}/{v}")
+        avail.append({"id":sid, "name":s["name"], "desc":s["desc"], "price":s["price"],
+                      "available":ok, "missing":miss, "bon":s["bon"]})
+    return avail
+
+async def craft_item(uid, rid):
+    p = await user_manager.get_user(uid)
+    if rid not in CRAFT: return False, "Нет рецепта", {}
+    r = CRAFT[rid]
+    inv = p.get("inventory",[])
+    cnt = {i:inv.count(i) for i in set(inv)}
+    miss = []
+    for itm, need in r["ing"].items():
+        if itm == "деньги":
+            if p["dengi"] < need: miss.append(f"Деньги: {need}р")
+        elif cnt.get(itm,0) < need: miss.append(f"{itm}: {cnt.get(itm,0)}/{need}")
+    if miss: return False, f"Не хватает: {', '.join(miss)}", {}
+    
+    for itm, need in r["ing"].items():
+        if itm == "деньги": p["dengi"] -= need
+        else:
+            for _ in range(need): 
+                if itm in p["inventory"]: p["inventory"].remove(itm)
+    
+    ok = random.random() < r["chance"]
+    if ok:
+        res = r["res"]
+        if res.get("item"): 
+            p["inventory"].append(res["item"])
+            if res.get("dur"): p["active_boosts"][res["item"]] = int(time.time()) + res["dur"]
+        crafted = p.get("crafted_items",[]); crafted.append({"recipe":rid, "item":res.get("item",""), "time":int(time.time())})
+        p["crafted_items"] = crafted
+        await unlock_ach(uid, "first_craft", "Первый крафт", 100)
+        msg = f"✅ Успешно: {r['name']}!"
+    else: msg = f"❌ Неудача: {r['name']}"
+    
+    pool = await DatabaseManager.get_pool()
+    await pool.execute('INSERT INTO craft_history (user_id, recipe_id, success) VALUES (?,?,?)', (uid,rid,ok))
+    user_manager.mark_dirty(uid)
+    return ok, msg, r.get("res",{})
+
+async def get_craftable(uid):
+    p = await user_manager.get_user(uid)
+    inv = p.get("inventory",[])
+    cnt = {i:inv.count(i) for i in set(inv)}
+    craftable = []
+    for rid, r in CRAFT.items():
+        ok, miss = True, []
+        for itm, need in r["ing"].items():
+            if itm == "деньги":
+                if p["dengi"] < need: ok=False; miss.append(f"Деньги: {need}р")
+            elif cnt.get(itm,0) < need: ok=False; miss.append(f"{itm}: {cnt.get(itm,0)}/{need}")
+        craftable.append({"id":rid, "name":r["name"], "desc":r["desc"], "ing":r["ing"],
+                          "can":ok, "miss":miss, "chance":r["chance"], "res":r["res"]})
+    return craftable
+
+async def sdat_zmiy(uid):
+    p = await user_manager.get_user(uid)
+    if p["zmiy"] <= 0: return None, "Нечего сдавать!"
+    money = int(p["zmiy"] * 62.5) + p["avtoritet"]*8
+    old = p["zmiy"]
+    p["dengi"] += money; p["zmiy"] = 0
+    exp = min(20, money//100); p["experience"] += exp
+    await check_lvl(p)
+    user_manager.mark_dirty(uid)
+    await upd_ach(uid, "money_maker", money)
+    return p, {"old":old, "money":money, "bonus":p["avtoritet"]*8, "exp":exp}
+
+async def buy_upgrade(uid, upg):
+    p = await user_manager.get_user(uid)
+    prices = {"ryazhenka":300, "tea_slivoviy":500, "bubbleki":800, "kuryasany":1500}
+    if upg not in prices: return None, "Нет такого"
+    if p["upgrades"].get(upg): return None, "Уже куплено"
+    price = prices[upg]
+    if p["dengi"] < price: return None, f"Не хватает {price-p['dengi']}р"
+    p["dengi"] -= price; p["upgrades"][upg] = True
+    if upg == "kuryasany": p["avtoritet"] += 2
+    user_manager.mark_dirty(uid)
+    all_upg = ["ryazhenka","tea_slivoviy","bubbleki","kuryasany"]
+    if all(p["upgrades"].get(u,False) for u in all_upg):
+        await unlock_ach(uid, "all_upg", "Все нагнетатели", 1500)
+    return p, f"✅ Куплено '{upg}' за {price}р!"
+
+async def pump_skill(uid, skill):
+    p = await user_manager.get_user(uid)
+    prices = {"davka":180, "zashita":270, "nahodka":225}
+    cost = prices.get(skill,180)
+    if p["dengi"] < cost: return None, f"Не хватает {cost-p['dengi']}р"
+    p["dengi"] -= cost; exp = cost//10; p["experience"] += exp
+    old = p[f"skill_{skill}"]; p[f"skill_{skill}"] += 1
+    await check_lvl(p); user_manager.mark_dirty(uid)
+    new = p[f"skill_{skill}"]
+    if new >= 10: await unlock_ach(uid, f"skill_{skill}_10", f"Мастер {skill}", 500)
+    if new >= 25: await unlock_ach(uid, f"skill_{skill}_25", f"Гуру {skill}", 2000)
+    return p, f"✅ Прокачано '{skill}' {old}→{new} за {cost}р! (+{exp} опыта)"
+
+async def check_lvl(u):
+    cur, exp = u.get("level",1), u.get("experience",0)
+    need = int(100 * (cur**1.5))
+    if exp >= need:
+        old = cur; u["level"] = cur+1; u["experience"] = exp-need
+        rew = u["level"]*100; u["dengi"] += rew
+        if u["level"] % 5 == 0:
+            u["max_atm"] += 1; u["atm_count"] = min(u["atm_count"]+1, u["max_atm"])
+        if u["level"] >= 10: await unlock_ach(u["user_id"], "lvl_10", "10 уровень", 500)
+        if u["level"] >= 25: await unlock_ach(u["user_id"], "lvl_25", "25 уровень", 2000)
+        if u["level"] >= 50: await unlock_ach(u["user_id"], "lvl_50", "Полвека", 5000)
+        return True, {"old":old, "new":u["level"], "rew":rew, "atm_inc":u["level"]%5==0}
+    return False, None
+
+async def check_level_up(u):
+    """Алиас для check_lvl (для обратной совместимости)"""
+    return await check_lvl(u)
+
+async def upd_ach(uid, aid, inc):
+    if aid not in ACH_LEVELS: return
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT progress,level FROM user_achievements WHERE user_id=? AND achievement_id=?', (uid,aid)) as c:
+        row = await c.fetchone()
+        if row: prog, lvl = row["progress"]+inc, row["level"]
+        else: prog, lvl = inc, 0; await pool.execute('INSERT INTO user_achievements (user_id,achievement_id,progress) VALUES (?,?,?)', (uid,aid,prog))
+    
+    ach = ACH_LEVELS[aid]
+    if lvl < len(ach["lvls"]):
+        goal, rew, title, exp = ach["lvls"][lvl]
+        if prog >= goal:
+            p = await user_manager.get_user(uid)
+            p["dengi"] += rew; p["experience"] += exp
+            await pool.execute('UPDATE user_achievements SET progress=?,level=? WHERE user_id=? AND achievement_id=?', 
+                              (prog, lvl+1, uid, aid))
+            user_manager.mark_dirty(uid)
+            ach_list = p.get("achievements",[]); ach_list.append({"id":f"{aid}_lvl_{lvl+1}", "name":f"{ach['name']}: {title}",
+                                                                "unlocked":int(time.time()), "rew":rew, "exp":exp})
+            p["achievements"] = ach_list; user_manager.mark_dirty(uid)
+            return {"lvled":True, "lvl":lvl+1, "title":title, "rew":rew, "exp":exp}
+        else:
+            await pool.execute('UPDATE user_achievements SET progress=? WHERE user_id=? AND achievement_id=?', (prog, uid, aid))
+    else:
+        await pool.execute('UPDATE user_achievements SET progress=? WHERE user_id=? AND achievement_id=?', (prog, uid, aid))
+    return {"lvled":False, "prog":prog}
+
+async def get_ach_progress(uid):
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT achievement_id,progress,level FROM user_achievements WHERE user_id=?', (uid,)) as c:
+        rows = await c.fetchall(); res = {}
+        for r in rows:
+            aid = r["achievement_id"]
+            if aid in ACH_LEVELS:
+                ach = ACH_LEVELS[aid]; lvl, prog = r["level"], r["progress"]
+                if lvl < len(ach["lvls"]):
+                    goal, _, title, _ = ach["lvls"][lvl]
+                    perc = min(100, (prog/goal)*100) if goal>0 else 0
+                else: goal, title, perc = None, "Макс", 100
+                res[aid] = {"name":ach["name"], "cur_lvl":lvl, "prog":prog, "next":goal, "perc":perc, "title":title}
+        return res
+
+async def rademka_scout(uid, tid):
+    p = await user_manager.get_user(uid); t = await user_manager.get_user(tid)
+    if not t: return False, "Нет цели", {}
+    cost = 0 if p["rademka_scouts"] < 5 else 50
+    if p["dengi"] < cost: return False, f"Не хватает {cost-p['dengi']}р", {}
+    
+    base = 50; diff = p["avtoritet"] - t["avtoritet"]; chance = base + (diff*5)
+    if p.get("specialization") == "непробиваемый": chance += 5
+    if p["avtoritet"] < t["avtoritet"]: chance += 20
+    chance = max(10, min(95, chance))
+    
+    now = time.time(); last = t.get("last_update",now)
+    if now - last > 86400: chance += 15
+    
+    if cost > 0: p["dengi"] -= cost
+    p["rademka_scouts"] += 1; user_manager.mark_dirty(uid)
+    
+    pool = await DatabaseManager.get_pool()
+    await pool.execute('UPDATE rademka_fights SET scouted=1 WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)', 
+                      (uid,tid,tid,uid))
+    
+    factors = [f"Разница авторитета: {'+' if diff>0 else ''}{diff*5}%"]
+    if p["avtoritet"] < t["avtoritet"]: factors.append("Гандикап слабого: +20%")
+    if now - last > 86400: factors.append("Цель неактивна: +15%")
+    if p.get("specialization") == "непробиваемый": factors.append("Специализация: +5%")
+    
+    return True, f"Разведка {'бесплатная' if cost==0 else 'за 50р'} успешна!", {
+        "chance":chance, "cost":cost, "free_left":max(0,5-p["rademka_scouts"]),
+        "attacker":{"av":p["avtoritet"],"rank":get_rank(p["avtoritet"])},
+        "target":{"av":t["avtoritet"],"rank":get_rank(t["avtoritet"]),"last_hrs":int((now-last)/3600) if last else "?"},
+        "factors":factors
+    }
+
+async def get_daily(uid):
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT last_daily,level FROM users WHERE user_id=?', (uid,)) as c:
+        u = await c.fetchone(); now = int(time.time())
+        if not u: return {"ok":False, "error":"Нет юзера"}
+        last = u["last_daily"] or 0
+        if last > 0 and now - last < 86400:
+            wait = 86400 - (now - last); h = wait//3600; m = (wait%3600)//60
+            return {"ok":False, "wait":f"{h}ч {m}м", "next":last+86400}
+        
+        lvl = u["level"] or 1; base = 100 + lvl*10
+        streak = 1  # упрощённо
+        mul = 1.0
+        if streak >= 30: mul = 4.0
+        elif streak >= 7: mul = 3.0
+        elif streak >= 3: mul = 2.0
+        
+        base = int(base * mul); bonus = random.randint(0, base//10); total = base + bonus
+        items = ["двенашка","атмосфера","энергетик","золотая_двенашка","бустер_атмосфер"] if lvl>=20 else ["двенашка","атмосфера","энергетик","перчатки"]
+        weights = [0.3,0.25,0.2,0.15,0.1] if lvl>=20 else [0.4,0.3,0.2,0.1]
+        item = random.choices(items, weights=weights, k=1)[0]
+        
+        await pool.execute('UPDATE users SET dengi=dengi+?, last_daily=?, inventory=json_insert(COALESCE(inventory,"[]"), "$[#]", ?) WHERE user_id=?',
+                          (total, now, item, uid))
+        
+        p = await user_manager.get_user(uid, True)
+        return {"ok":True, "money":total, "item":item, "streak":streak, "base":base, "bonus":bonus, "lvl":lvl}
+
+async def get_daily_reward(uid):
+    """Алиас для get_daily (для обратной совместимости)"""
+    return await get_daily(uid)
+
+async def unlock_ach(uid, aid, name, rew=0):
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT 1 FROM achievements WHERE user_id=? AND achievement_id=?', (uid,aid)) as c:
+        if await c.fetchone(): return False
+    await pool.execute('INSERT INTO achievements (user_id, achievement_id) VALUES (?,?)', (uid,aid))
+    async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
+        u = await c.fetchone(); ach = json.loads(u["achievements"]) if u and u["achievements"] else []
+        for a in ach:
+            if a.get("id") == aid: return False
+        ach.append({"id":aid, "name":name, "unlocked":int(time.time()), "rew":rew})
+        if rew > 0:
+            await pool.execute('UPDATE users SET dengi=dengi+?, achievements=? WHERE user_id=?', (rew, json.dumps(ach), uid))
+        else:
+            await pool.execute('UPDATE users SET achievements=? WHERE user_id=?', (json.dumps(ach), uid))
+        await user_manager.get_user(uid, True); return True
+
+async def unlock_achievement(uid, aid, name, rew=0):
+    """Алиас для unlock_ach (для обратной совместимости)"""
+    return await unlock_ach(uid, aid, name, rew)
+
+async def change_nick(uid, nick):
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT nickname_changed,dengi FROM users WHERE user_id=?', (uid,)) as c:
+        u = await c.fetchone(); cost = 5000
+        if not u: return False, "Нет юзера"
+        if not u["nickname_changed"]:
+            await pool.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
+            await unlock_ach(uid, "first_nick", "Первая бирка", 100)
+            await user_manager.get_user(uid, True)
+            return True, "Ник изменён! (бесплатно) +100р"
+        if u["dengi"] < cost: return False, f"Не хватает {cost-u['dengi']}р"
+        await pool.execute('UPDATE users SET nickname=?, dengi=dengi-? WHERE user_id=?', (nick, cost, uid))
+        await user_manager.get_user(uid, True)
+        return True, f"Ник изменён! -{cost}р"
+
+async def change_nickname(uid, nick):
+    """Алиас для change_nick (для обратной совместимости)"""
+    return await change_nick(uid, nick)
+
+async def save_rademka(win, lose, money=0, item=None, scout=False):
+    pool = await DatabaseManager.get_pool()
+    await pool.execute('INSERT INTO rademka_fights (winner_id,loser_id,money_taken,item_stolen,scouted) VALUES (?,?,?,?,?)',
+                      (win, lose, money, item, scout))
+
+async def save_rademka_fight(win, lose, money=0, item=None, scouted=False):
+    """Алиас для save_rademka (для обратной совместимости)"""
+    return await save_rademka(win, lose, money, item, scouted)
+
+async def get_top_players(limit=10, sort="avtoritet", sort_by=None):
+    """
+    Возвращает топ игроков по указанному критерию.
+    Поддерживает старый параметр sort_by и новый sort.
+    """
+    # Поддержка старого параметра sort_by
+    if sort_by is not None:
+        sort = sort_by
+    return await user_manager.get_top_fast(limit, sort)
+
+async def get_top(limit=10, sort="avtoritet"):
+    """Алиас для get_top_players (обратная совместимость)"""
+    return await get_top_players(limit, sort)
+
+async def get_user_achievements(uid):
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
+        u = await c.fetchone()
+        return json.loads(u["achievements"]) if u and u["achievements"] else []
+
+async def get_connection(): 
+    return await DatabaseManager.get_pool()
+
+async def init_bot(): 
+    await DatabaseManager.get_pool()
+    await user_manager.start_batch_saver()
+
+async def shutdown(): 
+    await user_manager._save_dirty()
+    if DatabaseManager._pool: 
+        await DatabaseManager._pool.close()
+        DatabaseManager._pool = None
+
+if __name__ == "__main__":
+    async def test():
+        await init_bot()
+        start = time.time()
+        tasks = [get_patsan(i) for i in range(100)]
+        await asyncio.gather(*tasks)
+        print(f"100 юзеров за {time.time()-start:.2f}с")
+        await shutdown()
+    asyncio.run(test())
