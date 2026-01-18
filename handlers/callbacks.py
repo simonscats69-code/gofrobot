@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 import time
 import random
-import asyncio  # Добавлено для таймаутов
+import asyncio
 from database.db_manager import *
 from keyboards.keyboards import *
 
@@ -86,13 +86,11 @@ async def mmt(p):
     return f"<b>Главное меню</b>\n{re} <b>{rn}</b> | ⭐ {p.get('avtoritet', 1)} | 📈 Ур. {p.get('level', 1)}\n\n🌀 Атмосферы: [{pb(a, m)}] {a}/{m}\n💸 Деньги: {p.get('dengi', 0)}р | 🐍 Змий: {p.get('zmiy', 0):.1f}кг\n\n<i>Выбери действие, пацан:</i>"
 
 async def _complete_operation(callback, func, uid, act):
-    """Завершает операцию в фоне после таймаута"""
     try:
         result = await func(uid)
         if result and len(result) >= 2:
             p, r_data = result[1], result[2] if len(result) > 2 else {}
             
-            # Форматирование
             ex = {}
             if act == "davka":
                 u = p.get("upgrades",{})
@@ -106,7 +104,6 @@ async def _complete_operation(callback, func, uid, act):
                 ex["abt"] = f"\n⭐ <b>Бонус авторитета:</b> +{r_data['avtoritet_bonus']}р" if r_data.get('avtoritet_bonus', 0) > 0 else ""
                 ex["em"] = f"\n📚 +{r_data.get('exp_gained', 0)} опыта" if r_data.get('exp_gained', 0) > 0 else ""
             
-            # Получаем текст из AH
             if h := AH.get(act):
                 text = h["t"].format(**{**p, **r_data, **ex})
                 try:
@@ -117,9 +114,8 @@ async def _complete_operation(callback, func, uid, act):
                     except:
                         await callback.message.answer(text[:4000], parse_mode="HTML")
     except Exception as e:
-        error_msg = str(e)[:100]
         try:
-            await callback.message.answer(f"❌ Ошибка при завершении: {error_msg}")
+            await callback.message.answer(f"❌ Ошибка при завершении: {str(e)[:100]}")
         except:
             pass
 
@@ -135,12 +131,9 @@ AH = {
 }
 
 async def ha(c, act):
-    """Обработчик действий davka и sdat - ИСПРАВЛЕННЫЙ"""
-    # ШАГ 1: Немедленно отвечаем Telegram
     try:
         await c.answer("🔄 Обработка...")
     except Exception:
-        # Если уже ответили или ошибка - продолжаем
         pass
     
     try:
@@ -149,16 +142,10 @@ async def ha(c, act):
         
         uid = c.from_user.id
         
-        # ШАГ 2: Долгая операция с таймаутом
         try:
-            result = await asyncio.wait_for(
-                h["func"](uid), 
-                timeout=7.0  # 7 секунд максимум
-            )
+            result = await asyncio.wait_for(h["func"](uid), timeout=7.0)
         except asyncio.TimeoutError:
-            # Если долго - отправляем сообщение и продолжаем в фоне
             await eoa(c, "⏳ Операция занимает время...", main_keyboard())
-            # Запускаем в фоне
             asyncio.create_task(_complete_operation(c, h["func"], uid, act))
             return
         
@@ -172,7 +159,6 @@ async def ha(c, act):
             await eoa(c, f"⚠️ {r}", main_keyboard())
             return
         
-        # Форматирование
         ex = {}
         
         if act == "davka":
@@ -187,7 +173,6 @@ async def ha(c, act):
             ex["abt"] = f"\n⭐ <b>Бонус авторитета:</b> +{r['avtoritet_bonus']}р" if r.get('avtoritet_bonus', 0) > 0 else ""
             ex["em"] = f"\n📚 +{r.get('exp_gained', 0)} опыта" if r.get('exp_gained', 0) > 0 else ""
         
-        # ШАГ 3: Обновляем сообщение
         await eoa(c, h["t"].format(**{**p, **r, **ex}), main_keyboard())
         
     except Exception as e:
@@ -199,21 +184,16 @@ async def ha(c, act):
 
 @r.callback_query(F.data.in_(["davka", "sdat"]))
 async def cba(c):
-    """Обработчик кнопок davka и sdat - ИСПРАВЛЕННЫЙ"""
-    # КРИТИЧНО: сразу отвечаем Telegram
     try:
         await c.answer("🔄 Обработка...")
     except Exception as e:
-        # Если уже ответили или ошибка - продолжаем
         pass
     
-    # Запускаем обработку
     await ha(c, c.data)
 
 @r.callback_query(F.data == "back_main")
 async def bm(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -224,7 +204,6 @@ async def bm(c):
 @r.callback_query(F.data == "nickname_menu")
 async def nm(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.commands import cmd_nickname
@@ -235,7 +214,6 @@ async def nm(c):
 @r.callback_query(F.data == "daily")
 async def cd(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.commands import cmd_daily
@@ -246,7 +224,6 @@ async def cd(c):
 @r.callback_query(F.data == "achievements")
 async def ca(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.commands import cmd_achievements
@@ -257,7 +234,6 @@ async def ca(c):
 @r.callback_query(F.data == "rademka")
 async def cr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.commands import cmd_rademka
@@ -268,7 +244,6 @@ async def cr(c):
 @r.callback_query(F.data == "pump")
 async def cp(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -282,7 +257,6 @@ async def cp(c):
 @r.callback_query(F.data.startswith("pump_"))
 async def cps(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer("⚙️ Прокачка...")
         
         s, uid = c.data.split("_")[1], c.from_user.id
@@ -297,7 +271,6 @@ async def cps(c):
 @r.callback_query(F.data == "inventory")
 async def ci(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -322,7 +295,6 @@ async def ci(c):
 @r.callback_query(F.data == "profile")
 async def cpr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -370,7 +342,6 @@ SP = {
 @r.callback_query(F.data == "specializations")
 async def csp(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         uid, p = c.from_user.id, await get_patsan_cached(c.from_user.id)
@@ -422,7 +393,6 @@ async def csp(c):
 @r.callback_query(F.data.startswith("specialization_"))
 async def csd(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         st = c.data.replace("specialization_", "")
@@ -442,7 +412,6 @@ async def csd(c):
 @r.callback_query(F.data.startswith("specialization_buy_"))
 async def csb(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer("💰 Покупка...")
         
         sid, uid = c.data.replace("specialization_buy_", ""), c.from_user.id
@@ -459,7 +428,6 @@ async def csb(c):
 @r.callback_query(F.data == "craft")
 async def cc(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -470,7 +438,6 @@ async def cc(c):
 @r.callback_query(F.data == "craft_items")
 async def cci(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         ci = await get_craftable_items(c.from_user.id)
@@ -505,7 +472,6 @@ async def cci(c):
 @r.callback_query(F.data.startswith("craft_execute_"))
 async def cce(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer("🔨 Крафт...")
         
         rid, uid = c.data.replace("craft_execute_", ""), c.from_user.id
@@ -524,7 +490,6 @@ async def cce(c):
 @r.callback_query(F.data == "craft_recipes")
 async def ccr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await eoa(c, "<b>📜 ВСЕ РЕЦЕПТЫ КРАФТА</b>\n\n<b>✨ Супер-двенашка</b>\nИнгредиенты: 3× двенашка, 500р\nШанс: 100% | Эффект: Повышает удачу на 1 час\n\n<b>⚡ Вечный двигатель</b>\nИнгредиенты: 5× атмосфера, 1× энергетик\nШанс: 80% | Эффект: Ускоряет восстановление атмосфер на 24ч\n\n<b>👑 Царский обед</b>\nИнгредиенты: 1× курвасаны, 1× ряженка, 300р\nШанс: 100% | Эффект: Максимальный буст на 30 минут\n\n<b>🌀 Бустер атмосфер</b>\nИнгредиенты: 2× энергетик, 1× двенашка, 2000р\nШанс: 70% | Эффект: +3 к максимальному запасу атмосфер\n\n<i>Собирай ингредиенты и создавай мощные предметы!</i>", craft_recipes_keyboard())
@@ -534,7 +499,6 @@ async def ccr(c):
 @r.callback_query(F.data == "rademka_scout_menu")
 async def csm(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -547,7 +511,6 @@ async def csm(c):
 @r.callback_query(F.data == "rademka_scout_random")
 async def csr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer("🕵️ Разведка...")
         
         uid, tp = c.from_user.id, await get_top_players(limit=50, sort_by="avtoritet")
@@ -576,7 +539,6 @@ async def csr(c):
 @r.callback_query(F.data.startswith("rademka_scout_"))
 async def cst(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         d = c.data.replace("rademka_scout_", "")
@@ -633,7 +595,6 @@ ACH = {
 @r.callback_query(F.data == "achievements_progress")
 async def cap(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         pd = await get_achievement_progress(c.from_user.id)
@@ -663,7 +624,6 @@ async def cap(c):
 @r.callback_query(F.data.startswith("achievement_"))
 async def cad(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         if (at := c.data.replace("achievement_", "")) not in ACH:
@@ -685,7 +645,6 @@ async def cad(c):
 @r.callback_query(F.data == "level_stats")
 async def cls(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -701,7 +660,6 @@ async def cls(c):
 @r.callback_query(F.data == "atm_status")
 async def cas(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -733,7 +691,6 @@ TO = {
 @r.callback_query(F.data == "top")
 async def ctm(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await eoa(c, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>", top_sort_keyboard())
@@ -754,7 +711,6 @@ async def grwt():
 @r.callback_query(F.data.startswith("top_"))
 async def cst(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         if (st := c.data.replace("top_", "")) not in TO:
@@ -813,7 +769,6 @@ async def cst(c):
 @r.callback_query(F.data.startswith("inventory_"))
 async def cia(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         a = c.data.replace("inventory_", "")
@@ -833,7 +788,6 @@ async def cia(c):
 @r.callback_query(F.data == "confirm_trash_inventory")
 async def cct(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer("🗑️ Удаление...")
         
         p = await get_patsan(c.from_user.id)
@@ -852,7 +806,6 @@ async def cct(c):
 @r.callback_query(F.data == "shop")
 async def cs(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.shop import callback_shop as sh
@@ -863,7 +816,6 @@ async def cs(c):
 @r.callback_query(F.data == "achievements_progress_all")
 async def cpa(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await cap(c)
@@ -873,7 +825,6 @@ async def cpa(c):
 @r.callback_query(F.data == "level_progress")
 async def clp(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await cls(c)
@@ -883,7 +834,6 @@ async def clp(c):
 @r.callback_query(F.data == "level_next")
 async def cln(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await cls(c)
@@ -893,7 +843,6 @@ async def cln(c):
 @r.callback_query(F.data == "atm_regen_time")
 async def cart(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await cas(c)
@@ -903,7 +852,6 @@ async def cart(c):
 @r.callback_query(F.data == "atm_max_info")
 async def cami(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await cas(c)
@@ -913,7 +861,6 @@ async def cami(c):
 @r.callback_query(F.data == "atm_boosters")
 async def cab(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await cas(c)
@@ -923,7 +870,6 @@ async def cab(c):
 @r.callback_query(F.data == "craft_history")
 async def cch(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await c.answer("История крафта пока недоступна", show_alert=True)
@@ -933,7 +879,6 @@ async def cch(c):
 @r.callback_query(F.data.startswith("buy_"))
 async def cb(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer("💰 Покупка...")
         
         from handlers.shop import callback_buy as sb
@@ -944,7 +889,6 @@ async def cb(c):
 @r.callback_query(F.data.startswith("spec_info_"))
 async def csi(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         spec_id = c.data.replace("spec_info_", "")
@@ -955,7 +899,6 @@ async def csi(c):
 @r.callback_query(F.data.startswith("recipe_"))
 async def cri(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await c.answer("Информация о рецепте", show_alert=True)
@@ -965,7 +908,6 @@ async def cri(c):
 @r.callback_query(F.data == "rademka_stats")
 async def crs(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await c.answer("Статистика радёмок пока недоступна", show_alert=True)
@@ -975,7 +917,6 @@ async def crs(c):
 @r.callback_query(F.data == "rademka_top")
 async def crt(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await c.answer("Топ радёмок пока недоступен", show_alert=True)
@@ -985,7 +926,6 @@ async def crt(c):
 @r.callback_query(F.data == "rademka_random")
 async def crr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await c.answer("Случайная цель пока недоступна", show_alert=True)
@@ -995,7 +935,6 @@ async def crr(c):
 @r.callback_query(F.data == "my_reputation")
 async def cmr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         p = await get_patsan_cached(c.from_user.id)
@@ -1006,7 +945,6 @@ async def cmr(c):
 @r.callback_query(F.data == "top_reputation")
 async def ctr(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.commands import cmd_top
@@ -1017,7 +955,6 @@ async def ctr(c):
 @r.callback_query(F.data == "change_nickname")
 async def ccn(c, state: FSMContext):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         from handlers.nickname_and_rademka import process_nickname
@@ -1028,7 +965,6 @@ async def ccn(c, state: FSMContext):
 @r.callback_query(F.data == "specialization_info")
 async def csi2(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         await csd(c)
@@ -1038,7 +974,6 @@ async def csi2(c):
 @r.callback_query(F.data.startswith("craft_"))
 async def ccs(c):
     try:
-        # НЕМЕДЛЕННЫЙ ОТВЕТ
         await c.answer()
         
         if c.data in ["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]:
@@ -1051,11 +986,10 @@ async def ccs(c):
 
 @r.callback_query()
 async def uc(c):
-    """Обработчик неизвестных callback'ов - ОБЯЗАТЕЛЬНО с ответом"""
     try:
         await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
     except:
-        pass  # Игнорируем ошибки ответа
+        pass
 
 get_user_rank = gr
 get_emoji = ge
