@@ -1,283 +1,200 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from typing import List, Tuple, Optional, Union
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton as Btn
+from typing import List, Optional
 
 MENUS = {
-    "main": [
-        [("🐍 Давить коричневага", "davka")],
-        [("💰 Сдать змия на металл", "sdat")],
-        [("📈 Прокачать скиллы", "pump")],
-        [("🌳 Специализации", "specializations")],
-        [("🛒 Нагнетательная столовая", "shop"), ("🔨 Крафт", "craft")],
-        [("🎁 Ежедневная награда", "daily"), ("📜 Достижения", "achievements")],
-        [("👊 Протащить радёмку", "rademka"), ("🕵️ Разведка", "rademka_scout_menu")],
-        [("🎒 Инвентарь", "inventory"), ("🏆 Топ пацанов", "top")],
-        [("📊 Профиль", "profile")]
-    ],
-    "pump": [
-        [("💪 Давка змия", "pump_davka")],
-        [("🛡️ Защита атмосфер", "pump_zashita")],
-        [("🔍 Находка двенашек", "pump_nahodka")]
-    ],
-    "shop": [
-        [("🥛 Ряженка (300р)", "buy_ryazhenka")],
-        [("🍵 Чай сливовый (500р)", "buy_tea_slivoviy")],
-        [("🧋 Бублэки (800р)", "buy_bubbleki")],
-        [("🥐 Курвасаны (1500р)", "buy_kuryasany")]
-    ],
-    "shop_categories": [
-        [("🥛 Нагнетатели", "shop")],
-        [("⚡ Бустеры (скоро)", "shop_boosters")],
-        [("🔧 Инструменты (скоро)", "shop_tools")],
-        [("🎁 Случайные наборы (скоро)", "shop_random")],
-        [("⬅️ Назад в магазин", "shop")]
-    ],
-    "specializations": [
-        [("💪 Давила", "spec_info_davila")],
-        [("🔍 Охотник за двенашками", "spec_info_ohotnik")],
-        [("🛡️ Непробиваемый", "spec_info_neprobivaemy")],
-        [("❓ Информация", "specialization_info")]
-    ],
-    "craft": [
-        [("🛠️ Крафт предметов", "craft_items")],
-        [("📜 Доступные рецепты", "craft_recipes")],
-        [("📊 История крафта", "craft_history")]
-    ],
-    "rademka": [
-        [("🎯 Выбрать случайную цель", "rademka_random")],
-        [("🕵️ Разведка цели", "rademka_scout_menu")],
-        [("📊 Статистика радёмок", "rademka_stats")],
-        [("👑 Топ радёмщиков", "rademka_top")]
-    ],
-    "rademka_scout": [
-        [("🎯 Разведать случайную цель", "rademka_scout_random")],
-        [("🔍 Выбрать цель для разведки", "rademka_scout_choose")],
-        [("📊 Мои разведки", "rademka_scout_stats")]
-    ],
-    "achievements": [
-        [("🔄 Обновить", "achievements")],
-        [("📊 Прогресс по уровням", "achievements_progress")],
-        [("🎁 Ежедневная награда", "daily")]
-    ],
-    "daily": [
-        [("🔄 Проверить снова", "daily")],
-        [("📜 Мои достижения", "achievements")],
-        [("📈 Прогресс достижений", "achievements_progress")]
-    ],
-    "profile_extended": [
-        [("⭐ Прогресс достижений", "achievements_progress")],
-        [("📈 Статистика по уровням", "level_stats")],
-        [("🌡️ Состояние атмосфер", "atm_status")]
-    ],
-    "top_sort": [
-        [("⭐ По авторитету", "top_avtoritet")],
-        [("💰 По деньгам", "top_dengi")],
-        [("🐍 По змию", "top_zmiy")],
-        [("💪 По сумме скиллов", "top_total_skill")],
-        [("📈 По уровню", "top_level")],
-        [("👊 По победам в радёмках", "top_rademka_wins")]
-    ],
-    "inventory": [
-        [("🛠️ Использовать предмет", "inventory_use")],
-        [("🔨 Перейти к крафту", "craft")],
-        [("📦 Сортировать", "inventory_sort")],
-        [("🗑️ Выбросить мусор", "inventory_trash")]
-    ],
-    "craft_items": [
-        [("✨ Супер-двенашка", "craft_super_dvenashka")],
-        [("⚡ Вечный двигатель", "craft_vechnyy_dvigatel")],
-        [("👑 Царский обед", "craft_tarskiy_obed")],
-        [("🌀 Бустер атмосфер", "craft_booster_atm")]
-    ]
+    "main": [("🐍 Давить коричневага", "davka"), ("💰 Сдать змия", "sdat"), 
+             ("📈 Прокачать", "pump"), ("🌳 Специализации", "specializations"),
+             ("🛒 Магазин", "shop"), ("🔨 Крафт", "craft"),
+             ("🎁 Ежедневная", "daily"), ("📜 Достижения", "achievements"),
+             ("👊 Радёмка", "rademka"), ("🕵️ Разведка", "rademka_scout_menu"),
+             ("🎒 Инвентарь", "inventory"), ("🏆 Топ", "top"), ("📊 Профиль", "profile")],
+    
+    "pump": [("💪 Давка", "pump_davka"), ("🛡️ Защита", "pump_zashita"), 
+             ("🔍 Находка", "pump_nahodka")],
+    
+    "shop": [("🥛 Ряженка (300р)", "buy_ryazhenka"), ("🍵 Чай (500р)", "buy_tea_slivoviy"),
+             ("🧋 Бублэки (800р)", "buy_bubbleki"), ("🥐 Курвасаны (1500р)", "buy_kuryasany")],
+    
+    "shop_cat": [("🥛 Нагнетатели", "shop"), ("⚡ Бустеры", "shop_boosters"),
+                 ("🔧 Инструменты", "shop_tools"), ("🎁 Наборы", "shop_random")],
+    
+    "specs": [("💪 Давила", "spec_info_davila"), ("🔍 Охотник", "spec_info_ohotnik"),
+              ("🛡️ Непробиваемый", "spec_info_neprobivaemy"), ("❓ Инфо", "specialization_info")],
+    
+    "craft": [("🛠️ Крафт", "craft_items"), ("📜 Рецепты", "craft_recipes"),
+              ("📊 История", "craft_history")],
+    
+    "rad": [("🎯 Случайная цель", "rademka_random"), ("🕵️ Разведка", "rademka_scout_menu"),
+            ("📊 Статистика", "rademka_stats"), ("👑 Топ", "rademka_top")],
+    
+    "scout": [("🎯 Разведать", "rademka_scout_random"), ("🔍 Выбрать", "rademka_scout_choose"),
+              ("📊 Мои разведки", "rademka_scout_stats")],
+    
+    "ach": [("🔄 Обновить", "achievements"), ("📊 Прогресс", "achievements_progress"),
+            ("🎁 Ежедневная", "daily")],
+    
+    "daily": [("🔄 Проверить", "daily"), ("📜 Достижения", "achievements"),
+              ("📈 Прогресс", "achievements_progress")],
+    
+    "profile_ext": [("⭐ Прогресс", "achievements_progress"), ("📈 Уровни", "level_stats"),
+                    ("🌡️ Атмосферы", "atm_status")],
+    
+    "top": [("⭐ Авторитет", "top_avtoritet"), ("💰 Деньги", "top_dengi"),
+            ("🐍 Змий", "top_zmiy"), ("💪 Скиллы", "top_total_skill"),
+            ("📈 Уровень", "top_level"), ("👊 Победы", "top_rademka_wins")],
+    
+    "inv": [("🛠️ Использовать", "inventory_use"), ("🔨 Крафт", "craft"),
+            ("📦 Сортировать", "inventory_sort"), ("🗑️ Выбросить", "inventory_trash")],
+    
+    "craft_items": [("✨ Супер-двенашка", "craft_super_dvenashka"),
+                    ("⚡ Вечный двигатель", "craft_vechnyy_dvigatel"),
+                    ("👑 Царский обед", "craft_tarskiy_obed"),
+                    ("🌀 Бустер атмосфер", "craft_booster_atm")]
 }
 
-def create_keyboard(menu_name: str, back_to: str = None, extra_rows: List = None) -> InlineKeyboardMarkup:
-    if menu_name not in MENUS:
-        return main_keyboard()
+# ========== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ==========
+def mk(menu: str, back: str = None, cols: int = 2) -> InlineKeyboardMarkup:
+    """Создает клавиатуру из меню"""
+    if menu not in MENUS: return main_kb()
     
-    buttons = []
+    items = MENUS[menu]
+    btns, row = [], []
     
-    for row in MENUS[menu_name]:
-        row_buttons = []
-        for btn_text, callback_data in row:
-            row_buttons.append(InlineKeyboardButton(text=btn_text, callback_data=callback_data))
-        if row_buttons:
-            buttons.append(row_buttons)
+    for i, (text, cb) in enumerate(items, 1):
+        row.append(Btn(text=text, callback_data=cb))
+        if i % cols == 0:
+            btns.append(row)
+            row = []
+    if row: btns.append(row)
     
-    if extra_rows:
-        for row in extra_rows:
-            if isinstance(row[0], tuple):
-                row_buttons = [InlineKeyboardButton(text=t, callback_data=d) for t, d in row]
-            else:
-                row_buttons = [InlineKeyboardButton(text=row[0], callback_data=row[1])]
-            buttons.append(row_buttons)
+    if back: btns.append([Btn(text="⬅️ Назад", callback_data=back)])
+    return InlineKeyboardMarkup(inline_keyboard=btns)
+
+def conf_kb(action: str, target: int = None, info: str = None) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения"""
+    btns = [[Btn(text="✅ ДА", callback_data=f"confirm_{action}_{target}" if target else f"confirm_{action}"),
+             Btn(text="❌ НЕТ", callback_data=f"cancel_{action}")]]
     
-    if back_to:
-        buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=back_to)])
+    if info: btns.append([Btn(text="📋 Подробнее", callback_data=info)])
+    return InlineKeyboardMarkup(inline_keyboard=btns)
+
+def rad_fight_kb(target: int = None, scouted: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура для радёмки"""
+    if not target:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [Btn(text="🎯 Случайная цель", callback_data="rademka_random")],
+            [Btn(text="🕵️ Разведка", callback_data="rademka_scout_choose")],
+            [Btn(text="⬅️ Назад", callback_data="rademka")]
+        ])
     
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    btns = []
+    if scouted: btns.append([Btn(text="🎯 Шанс известен", callback_data="no_action")])
+    btns.extend([
+        [Btn(text="✅ ДА, ПРОТАЩИТЬ!", callback_data=f"rademka_confirm_{target}")],
+        [Btn(text="🕵️ Сначала разведка", callback_data=f"rademka_scout_{target}")],
+        [Btn(text="❌ Передумал", callback_data="rademka")]
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=btns)
 
-def rademka_fight_keyboard(target_id: Optional[int] = None, scouted: bool = False) -> InlineKeyboardMarkup:
-    buttons = []
-    
-    if target_id:
-        if scouted:
-            buttons.append([InlineKeyboardButton(text="🎯 Шанс известен (разведано)", callback_data="no_action")])
-        
-        buttons.append([InlineKeyboardButton(text="✅ ДА, ПРОТАЩИТЬ ЕГО!", callback_data=f"rademka_confirm_{target_id}")])
-        buttons.append([InlineKeyboardButton(text="🕵️ Сначала разведка", callback_data=f"rademka_scout_{target_id}")])
-        buttons.append([InlineKeyboardButton(text="❌ Нет, передумал", callback_data="rademka")])
-    else:
-        buttons = [
-            [InlineKeyboardButton(text="🎯 Выбрать случайную цель", callback_data="rademka_random")],
-            [InlineKeyboardButton(text="🕵️ Сначала разведка", callback_data="rademka_scout_choose")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="rademka")]
-        ]
-    
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# ========== ГОТОВЫЕ КЛАВИАТУРЫ ==========
+def main_kb(): return mk("main")
+def pump_kb(): return mk("pump", "back_main", 1)
+def shop_kb(): return mk("shop", "back_main", 1)
+def shop_cat_kb(): return mk("shop_cat", "shop", 1)
+def specs_kb(): return mk("specs", "back_main")
+def craft_kb(): return mk("craft", "back_main")
+def rad_kb(): return mk("rad", "back_main")
+def scout_kb(): return mk("scout", "rademka", 1)
+def daily_kb(): return mk("daily", "back_main")
+def ach_kb(): return mk("ach", "back_main")
+def profile_ext_kb(): return mk("profile_ext", "profile", 1)
+def top_kb(): return mk("top", "back_main", 2)
+def inv_kb(): return mk("inv", "inventory")
+def craft_items_kb(): return mk("craft_items", "craft", 1)
 
-def confirmation_keyboard(action: str, target_id: Optional[int] = None, show_info: bool = False, info_data: str = None) -> InlineKeyboardMarkup:
-    confirm_data = f"confirm_{action}_{target_id}" if target_id else f"confirm_{action}"
-    cancel_data = f"cancel_{action}"
-    
-    buttons = [[
-        InlineKeyboardButton(text="✅ ДА", callback_data=confirm_data),
-        InlineKeyboardButton(text="❌ НЕТ", callback_data=cancel_data)
-    ]]
-    
-    if show_info and info_data:
-        buttons.append([InlineKeyboardButton(text="📋 Подробнее", callback_data=info_data)])
-    
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+# Специальные клавиатуры
+def ach_progress_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="🐍 Коллекционер", callback_data="achievement_zmiy_collector")],
+        [Btn(text="💰 Денежный мешок", callback_data="achievement_money_maker")],
+        [Btn(text="👊 Король радёмок", callback_data="achievement_rademka_king")],
+        [Btn(text="📊 Все", callback_data="achievements_progress_all")],
+        [Btn(text="⬅️ Назад", callback_data="achievements")]
+    ])
 
-def craft_confirmation_keyboard(recipe_id: str) -> InlineKeyboardMarkup:
-    return confirmation_keyboard(
-        action=f"craft_execute_{recipe_id}",
-        show_info=True,
-        info_data=f"recipe_info_{recipe_id}"
-    )
+def level_stats_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="📈 Прогресс", callback_data="level_progress")],
+        [Btn(text="🏆 Топ", callback_data="top_level")],
+        [Btn(text="🎯 До след. уровня", callback_data="level_next")],
+        [Btn(text="⬅️ В профиль", callback_data="profile")]
+    ])
 
-def specialization_confirmation_keyboard(spec_id: str) -> InlineKeyboardMarkup:
-    return confirmation_keyboard(
-        action=f"specialization_buy_{spec_id}",
-        show_info=True,
-        info_data=f"specialization_info_{spec_id}"
-    )
+def atm_status_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="⏱️ Восстановление", callback_data="atm_regen_time")],
+        [Btn(text="📊 Максимум", callback_data="atm_max_info")],
+        [Btn(text="⚡ Бустеры", callback_data="atm_boosters")],
+        [Btn(text="⬅️ В профиль", callback_data="profile")]
+    ])
 
-def main_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("main")
+def craft_recipes_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="✨ Супер-двенашка", callback_data="recipe_super_dvenashka")],
+        [Btn(text="⚡ Вечный двигатель", callback_data="recipe_vechnyy_dvigatel")],
+        [Btn(text="👑 Царский обед", callback_data="recipe_tarskiy_obed")],
+        [Btn(text="🌀 Бустер атмосфер", callback_data="recipe_booster_atm")],
+        [Btn(text="🛠️ К крафту", callback_data="craft_items")],
+        [Btn(text="⬅️ Назад", callback_data="craft")]
+    ])
 
-def pump_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("pump", "back_main")
+def specs_info_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="💪 Давила - инфо", callback_data="spec_info_davila")],
+        [Btn(text="🔍 Охотник - инфо", callback_data="spec_info_ohotnik")],
+        [Btn(text="🛡️ Непробиваемый - инфо", callback_data="spec_info_neprobivaemy")],
+        [Btn(text="💰 Купить", callback_data="specializations")],
+        [Btn(text="⬅️ Назад", callback_data="back_main")]
+    ])
 
-def shop_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("shop", "back_main")
+# Простые кнопки "Назад"
+def back_kb(to="back_main"): return InlineKeyboardMarkup(inline_keyboard=[[Btn(text="⬅️ Назад", callback_data=to)]])
+def back_main(): return back_kb()
+def back_craft(): return back_kb("craft")
+def back_specs(): return back_kb("specializations")
+def back_profile(): return back_kb("profile")
+def back_rad(): return back_kb("rademka")
+def back_inv(): return back_kb("inventory")
 
-def specializations_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("specializations", "back_main")
-
-def craft_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("craft", "back_main")
-
-def rademka_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("rademka", "back_main")
-
-def rademka_scout_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("rademka_scout", "rademka")
-
-def daily_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("daily", "back_main")
-
-def achievements_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("achievements", "back_main")
-
-def achievements_progress_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="🐍 Коллекционер змия", callback_data="achievement_zmiy_collector")],
-        [InlineKeyboardButton(text="💰 Денежный мешок", callback_data="achievement_money_maker")],
-        [InlineKeyboardButton(text="👊 Король радёмок", callback_data="achievement_rademka_king")],
-        [InlineKeyboardButton(text="📊 Все достижения", callback_data="achievements_progress_all")],
-        [InlineKeyboardButton(text="⬅️ Назад к достижениям", callback_data="achievements")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def level_stats_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="📈 Мой прогресс", callback_data="level_progress")],
-        [InlineKeyboardButton(text="🏆 Топ по уровням", callback_data="top_level")],
-        [InlineKeyboardButton(text="🎯 До следующего уровня", callback_data="level_next")],
-        [InlineKeyboardButton(text="⬅️ Назад в профиль", callback_data="profile")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def atm_status_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="⏱️ Время восстановления", callback_data="atm_regen_time")],
-        [InlineKeyboardButton(text="📊 Максимальный запас", callback_data="atm_max_info")],
-        [InlineKeyboardButton(text="⚡ Бустеры активности", callback_data="atm_boosters")],
-        [InlineKeyboardButton(text="⬅️ Назад в профиль", callback_data="profile")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def profile_extended_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("profile_extended", "profile")
-
-def top_sort_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("top_sort", "back_main")
-
-def inventory_management_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("inventory", "inventory")
-
-def craft_items_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("craft_items", "craft")
-
-def craft_recipes_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="✨ Супер-двенашка", callback_data="recipe_super_dvenashka")],
-        [InlineKeyboardButton(text="⚡ Вечный двигатель", callback_data="recipe_vechnyy_dvigatel")],
-        [InlineKeyboardButton(text="👑 Царский обед", callback_data="recipe_tarskiy_obed")],
-        [InlineKeyboardButton(text="🌀 Бустер атмосфер", callback_data="recipe_booster_atm")],
-        [InlineKeyboardButton(text="🛠️ Перейти к крафту", callback_data="craft_items")],
-        [InlineKeyboardButton(text="⬅️ Назад к крафту", callback_data="craft")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def specializations_info_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="💪 Давила - информация", callback_data="spec_info_davila")],
-        [InlineKeyboardButton(text="🔍 Охотник - информация", callback_data="spec_info_ohotnik")],
-        [InlineKeyboardButton(text="🛡️ Непробиваемый - информация", callback_data="spec_info_neprobivaemy")],
-        [InlineKeyboardButton(text="💰 Купить специализацию", callback_data="specializations")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def back_keyboard(back_to: str = "back_main") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⬅️ Назад", callback_data=back_to)
-    ]])
-
-def back_to_main_keyboard() -> InlineKeyboardMarkup:
-    return back_keyboard("back_main")
-
-def back_to_craft_keyboard() -> InlineKeyboardMarkup:
-    return back_keyboard("craft")
-
-def back_to_specializations_keyboard() -> InlineKeyboardMarkup:
-    return back_keyboard("specializations")
-
-def back_to_profile_keyboard() -> InlineKeyboardMarkup:
-    return back_keyboard("profile")
-
-def back_to_rademka_keyboard() -> InlineKeyboardMarkup:
-    return back_keyboard("rademka")
-
-def back_to_inventory_keyboard() -> InlineKeyboardMarkup:
-    return back_keyboard("inventory")
-
-def shop_categories_keyboard() -> InlineKeyboardMarkup:
-    return create_keyboard("shop_categories", "shop")
-
-def top_menu_keyboard() -> InlineKeyboardMarkup:
-    return top_sort_keyboard()
-
-back_keyboard = back_to_main_keyboard
+# Алиасы для обратной совместимости
+main_keyboard = main_kb
+pump_keyboard = pump_kb
+shop_keyboard = shop_kb
+shop_categories_keyboard = shop_cat_kb
+specializations_keyboard = specs_kb
+craft_keyboard = craft_kb
+rademka_keyboard = rad_kb
+rademka_scout_keyboard = scout_kb
+daily_keyboard = daily_kb
+achievements_keyboard = ach_kb
+achievements_progress_keyboard = ach_progress_kb
+level_stats_keyboard = level_stats_kb
+atm_status_keyboard = atm_status_kb
+profile_extended_keyboard = profile_ext_kb
+top_sort_keyboard = top_kb
+top_menu_keyboard = top_kb
+inventory_management_keyboard = inv_kb
+craft_items_keyboard = craft_items_kb
+craft_recipes_keyboard = craft_recipes_kb
+specializations_info_keyboard = specs_info_kb
+back_keyboard = back_main
+back_to_main_keyboard = back_main
+back_to_craft_keyboard = back_craft
+back_to_specializations_keyboard = back_specs
+back_to_profile_keyboard = back_profile
+back_to_rademka_keyboard = back_rad
+back_to_inventory_keyboard = back_inv
+craft_confirmation_keyboard = lambda r_id: conf_kb(f"craft_execute_{r_id}", info=f"recipe_info_{r_id}")
+specialization_confirmation_keyboard = lambda s_id: conf_kb(f"specialization_buy_{s_id}", info=f"specialization_info_{s_id}")
+confirmation_keyboard = conf_kb
+rademka_fight_keyboard = rad_fight_kb
