@@ -12,10 +12,10 @@ from handlers.shop import router as shop_router
 from handlers.top import router as top_router
 from handlers.daily import router as daily_router
 from handlers.nickname_and_rademka import router as nickname_rademka_router
-
 from handlers.specializations import router as specializations_router
 from handlers.craft import router as craft_router
 from handlers.achievements_progress import router as achievements_progress_router
+from handlers.atm_handlers import router as atm_handlers_router  # НОВЫЙ ИМПОРТ
 
 from database.db_manager import init_db
 
@@ -46,6 +46,7 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
+    # Подключаем все роутеры
     dp.include_router(commands_router)
     dp.include_router(callbacks_router)
     dp.include_router(shop_router)
@@ -55,6 +56,7 @@ async def main():
     dp.include_router(specializations_router)
     dp.include_router(craft_router)
     dp.include_router(achievements_progress_router)
+    dp.include_router(atm_handlers_router)  # НОВЫЙ РОУТЕР ДЛЯ КНОПОК АТМОСФЕР
     
     print("🤖 Бот 'Пацаны с гофроцентрала' запущен!")
     print("=" * 50)
