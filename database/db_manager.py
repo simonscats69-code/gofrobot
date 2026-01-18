@@ -516,6 +516,10 @@ async def unlock_ach(uid, aid, name, rew=0):
             await pool.execute('UPDATE users SET achievements=? WHERE user_id=?', (json.dumps(ach), uid))
         await user_manager.get_user(uid, True); return True
 
+async def unlock_achievement(uid, aid, name, rew=0):
+    """Алиас для unlock_ach (для обратной совместимости)"""
+    return await unlock_ach(uid, aid, name, rew)
+
 async def change_nick(uid, nick):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT nickname_changed,dengi FROM users WHERE user_id=?', (uid,)) as c:
