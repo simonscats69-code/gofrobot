@@ -288,6 +288,7 @@ async def csp(c):
                 if not isinstance(s, dict):
                     continue
                 
+                # Безопасное получение значений с использованием .get()
                 name = s.get('name', 'Неизвестно')
                 description = s.get('description', '')
                 available = s.get('available', False)
@@ -308,7 +309,9 @@ async def csp(c):
     
     except Exception as e:
         print(f"Ошибка в csp: {e}")
-        await eoa(c, f"<b>🌳 ВЫБОР СПЕЦИАЛИЗАЦИИ</b>\n\n<i>Произошла ошибка при загрузке специализаций.</i>\n\n<code>Ошибка: {str(e)[:100]}</code>", specializations_keyboard())
+        # Безопасное сообщение об ошибке
+        error_msg = str(e)[:100] if e else "Неизвестная ошибка"
+        await eoa(c, f"<b>🌳 ВЫБОР СПЕЦИАЛИЗАЦИИ</b>\n\n<i>Произошла ошибка при загрузке специализаций.</i>\n\n<code>Ошибка: {error_msg}</code>", specializations_keyboard())
 
 @r.callback_query(F.data.startswith("specialization_"))
 async def csd(c):
@@ -361,6 +364,9 @@ async def cci(c):
         t = "<b>🔨 ДОСТУПНЫЕ ДЛЯ КРАФТА:</b>\n\n"
         
         for i in ci:
+            if not isinstance(i, dict):
+                continue
+                
             name = i.get('name', 'Неизвестно')
             description = i.get('description', '')
             can_craft = i.get('can_craft', False)
@@ -369,7 +375,8 @@ async def cci(c):
             t += f"<b>{name}</b> {'✅ МОЖНО' if can_craft else '❌ НЕЛЬЗЯ'}\n<i>{description}</i>\n🎲 Шанс успеха: {int(success_chance * 100)}%\n"
             
             if not can_craft and i.get("missing"):
-                t += f"<code>Не хватает: {', '.join(i['missing'][:2])}</code>\n"
+                missing_items = i['missing'][:2]
+                t += f"<code>Не хватает: {', '.join(missing_items)}</code>\n"
             
             t += "\n"
         
