@@ -5,7 +5,7 @@ from database.db_manager import (
     buy_specialization, get_specialization_bonuses
 )
 from keyboards.keyboards import main_keyboard, back_to_specializations_keyboard
-from keyboards.new_keyboards import specializations_info_keyboard, specialization_confirmation_keyboard
+from keyboards.keyboards import specializations_info_keyboard, specialization_confirmation_keyboard
 
 router = Router()
 
