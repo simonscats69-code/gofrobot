@@ -1,10 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import List, Tuple, Optional, Union
 
-# ========== КОНФИГУРАЦИИ КЛАВИАТУР ==========
-
 MENUS = {
-    # Главное меню (используется в back_main, start, profile)
     "main": [
         [("🐍 Давить коричневага", "davka")],
         [("💰 Сдать змия на металл", "sdat")],
@@ -16,74 +13,61 @@ MENUS = {
         [("🎒 Инвентарь", "inventory"), ("🏆 Топ пацанов", "top")],
         [("📊 Профиль", "profile")]
     ],
-    
-    # Прокачка скиллов (pump)
     "pump": [
         [("💪 Давка змия", "pump_davka")],
         [("🛡️ Защита атмосфер", "pump_zashita")],
         [("🔍 Находка двенашек", "pump_nahodka")]
     ],
-    
-    # Магазин (shop)
     "shop": [
         [("🥛 Ряженка (300р)", "buy_ryazhenka")],
         [("🍵 Чай сливовый (500р)", "buy_tea_slivoviy")],
         [("🧋 Бублэки (800р)", "buy_bubbleki")],
         [("🥐 Курвасаны (1500р)", "buy_kuryasany")]
     ],
-    
-    # Специализации (specializations)
+    "shop_categories": [
+        [("🥛 Нагнетатели", "shop")],
+        [("⚡ Бустеры (скоро)", "shop_boosters")],
+        [("🔧 Инструменты (скоро)", "shop_tools")],
+        [("🎁 Случайные наборы (скоро)", "shop_random")],
+        [("⬅️ Назад в магазин", "shop")]
+    ],
     "specializations": [
         [("💪 Давила", "spec_info_davila")],
         [("🔍 Охотник за двенашками", "spec_info_ohotnik")],
         [("🛡️ Непробиваемый", "spec_info_neprobivaemy")],
         [("❓ Информация", "specialization_info")]
     ],
-    
-    # Крафт (craft)
     "craft": [
         [("🛠️ Крафт предметов", "craft_items")],
         [("📜 Доступные рецепты", "craft_recipes")],
         [("📊 История крафта", "craft_history")]
     ],
-    
-    # Радёмка (rademka)
     "rademka": [
         [("🎯 Выбрать случайную цель", "rademka_random")],
         [("🕵️ Разведка цели", "rademka_scout_menu")],
         [("📊 Статистика радёмок", "rademka_stats")],
         [("👑 Топ радёмщиков", "rademka_top")]
     ],
-    
-    # Разведка радёмки (rademka_scout_menu)
     "rademka_scout": [
         [("🎯 Разведать случайную цель", "rademka_scout_random")],
         [("🔍 Выбрать цель для разведки", "rademka_scout_choose")],
         [("📊 Мои разведки", "rademka_scout_stats")]
     ],
-    
-    # Достижения (achievements)
     "achievements": [
         [("🔄 Обновить", "achievements")],
         [("📊 Прогресс по уровням", "achievements_progress")],
         [("🎁 Ежедневная награда", "daily")]
     ],
-    
-    # Ежедневные награды (daily)
     "daily": [
         [("🔄 Проверить снова", "daily")],
         [("📜 Мои достижения", "achievements")],
         [("📈 Прогресс достижений", "achievements_progress")]
     ],
-    
-    # Профиль (profile)
     "profile_extended": [
         [("⭐ Прогресс достижений", "achievements_progress")],
         [("📈 Статистика по уровням", "level_stats")],
         [("🌡️ Состояние атмосфер", "atm_status")]
     ],
-    
-    # Топ (top)
     "top_sort": [
         [("⭐ По авторитету", "top_avtoritet")],
         [("💰 По деньгам", "top_dengi")],
@@ -92,16 +76,12 @@ MENUS = {
         [("📈 По уровню", "top_level")],
         [("👊 По победам в радёмках", "top_rademka_wins")]
     ],
-    
-    # Инвентарь (inventory)
     "inventory": [
         [("🛠️ Использовать предмет", "inventory_use")],
         [("🔨 Перейти к крафту", "craft")],
         [("📦 Сортировать", "inventory_sort")],
         [("🗑️ Выбросить мусор", "inventory_trash")]
     ],
-    
-    # Крафт предметов (craft_items)
     "craft_items": [
         [("✨ Супер-двенашка", "craft_super_dvenashka")],
         [("⚡ Вечный двигатель", "craft_vechnyy_dvigatel")],
@@ -110,23 +90,12 @@ MENUS = {
     ]
 }
 
-# ========== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ==========
-
 def create_keyboard(menu_name: str, back_to: str = None, extra_rows: List = None) -> InlineKeyboardMarkup:
-    """
-    Создает клавиатуру из конфигурации.
-    
-    Args:
-        menu_name: имя меню из MENUS
-        back_to: callback_data для кнопки "Назад" (если нужна)
-        extra_rows: дополнительные строки кнопок
-    """
     if menu_name not in MENUS:
         return main_keyboard()
     
     buttons = []
     
-    # Добавляем основные кнопки из конфигурации
     for row in MENUS[menu_name]:
         row_buttons = []
         for btn_text, callback_data in row:
@@ -134,25 +103,20 @@ def create_keyboard(menu_name: str, back_to: str = None, extra_rows: List = None
         if row_buttons:
             buttons.append(row_buttons)
     
-    # Добавляем дополнительные строки
     if extra_rows:
         for row in extra_rows:
-            if isinstance(row[0], tuple):  # Список кортежей
+            if isinstance(row[0], tuple):
                 row_buttons = [InlineKeyboardButton(text=t, callback_data=d) for t, d in row]
-            else:  # Один кортеж
+            else:
                 row_buttons = [InlineKeyboardButton(text=row[0], callback_data=row[1])]
             buttons.append(row_buttons)
     
-    # Добавляем кнопку "Назад" если указано куда
     if back_to:
         buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=back_to)])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# ========== СПЕЦИАЛЬНЫЕ КЛАВИАТУРЫ ==========
-
 def rademka_fight_keyboard(target_id: Optional[int] = None, scouted: bool = False) -> InlineKeyboardMarkup:
-    """Клавиатура для радёмки с выбором цели"""
     buttons = []
     
     if target_id:
@@ -172,7 +136,6 @@ def rademka_fight_keyboard(target_id: Optional[int] = None, scouted: bool = Fals
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def confirmation_keyboard(action: str, target_id: Optional[int] = None, show_info: bool = False, info_data: str = None) -> InlineKeyboardMarkup:
-    """Универсальная клавиатура подтверждения"""
     confirm_data = f"confirm_{action}_{target_id}" if target_id else f"confirm_{action}"
     cancel_data = f"cancel_{action}"
     
@@ -187,7 +150,6 @@ def confirmation_keyboard(action: str, target_id: Optional[int] = None, show_inf
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def craft_confirmation_keyboard(recipe_id: str) -> InlineKeyboardMarkup:
-    """Подтверждение крафта"""
     return confirmation_keyboard(
         action=f"craft_execute_{recipe_id}",
         show_info=True,
@@ -195,14 +157,11 @@ def craft_confirmation_keyboard(recipe_id: str) -> InlineKeyboardMarkup:
     )
 
 def specialization_confirmation_keyboard(spec_id: str) -> InlineKeyboardMarkup:
-    """Подтверждение покупки специализации"""
     return confirmation_keyboard(
         action=f"specialization_buy_{spec_id}",
         show_info=True,
         info_data=f"specialization_info_{spec_id}"
     )
-
-# ========== ГОТОВЫЕ КЛАВИАТУРЫ (для удобства) ==========
 
 def main_keyboard() -> InlineKeyboardMarkup:
     return create_keyboard("main")
@@ -232,7 +191,6 @@ def achievements_keyboard() -> InlineKeyboardMarkup:
     return create_keyboard("achievements", "back_main")
 
 def achievements_progress_keyboard() -> InlineKeyboardMarkup:
-    # Создаем динамически, так как есть доп кнопка
     buttons = [
         [InlineKeyboardButton(text="🐍 Коллекционер змия", callback_data="achievement_zmiy_collector")],
         [InlineKeyboardButton(text="💰 Денежный мешок", callback_data="achievement_money_maker")],
@@ -293,10 +251,7 @@ def specializations_info_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# ========== ПРОСТЫЕ КЛАВИАТУРЫ (одна кнопка) ==========
-
 def back_keyboard(back_to: str = "back_main") -> InlineKeyboardMarkup:
-    """Кнопка назад в указанное меню"""
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⬅️ Назад", callback_data=back_to)
     ]])
@@ -319,6 +274,10 @@ def back_to_rademka_keyboard() -> InlineKeyboardMarkup:
 def back_to_inventory_keyboard() -> InlineKeyboardMarkup:
     return back_keyboard("inventory")
 
-# ========== УДОБНЫЕ АЛИАСЫ (для обратной совместимости) ==========
+def shop_categories_keyboard() -> InlineKeyboardMarkup:
+    return create_keyboard("shop_categories", "shop")
 
-back_keyboard = back_to_main_keyboard  # для старого кода
+def top_menu_keyboard() -> InlineKeyboardMarkup:
+    return top_sort_keyboard()
+
+back_keyboard = back_to_main_keyboard
