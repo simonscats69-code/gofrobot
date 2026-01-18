@@ -2,7 +2,7 @@ from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_patsan, buy_upgrade, unlock_achievement
 from keyboards.keyboards import shop_keyboard, main_keyboard
-from keyboards.new_keyboards import shop_categories_keyboard
+from keyboards.keyboards import shop_categories_keyboard
 
 router = Router()
 
