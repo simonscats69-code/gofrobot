@@ -8,6 +8,31 @@ from keyboards.keyboards import *
 
 router = Router()
 
+# =================== ФИКС ДЛЯ РАНГОВ ===================
+def get_user_rank(patsan: dict) -> tuple:
+    """Безопасное получение ранга пользователя"""
+    # Если поля уже есть - возвращаем их
+    if 'rank_emoji' in patsan and 'rank_name' in patsan:
+        return patsan['rank_emoji'], patsan['rank_name']
+    
+    # Если нет - определяем вручную
+    av = patsan.get('avtoritet', 1)
+    # Ранги из db_manager.py
+    RANKS = {1:("👶","Пацанчик"), 11:("👊","Браток"), 51:("👑","Авторитет"), 
+             201:("🐉","Царь гофры"), 501:("🏛️","Император"), 1001:("💩","БОГ ГОВНА")}
+    
+    # Определяем ранг
+    rank_name, rank_emoji = "Пацанчик", "👶"  # значения по умолчанию
+    for thr, (emoji, name) in sorted(RANKS.items()):
+        if av >= thr:
+            rank_name, rank_emoji = name, emoji
+    
+    # Сохраняем в словарь на будущее
+    patsan['rank_emoji'] = rank_emoji
+    patsan['rank_name'] = rank_name
+    
+    return rank_emoji, rank_name
+
 # =================== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ===================
 async def edit_or_answer(c, text, kb=None, parse="HTML"):
     try: await c.message.edit_text(text, reply_markup=kb, parse_mode=parse)
@@ -45,13 +70,18 @@ router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
 # =================== ОБРАБОТЧИКИ ===================
 async def mm_text(p):
+    """Текст главного меню (ИСПРАВЛЕННЫЙ)"""
     atm, max_a = p.get('atm_count',0), p.get('max_atm',12)
-    return (f"<b>Главное меню</b>\n{p.get('rank_emoji','👶')} <b>{p.get('rank_name','Пацанчик')}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n"
+    # ИСПРАВЛЕНО: используем функцию get_user_rank вместо прямого доступа
+    rank_emoji, rank_name = get_user_rank(p)
+    
+    return (f"<b>Главное меню</b>\n{rank_emoji} <b>{rank_name}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n"
             f"🌀 Атмосферы: [{pb(atm,max_a)}] {atm}/{max_a}\n💸 Деньги: {p.get('dengi',0)}р | 🐍 Змий: {p.get('zmiy',0):.1f}кг\n\n<i>Выбери действие, пацан:</i>")
 
 @router.callback_query(F.data == "back_main")
 async def back_main(c):
-    await edit_or_answer(c, await mm_text(await get_patsan_cached(c.from_user.id)), main_keyboard())
+    patsan = await get_patsan_cached(c.from_user.id)
+    await edit_or_answer(c, await mm_text(patsan), main_keyboard())
 
 @router.callback_query(F.data == "nickname_menu")
 async def nickname_menu(c):
@@ -143,7 +173,8 @@ async def cb_inventory(c):
 @router.callback_query(F.data == "profile")
 async def cb_profile(c):
     p = await get_patsan_cached(c.from_user.id)
-    re, rn = p.get('rank_emoji','👶'), p.get('rank_name','Пацанчик')
+    # ИСПРАВЛЕНО: используем функцию get_user_rank
+    re, rn = get_user_rank(p)
     ac, ma = p.get('atm_count',0), p.get('max_atm',12)
     up = p.get("upgrades",{})
     bu = [k for k,v in up.items() if v] if up else []
