@@ -500,6 +500,10 @@ async def get_daily(uid):
         p = await user_manager.get_user(uid, True)
         return {"ok":True, "money":total, "item":item, "streak":streak, "base":base, "bonus":bonus, "lvl":lvl}
 
+async def get_daily_reward(uid):
+    """Алиас для get_daily (для обратной совместимости)"""
+    return await get_daily(uid)
+
 async def unlock_ach(uid, aid, name, rew=0):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT 1 FROM achievements WHERE user_id=? AND achievement_id=?', (uid,aid)) as c:
