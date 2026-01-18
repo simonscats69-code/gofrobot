@@ -17,7 +17,7 @@ from handlers.craft import router as craft_router
 from handlers.achievements_progress import router as achievements_progress_router
 from handlers.atm_handlers import router as atm_handlers_router  # НОВЫЙ ИМПОРТ
 
-from database.db_manager import init_db
+from database.db_manager import init_bot  # ИЗМЕНЕНО: init_db -> init_bot
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -39,7 +39,7 @@ if len(token_parts) != 2 or not token_parts[0].isdigit() or len(token_parts[1]) 
 print(f"✅ Токен получен. Длина: {len(BOT_TOKEN)}, ID бота: {token_parts[0]}")
 
 async def main():
-    await init_db()
+    await init_bot()  # ИЗМЕНЕНО: init_db -> init_bot
     print("✅ База данных инициализирована")
     
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -94,6 +94,12 @@ async def main():
     print("• От Пацанчика до Царя гофры")
     print("• Уважение в сообществе")
     print("• Влияние на игровой процесс")
+    print("=" * 50)
+    print()
+    print("👤 НОВОЕ: СИСТЕМА НИКНЕЙМА")
+    print("• Первая смена ника бесплатно")
+    print("• Репутация через авторитет")
+    print("• Топ самых уважаемых пацанов")
     print("=" * 50)
     print()
     print("📊 База данных: асинхронный режим")
