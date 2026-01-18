@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 import time
 import random
+import asyncio  # Добавлено для таймаутов
 from database.db_manager import *
 from keyboards.keyboards import *
 
@@ -84,49 +85,43 @@ async def mmt(p):
     re, rn = gr(p)
     return f"<b>Главное меню</b>\n{re} <b>{rn}</b> | ⭐ {p.get('avtoritet', 1)} | 📈 Ур. {p.get('level', 1)}\n\n🌀 Атмосферы: [{pb(a, m)}] {a}/{m}\n💸 Деньги: {p.get('dengi', 0)}р | 🐍 Змий: {p.get('zmiy', 0):.1f}кг\n\n<i>Выбери действие, пацан:</i>"
 
-@r.callback_query(F.data == "back_main")
-async def bm(c):
+async def _complete_operation(callback, func, uid, act):
+    """Завершает операцию в фоне после таймаута"""
     try:
-        p = await get_patsan_cached(c.from_user.id)
-        await eoa(c, await mmt(p), main_keyboard())
+        result = await func(uid)
+        if result and len(result) >= 2:
+            p, r_data = result[1], result[2] if len(result) > 2 else {}
+            
+            # Форматирование
+            ex = {}
+            if act == "davka":
+                u = p.get("upgrades",{})
+                ex["nm"] = "\n🥛 Ряженка жмёт двенашку как надо! (+75%)" if u.get("ryazhenka") else "\n🧋 Бублэки создают нужную турбулентность! (+35% к шансу)" if u.get("bubbleki") else ""
+                ex["sm"] = "\n💪 <b>Специализация 'Давила': +50% к давке!</b>" if p.get("specialization") == "давила" else ""
+                ex["dm"] = "\n✨ <b>Нашёл двенашку в турбулентности!</b>" if r_data.get("dvenashka_found") else ""
+                ex["rm"] = f"\n🌟 <b>Редкая находка: {r_data['rare_item_found']}!</b>" if r_data.get("rare_item_found") else ""
+                ex["em"] = f"\n📚 +{r_data.get('exp_gained', 0)} опыта" if r_data.get('exp_gained', 0) > 0 else ""
+                ex["tg"] = r_data.get('total_grams', 0) / 1000 if r_data.get('total_grams') else 0
+            elif act == "sdat":
+                ex["abt"] = f"\n⭐ <b>Бонус авторитета:</b> +{r_data['avtoritet_bonus']}р" if r_data.get('avtoritet_bonus', 0) > 0 else ""
+                ex["em"] = f"\n📚 +{r_data.get('exp_gained', 0)} опыта" if r_data.get('exp_gained', 0) > 0 else ""
+            
+            # Получаем текст из AH
+            if h := AH.get(act):
+                text = h["t"].format(**{**p, **r_data, **ex})
+                try:
+                    await eoa(callback, text, main_keyboard())
+                except:
+                    try:
+                        await callback.message.edit_text(text[:4000], parse_mode="HTML", reply_markup=main_keyboard())
+                    except:
+                        await callback.message.answer(text[:4000], parse_mode="HTML")
     except Exception as e:
-        await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data == "nickname_menu")
-async def nm(c):
-    try:
-        from handlers.commands import cmd_nickname
-        await cmd_nickname(c.message)
-        await c.answer()
-    except Exception:
-        await c.answer("Ошибка загрузки меню ника", show_alert=True)
-
-@r.callback_query(F.data == "daily")
-async def cd(c):
-    try:
-        from handlers.commands import cmd_daily
-        await cmd_daily(c.message)
-        await c.answer()
-    except Exception:
-        await c.answer("Ошибка загрузки ежедневной награды", show_alert=True)
-
-@r.callback_query(F.data == "achievements")
-async def ca(c):
-    try:
-        from handlers.commands import cmd_achievements
-        await cmd_achievements(c.message)
-        await c.answer()
-    except Exception:
-        await c.answer("Ошибка загрузки достижений", show_alert=True)
-
-@r.callback_query(F.data == "rademka")
-async def cr(c):
-    try:
-        from handlers.commands import cmd_rademka
-        await cmd_rademka(c.message)
-        await c.answer()
-    except Exception:
-        await c.answer("Ошибка загрузки радёмки", show_alert=True)
+        error_msg = str(e)[:100]
+        try:
+            await callback.message.answer(f"❌ Ошибка при завершении: {error_msg}")
+        except:
+            pass
 
 AH = {
     "davka": {
@@ -140,16 +135,44 @@ AH = {
 }
 
 async def ha(c, act):
+    """Обработчик действий davka и sdat - ИСПРАВЛЕННЫЙ"""
+    # ШАГ 1: Немедленно отвечаем Telegram
+    try:
+        await c.answer("🔄 Обработка...")
+    except Exception:
+        # Если уже ответили или ошибка - продолжаем
+        pass
+    
     try:
         if not (h := AH.get(act)):
             return
         
-        uid, p, r = c.from_user.id, *await h["func"](uid)
+        uid = c.from_user.id
         
-        if p is None:
-            await c.answer(r, show_alert=True)
+        # ШАГ 2: Долгая операция с таймаутом
+        try:
+            result = await asyncio.wait_for(
+                h["func"](uid), 
+                timeout=7.0  # 7 секунд максимум
+            )
+        except asyncio.TimeoutError:
+            # Если долго - отправляем сообщение и продолжаем в фоне
+            await eoa(c, "⏳ Операция занимает время...", main_keyboard())
+            # Запускаем в фоне
+            asyncio.create_task(_complete_operation(c, h["func"], uid, act))
             return
         
+        if not result or len(result) < 2:
+            await eoa(c, "❌ Ошибка: некорректный ответ", main_keyboard())
+            return
+            
+        p, r = result[1], result[2] if len(result) > 2 else {}
+        
+        if p is None:
+            await eoa(c, f"⚠️ {r}", main_keyboard())
+            return
+        
+        # Форматирование
         ex = {}
         
         if act == "davka":
@@ -164,17 +187,90 @@ async def ha(c, act):
             ex["abt"] = f"\n⭐ <b>Бонус авторитета:</b> +{r['avtoritet_bonus']}р" if r.get('avtoritet_bonus', 0) > 0 else ""
             ex["em"] = f"\n📚 +{r.get('exp_gained', 0)} опыта" if r.get('exp_gained', 0) > 0 else ""
         
+        # ШАГ 3: Обновляем сообщение
         await eoa(c, h["t"].format(**{**p, **r, **ex}), main_keyboard())
+        
     except Exception as e:
-        await c.answer(f"Ошибка действия: {str(e)[:50]}", show_alert=True)
+        error_msg = str(e)[:100]
+        try:
+            await eoa(c, f"❌ Ошибка: {error_msg}", main_keyboard())
+        except:
+            await c.message.answer(f"❌ Ошибка: {error_msg}")
 
 @r.callback_query(F.data.in_(["davka", "sdat"]))
 async def cba(c):
+    """Обработчик кнопок davka и sdat - ИСПРАВЛЕННЫЙ"""
+    # КРИТИЧНО: сразу отвечаем Telegram
+    try:
+        await c.answer("🔄 Обработка...")
+    except Exception as e:
+        # Если уже ответили или ошибка - продолжаем
+        pass
+    
+    # Запускаем обработку
     await ha(c, c.data)
+
+@r.callback_query(F.data == "back_main")
+async def bm(c):
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        p = await get_patsan_cached(c.from_user.id)
+        await eoa(c, await mmt(p), main_keyboard())
+    except Exception as e:
+        await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
+
+@r.callback_query(F.data == "nickname_menu")
+async def nm(c):
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        from handlers.commands import cmd_nickname
+        await cmd_nickname(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки меню ника", show_alert=True)
+
+@r.callback_query(F.data == "daily")
+async def cd(c):
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        from handlers.commands import cmd_daily
+        await cmd_daily(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки ежедневной награды", show_alert=True)
+
+@r.callback_query(F.data == "achievements")
+async def ca(c):
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        from handlers.commands import cmd_achievements
+        await cmd_achievements(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки достижений", show_alert=True)
+
+@r.callback_query(F.data == "rademka")
+async def cr(c):
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        from handlers.commands import cmd_rademka
+        await cmd_rademka(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки радёмки", show_alert=True)
 
 @r.callback_query(F.data == "pump")
 async def cp(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         d, z, n = p.get('skill_davka', 1), p.get('skill_zashita', 1), p.get('skill_nahodka', 1)
         cs = {'davka': 180 + (d * 10), 'zashita': 270 + (z * 15), 'nahodka': 225 + (n * 12)}
@@ -186,6 +282,9 @@ async def cp(c):
 @r.callback_query(F.data.startswith("pump_"))
 async def cps(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer("⚙️ Прокачка...")
+        
         s, uid = c.data.split("_")[1], c.from_user.id
         p, res = await pump_skill(uid, s)
         await c.answer(res if p else res, show_alert=True)
@@ -198,6 +297,9 @@ async def cps(c):
 @r.callback_query(F.data == "inventory")
 async def ci(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         i, ab = p.get("inventory", []), p.get("active_boosts", {})
         
@@ -220,6 +322,9 @@ async def ci(c):
 @r.callback_query(F.data == "profile")
 async def cpr(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         re, rn = gr(p)
         a, m, up = p.get('atm_count', 0), p.get('max_atm', 12), p.get("upgrades", {})
@@ -265,6 +370,9 @@ SP = {
 @r.callback_query(F.data == "specializations")
 async def csp(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         uid, p = c.from_user.id, await get_patsan_cached(c.from_user.id)
         cs = p.get("specialization", "")
         
@@ -314,6 +422,9 @@ async def csp(c):
 @r.callback_query(F.data.startswith("specialization_"))
 async def csd(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         st = c.data.replace("specialization_", "")
         
         if st == "info":
@@ -331,6 +442,9 @@ async def csd(c):
 @r.callback_query(F.data.startswith("specialization_buy_"))
 async def csb(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer("💰 Покупка...")
+        
         sid, uid = c.data.replace("specialization_buy_", ""), c.from_user.id
         ok, msg = await buy_specialization(uid, sid)
         
@@ -345,6 +459,9 @@ async def csb(c):
 @r.callback_query(F.data == "craft")
 async def cc(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         await eoa(c, f"<b>🔨 КРАФТ ПРЕДМЕТОВ</b>\n\n<i>Создавай мощные предметы из ингредиентов!</i>\n\n📦 Инвентарь: {len(p.get('inventory', []))} предметов\n🔨 Скрафчено: {len(p.get('crafted_items', []))} предметов\n💰 Деньги: {p.get('dengi', 0)}р\n\n<b>Выбери действие:</b>", craft_keyboard())
     except Exception as e:
@@ -353,6 +470,9 @@ async def cc(c):
 @r.callback_query(F.data == "craft_items")
 async def cci(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         ci = await get_craftable_items(c.from_user.id)
         
         if not ci:
@@ -385,6 +505,9 @@ async def cci(c):
 @r.callback_query(F.data.startswith("craft_execute_"))
 async def cce(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer("🔨 Крафт...")
+        
         rid, uid = c.data.replace("craft_execute_", ""), c.from_user.id
         ok, msg, res = await craft_item(uid, rid)
         
@@ -401,6 +524,9 @@ async def cce(c):
 @r.callback_query(F.data == "craft_recipes")
 async def ccr(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await eoa(c, "<b>📜 ВСЕ РЕЦЕПТЫ КРАФТА</b>\n\n<b>✨ Супер-двенашка</b>\nИнгредиенты: 3× двенашка, 500р\nШанс: 100% | Эффект: Повышает удачу на 1 час\n\n<b>⚡ Вечный двигатель</b>\nИнгредиенты: 5× атмосфера, 1× энергетик\nШанс: 80% | Эффект: Ускоряет восстановление атмосфер на 24ч\n\n<b>👑 Царский обед</b>\nИнгредиенты: 1× курвасаны, 1× ряженка, 300р\nШанс: 100% | Эффект: Максимальный буст на 30 минут\n\n<b>🌀 Бустер атмосфер</b>\nИнгредиенты: 2× энергетик, 1× двенашка, 2000р\nШанс: 70% | Эффект: +3 к максимальному запасу атмосфер\n\n<i>Собирай ингредиенты и создавай мощные предметы!</i>", craft_recipes_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка рецептов: {str(e)[:50]}", show_alert=True)
@@ -408,6 +534,9 @@ async def ccr(c):
 @r.callback_query(F.data == "rademka_scout_menu")
 async def csm(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         su, fl = p.get("rademka_scouts", 0), max(0, 5 - p.get("rademka_scouts", 0))
         
@@ -418,6 +547,9 @@ async def csm(c):
 @r.callback_query(F.data == "rademka_scout_random")
 async def csr(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer("🕵️ Разведка...")
+        
         uid, tp = c.from_user.id, await get_top_players(limit=50, sort_by="avtoritet")
         tg = [p for p in tp if p.get("user_id") != uid]
         
@@ -444,6 +576,9 @@ async def csr(c):
 @r.callback_query(F.data.startswith("rademka_scout_"))
 async def cst(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         d = c.data.replace("rademka_scout_", "")
         
         if d == "choose":
@@ -498,6 +633,9 @@ ACH = {
 @r.callback_query(F.data == "achievements_progress")
 async def cap(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         pd = await get_achievement_progress(c.from_user.id)
         
         if not pd:
@@ -525,6 +663,9 @@ async def cap(c):
 @r.callback_query(F.data.startswith("achievement_"))
 async def cad(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         if (at := c.data.replace("achievement_", "")) not in ACH:
             return await c.answer("Неизвестное достижение", show_alert=True)
         
@@ -544,6 +685,9 @@ async def cad(c):
 @r.callback_query(F.data == "level_stats")
 async def cls(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         cl, ce = p.get("level", 1), p.get("experience", 0)
         re, pp = int(100 * (cl ** 1.5)), (ce / re * 100) if re > 0 else 0
@@ -557,6 +701,9 @@ async def cls(c):
 @r.callback_query(F.data == "atm_status")
 async def cas(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         a, m = p.get('atm_count', 0), p.get('max_atm', 12)
         rt, bs = calculate_atm_regen_time(p), []
@@ -586,6 +733,9 @@ TO = {
 @r.callback_query(F.data == "top")
 async def ctm(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await eoa(c, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>", top_sort_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка топа: {str(e)[:50]}", show_alert=True)
@@ -604,6 +754,9 @@ async def grwt():
 @r.callback_query(F.data.startswith("top_"))
 async def cst(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         if (st := c.data.replace("top_", "")) not in TO:
             return await c.answer("Неизвестный тип топа", show_alert=True)
         
@@ -660,6 +813,9 @@ async def cst(c):
 @r.callback_query(F.data.startswith("inventory_"))
 async def cia(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         a = c.data.replace("inventory_", "")
         
         if a == "use":
@@ -677,6 +833,9 @@ async def cia(c):
 @r.callback_query(F.data == "confirm_trash_inventory")
 async def cct(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer("🗑️ Удаление...")
+        
         p = await get_patsan(c.from_user.id)
         i = p.get("inventory", [])
         n = [x for x in i if x not in ["перчатки", "швабра", "ведро"]]
@@ -693,6 +852,9 @@ async def cct(c):
 @r.callback_query(F.data == "shop")
 async def cs(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         from handlers.shop import callback_shop as sh
         await sh(c)
     except Exception as e:
@@ -701,6 +863,9 @@ async def cs(c):
 @r.callback_query(F.data == "achievements_progress_all")
 async def cpa(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await cap(c)
     except Exception:
         await c.answer("Ошибка прогресса", show_alert=True)
@@ -708,6 +873,9 @@ async def cpa(c):
 @r.callback_query(F.data == "level_progress")
 async def clp(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await cls(c)
     except Exception:
         await c.answer("Ошибка прогресса уровней", show_alert=True)
@@ -715,6 +883,9 @@ async def clp(c):
 @r.callback_query(F.data == "level_next")
 async def cln(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await cls(c)
     except Exception:
         await c.answer("Ошибка следующего уровня", show_alert=True)
@@ -722,6 +893,9 @@ async def cln(c):
 @r.callback_query(F.data == "atm_regen_time")
 async def cart(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await cas(c)
     except Exception:
         await c.answer("Ошибка восстановления атмосфер", show_alert=True)
@@ -729,6 +903,9 @@ async def cart(c):
 @r.callback_query(F.data == "atm_max_info")
 async def cami(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await cas(c)
     except Exception:
         await c.answer("Ошибка информации об атмосферах", show_alert=True)
@@ -736,17 +913,29 @@ async def cami(c):
 @r.callback_query(F.data == "atm_boosters")
 async def cab(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await cas(c)
     except Exception:
         await c.answer("Ошибка бустеров атмосфер", show_alert=True)
 
 @r.callback_query(F.data == "craft_history")
 async def cch(c):
-    await c.answer("История крафта пока недоступна", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        await c.answer("История крафта пока недоступна", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data.startswith("buy_"))
 async def cb(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer("💰 Покупка...")
+        
         from handlers.shop import callback_buy as sb
         await sb(c)
     except Exception as e:
@@ -754,28 +943,61 @@ async def cb(c):
 
 @r.callback_query(F.data.startswith("spec_info_"))
 async def csi(c):
-    spec_id = c.data.replace("spec_info_", "")
-    await c.answer(f"Информация о специализации {spec_id}", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        spec_id = c.data.replace("spec_info_", "")
+        await c.answer(f"Информация о специализации {spec_id}", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data.startswith("recipe_"))
 async def cri(c):
-    await c.answer("Информация о рецепте", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        await c.answer("Информация о рецепте", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data == "rademka_stats")
 async def crs(c):
-    await c.answer("Статистика радёмок пока недоступна", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        await c.answer("Статистика радёмок пока недоступна", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data == "rademka_top")
 async def crt(c):
-    await c.answer("Топ радёмок пока недоступен", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        await c.answer("Топ радёмок пока недоступен", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data == "rademka_random")
 async def crr(c):
-    await c.answer("Случайная цель пока недоступна", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        await c.answer("Случайная цель пока недоступна", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data == "my_reputation")
 async def cmr(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         p = await get_patsan_cached(c.from_user.id)
         await c.answer(f"Твоя репутация (авторитет): {p.get('avtoritet', 1)}", show_alert=True)
     except Exception:
@@ -784,39 +1006,56 @@ async def cmr(c):
 @r.callback_query(F.data == "top_reputation")
 async def ctr(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         from handlers.commands import cmd_top
         await cmd_top(c.message)
-        await c.answer()
     except Exception:
         await c.answer("Ошибка топа репутации", show_alert=True)
 
 @r.callback_query(F.data == "change_nickname")
 async def ccn(c, state: FSMContext):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         from handlers.nickname_and_rademka import process_nickname
         await process_nickname(c.message, state)
-        await c.answer()
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
 
 @r.callback_query(F.data == "specialization_info")
 async def csi2(c):
     try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
         await csd(c)
     except Exception:
         await c.answer("Ошибка информации о специализации", show_alert=True)
 
 @r.callback_query(F.data.startswith("craft_"))
 async def ccs(c):
-    if c.data in ["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]:
-        item_id = c.data.replace("craft_", "")
-        await c.answer(f"Крафт {item_id} начат", show_alert=True)
-    else:
-        await c.answer("Неизвестный предмет для крафта", show_alert=True)
+    try:
+        # НЕМЕДЛЕННЫЙ ОТВЕТ
+        await c.answer()
+        
+        if c.data in ["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]:
+            item_id = c.data.replace("craft_", "")
+            await c.answer(f"Крафт {item_id} начат", show_alert=True)
+        else:
+            await c.answer("Неизвестный предмет для крафта", show_alert=True)
+    except:
+        pass
 
 @r.callback_query()
 async def uc(c):
-    await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
+    """Обработчик неизвестных callback'ов - ОБЯЗАТЕЛЬНО с ответом"""
+    try:
+        await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
+    except:
+        pass  # Игнорируем ошибки ответа
 
 get_user_rank = gr
 get_emoji = ge
