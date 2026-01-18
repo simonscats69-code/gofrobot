@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramBadRequest
-from database.db_manager import get_patsan_cached, get_daily_reward
+from database.db_manager import get_patsan_cached, get_daily
 from keyboards.keyboards import main_keyboard
 from keyboards.keyboards import daily_keyboard, achievements_keyboard
 
@@ -27,13 +27,13 @@ async def cmd_daily(message: types.Message):
     user_id = message.from_user.id
     
     # Получаем награду
-    result = await get_daily_reward(user_id)
+    result = await get_daily(user_id)
     
-    if result["success"]:
+    if result["ok"]:
         # Успешное получение награды
         reward_text = (
             f"🎁 <b>ЕЖЕДНЕВНАЯ НАГРАДА!</b>\n\n"
-            f"💰 +{result['money']} руб. ({result['base']} + {result['random_bonus']} бонус)\n"
+            f"💰 +{result['money']} руб. ({result['base']} + {result['bonus']} бонус)\n"
             f"🎒 +1 {result['item']}\n"
             f"🔥 Стрик: {result['streak']} дней{result.get('streak_bonus', '')}\n\n"
             f"<i>Приходи завтра за новой наградой!</i>"
@@ -49,7 +49,7 @@ async def cmd_daily(message: types.Message):
         wait_text = (
             f"⏰ <b>РАНО, ПАЦАН!</b>\n\n"
             f"Ты уже получал сегодняшнюю награду.\n"
-            f"Следующая награда через: {result['wait_time']}\n\n"
+            f"Следующая награда через: {result['wait']}\n\n"
             f"<i>Приходи позже, не торопись!</i>"
         )
         
@@ -66,12 +66,12 @@ async def callback_daily(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     
     # Получаем награду
-    result = await get_daily_reward(user_id)
+    result = await get_daily(user_id)
     
-    if result["success"]:
+    if result["ok"]:
         reward_text = (
             f"🎁 <b>ЕЖЕДНЕВНАЯ НАГРАДА!</b>\n\n"
-            f"💰 +{result['money']} руб. ({result['base']} + {result['random_bonus']} бонус)\n"
+            f"💰 +{result['money']} руб. ({result['base']} + {result['bonus']} бонус)\n"
             f"🎒 +1 {result['item']}\n"
             f"🔥 Стрик: {result['streak']} дней{result.get('streak_bonus', '')}\n\n"
             f"<i>Приходи завтра за новой наградой!</i>"
@@ -86,7 +86,7 @@ async def callback_daily(callback: types.CallbackQuery):
         wait_text = (
             f"⏰ <b>РАНО, ПАЦАН!</b>\n\n"
             f"Ты уже получал сегодняшнюю награду.\n"
-            f"Следующая награда через: {result['wait_time']}\n\n"
+            f"Следующая награда через: {result['wait']}\n\n"
             f"<i>Приходи позже, не торопись!</i>"
         )
         
