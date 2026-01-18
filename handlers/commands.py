@@ -5,6 +5,7 @@ from database.db_manager import get_patsan, get_patsan_cached, get_top_players, 
 from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
 from keyboards.keyboards import daily_keyboard, achievements_keyboard, rademka_keyboard, top_sort_keyboard
 from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
+from handlers.callbacks import get_user_rank  # Импортируем функцию из callbacks.py
 
 router = Router()
 
@@ -12,6 +13,9 @@ router = Router()
 async def cmd_start(message: types.Message):
     """Обработчик команды /start (ОБНОВЛЁННЫЙ)"""
     patsan = await get_patsan(message.from_user.id)
+    
+    # Получаем ранг пользователя
+    rank_emoji, rank_name = get_user_rank(patsan)
     
     # Прогресс-бар атмосфер
     atm_count = patsan['atm_count']
@@ -22,7 +26,7 @@ async def cmd_start(message: types.Message):
     await message.answer(
         f"<b>НУ ЧЁ, ПАЦАН?</b> 👊\n\n"
         f"Добро пожаловать на гофроцентрал, <b>{patsan['nickname']}</b>!\n"
-        f"{patsan['rank_emoji']} <b>{patsan['rank_name']}</b> | ⭐ {patsan['avtoritet']} | 📈 Ур. {patsan.get('level', 1)}\n\n"
+        f"{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan['avtoritet']} | 📈 Ур. {patsan.get('level', 1)}\n\n"
         f"🌀 <b>Атмосферы:</b> [{progress_bar}] {atm_count}/{max_atm}\n"
         f"💰 <b>Деньги:</b> {patsan['dengi']}р | 🐍 <b>Змий:</b> {patsan['zmiy']:.1f}кг\n\n"
         f"<i>Иди заварваривай коричневага, а то старшие придут и спросят.</i>\n"
@@ -35,6 +39,9 @@ async def cmd_start(message: types.Message):
 async def cmd_profile(message: types.Message):
     """Обработчик команды /profile (ОБНОВЛЁННЫЙ)"""
     patsan = await get_patsan(message.from_user.id)
+    
+    # Получаем ранг пользователя
+    rank_emoji, rank_name = get_user_rank(patsan)
     
     upgrades = patsan["upgrades"]
     bought_upgrades = [k for k, v in upgrades.items() if v]
@@ -56,7 +63,7 @@ async def cmd_profile(message: types.Message):
     
     await message.answer(
         f"<b>📊 ПРОФИЛЬ ПАЦАНА:</b>\n\n"
-        f"{patsan['rank_emoji']} <b>{patsan['rank_name']}</b>\n"
+        f"{rank_emoji} <b>{rank_name}</b>\n"
         f"👤 {patsan['nickname']}\n"
         f"⭐ Авторитет: {patsan['avtoritet']}\n"
         f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n\n"
@@ -148,7 +155,7 @@ async def cmd_achievements(message: types.Message):
         return
     
     # Формируем список достижений
-    achievements_text = "📜 <b>ТВОИ ДОСТИЖЕНИЯ:</b>\n\n"
+    achievements_text = "📜 <b>ТВОИ ДОСТИЖЕНИИ:</b>\n\n"
     
     for i, ach in enumerate(achievements[:15], 1):  # Ограничиваем 15 достижениями
         name = ach.get("name", "Неизвестное")
@@ -433,6 +440,9 @@ async def cmd_stats(message: types.Message):
     user_id = message.from_user.id
     patsan = await get_patsan_cached(user_id)
     
+    # Получаем ранг пользователя
+    rank_emoji, rank_name = get_user_rank(patsan)
+    
     # Получаем статистику из разных систем
     scouts_used = patsan.get("rademka_scouts", 0)
     crafted_count = len(patsan.get("crafted_items", []))
@@ -442,7 +452,7 @@ async def cmd_stats(message: types.Message):
         f"<b>📊 ТВОЯ СТАТИСТИКА</b>\n\n"
         
         f"<b>🎮 Общая:</b>\n"
-        f"⭐ Авторитет: {patsan['avtoritet']}\n"
+        f"{rank_emoji} <b>{rank_name}</b>\n"
         f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n"
         f"💰 Деньги: {patsan['dengi']}р\n"
         f"🐍 Всего собрано змия: {patsan['zmiy']:.1f}кг\n\n"
@@ -486,7 +496,7 @@ async def cmd_rank(message: types.Message):
     text += "\n<b>🎁 Бонусы званий:</b>\n"
     text += "• Уважение в чатах\n"
     text += "• Влияние на шансы в радёмках\n"
-    text += "• Бонус к сдаче змия\n"
+    text += "• Бонус к сдазе змия\n"
     text += "• Возможность стать лидером банды (скоро)\n\n"
     
     text += "<i>Повышай авторитет через радёмки и покупку курвасанов!</i>"
