@@ -3,8 +3,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database.db_manager import get_patsan, get_patsan_cached, get_top_players, get_user_achievements
 from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
-from keyboards.new_keyboards import daily_keyboard, achievements_keyboard, rademka_keyboard, top_sort_keyboard
-from keyboards.top_keyboards import top_menu_keyboard
+from keyboards.keyboards import daily_keyboard, achievements_keyboard, rademka_keyboard, top_sort_keyboard
+from keyboards.keyboards import top_menu_keyboard
 
 router = Router()
 
