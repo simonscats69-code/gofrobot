@@ -278,26 +278,45 @@ async def get_rademka_winners_top():
 async def cb_show_top(c):
     if(st:=c.data.replace("top_","")) not in TOPS:return await c.answer("Неизвестный тип топа",show_alert=True)
     sn,em,dk=TOPS[st]
-    try:tp=await get_top_players(limit=10,sort_by=dk) if st!="rademka_wins" else await get_rademka_winners_top()
+    try:
+        if st!="rademka_wins":
+            tp=await get_top_players(limit=10,sort_by=dk)
+        else:
+            tp=await get_rademka_winners_top()
     except Exception as e:return await c.answer(f"Ошибка при получении топа: {e}",show_alert=True)
     if not tp:return await edit_or_answer(c,"😕 <b>Топ пуст!</b>\n\nЕщё никто не заслужил места в рейтинге.\nБудь первым!",top_sort_keyboard())
     mds,tt=["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"],f"{em} <b>Топ пацанов по {sn}:</b>\n\n"
     for i,pl in enumerate(tp[:10]):
         nn=pl.get('nickname',f'Пацан_{pl.get("user_id","?")}')[:20]+("..." if len(pl.get('nickname',''))>20 else "")
-        if st=="avtoritet":v=f"⭐ {pl.get('avtoritet',0)}"
-        elif st=="dengi":v=f"💰 {pl.get('dengi_formatted',f'{pl.get(\"dengi\",0)}р')}"
-        elif st=="zmiy":v=f"🐍 {pl.get('zmiy_formatted',f'{pl.get(\"zmiy\",0):.1f}кг')}"
-        elif st=="total_skill":v=f"💪 {pl.get('total_skill',0)} ур."
-        elif st=="level":v=f"📈 {pl.get('level',1)} ур."
-        elif st=="rademka_wins":v=f"👊 {pl.get('wins',0)} побед"
-        else:v=""
+        if st=="avtoritet":
+            v=f"⭐ {pl.get('avtoritet',0)}"
+        elif st=="dengi":
+            # Исправленная строка 288
+            dengi_value = pl.get("dengi", 0)
+            dengi_formatted = pl.get('dengi_formatted', f'{dengi_value}р')
+            v=f"💰 {dengi_formatted}"
+        elif st=="zmiy":
+            # Исправленная строка 291
+            zmiy_value = pl.get("zmiy", 0)
+            zmiy_formatted = pl.get('zmiy_formatted', f'{zmiy_value:.1f}кг')
+            v=f"🐍 {zmiy_formatted}"
+        elif st=="total_skill":
+            v=f"💪 {pl.get('total_skill',0)} ур."
+        elif st=="level":
+            v=f"📈 {pl.get('level',1)} ур."
+        elif st=="rademka_wins":
+            v=f"👊 {pl.get('wins',0)} побед"
+        else:
+            v=""
         rv=pl.get('rank','').split(' ')
         ri=f" ({rv[1]})" if len(rv)>1 and st!="rademka_wins" else ""
         tt+=f"{mds[i] if i<10 else f'{i+1}.'} <code>{nn}</code>{ri} — {v}\n"
     tt+=f"\n📊 <i>Всего пацанов в системе: {len(tp)}</i>"
     uid=c.from_user.id
     for i,pl in enumerate(tp):
-        if pl.get('user_id')==uid:tt+=f"\n\n🎯 <b>Твоя позиция:</b> {mds[i] if i<10 else str(i+1)}";break
+        if pl.get('user_id')==uid:
+            tt+=f"\n\n🎯 <b>Твоя позиция:</b> {mds[i] if i<10 else str(i+1)}"
+            break
     await edit_or_answer(c,tt,top_sort_keyboard())
 
 @router.callback_query(F.data.startswith("inventory_"))
