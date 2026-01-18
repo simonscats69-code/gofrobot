@@ -539,6 +539,10 @@ async def change_nick(uid, nick):
         await user_manager.get_user(uid, True)
         return True, f"Ник изменён! -{cost}р"
 
+async def change_nickname(uid, nick):
+    """Алиас для change_nick (для обратной совместимости)"""
+    return await change_nick(uid, nick)
+
 async def save_rademka(win, lose, money=0, item=None, scout=False):
     pool = await DatabaseManager.get_pool()
     await pool.execute('INSERT INTO rademka_fights (winner_id,loser_id,money_taken,item_stolen,scouted) VALUES (?,?,?,?,?)',
