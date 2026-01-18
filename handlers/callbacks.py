@@ -657,3 +657,8 @@ async def ccs(c):
 @r.callback_query()
 async def uc(c):
     await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
+
+# ========== АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ ==========
+get_user_rank = gr
+get_emoji = ge
+# ==============================================
