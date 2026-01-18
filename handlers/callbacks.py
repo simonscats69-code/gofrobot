@@ -288,9 +288,8 @@ async def csp(c):
                 if not isinstance(s, dict):
                     continue
                 
-                # Безопасное получение значений с использованием .get()
                 name = s.get('name', 'Неизвестно')
-                description = s.get('description', '')
+                description = s.get('description', 'Нет описания')
                 available = s.get('available', False)
                 price = s.get('price', 0)
                 
@@ -309,7 +308,6 @@ async def csp(c):
     
     except Exception as e:
         print(f"Ошибка в csp: {e}")
-        # Безопасное сообщение об ошибке
         error_msg = str(e)[:100] if e else "Неизвестная ошибка"
         await eoa(c, f"<b>🌳 ВЫБОР СПЕЦИАЛИЗАЦИИ</b>\n\n<i>Произошла ошибка при загрузке специализаций.</i>\n\n<code>Ошибка: {error_msg}</code>", specializations_keyboard())
 
@@ -820,8 +818,6 @@ async def ccs(c):
 async def uc(c):
     await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
 
-# ========== АЛИАСЫ ДЛЯ СОВМЕСТИМОСТИ ==========
 get_user_rank = gr
 get_emoji = ge
-router = r  # Алиас для совместимости с импортом в main.py
-# ==============================================
+router = r
