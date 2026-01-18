@@ -27,7 +27,6 @@ from keyboards.new_keyboards import (
 
 router = Router()
 
-# Middleware для обработки ошибки "message not modified"
 class IgnoreNotModifiedMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         try:
@@ -35,7 +34,6 @@ class IgnoreNotModifiedMiddleware(BaseMiddleware):
         except TelegramBadRequest as e:
             error_message = str(e)
             if "message is not modified" in error_message or "Bad Request" in error_message and "specified new message content and reply markup are exactly the same" in error_message:
-                # Получаем callback_query из данных или event
                 callback_query = None
                 if hasattr(event, 'callback_query'):
                     callback_query = event.callback_query
@@ -47,7 +45,6 @@ class IgnoreNotModifiedMiddleware(BaseMiddleware):
                 return
             raise
 
-# Регистрируем middleware для обработки callback_query
 router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
 @router.callback_query(F.data == "back_main")
