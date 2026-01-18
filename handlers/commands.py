@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from database.db_manager import get_patsan, get_patsan_cached, get_top_players, get_user_achievements
 from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
 from keyboards.keyboards import daily_keyboard, achievements_keyboard, rademka_keyboard, top_sort_keyboard
+from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
 
 router = Router()
 
@@ -322,8 +323,6 @@ async def cmd_inventory(message: types.Message):
     text += f"🐍 Коричневагый змий: {patsan['zmiy']:.3f} кг\n"
     text += f"🔨 Скрафчено предметов: {len(patsan.get('crafted_items', []))}"
     
-    from keyboards.keyboards import inventory_management_keyboard
-    
     await message.answer(
         text, 
         reply_markup=inventory_management_keyboard(),
@@ -371,8 +370,6 @@ async def cmd_level(message: types.Message):
     text += f"• Достижения: 10-1000 опыта\n"
     text += f"• Ежедневные награды: переменный\n"
     
-    from keyboards.keyboards import level_stats_keyboard
-    
     await message.answer(
         text,
         reply_markup=level_stats_keyboard(),
@@ -390,7 +387,8 @@ async def cmd_help(message: types.Message):
         "/profile - Профиль игрока\n"
         "/inventory - Инвентарь\n"
         "/daily - Ежедневная награда\n"
-        "/top - Топ игроков\n\n"
+        "/top - Топ игроков\n"
+        "/nickname - Никнейм и репутация\n\n"
         
         "<b>🎮 Игровые действия:</b>\n"
         "• Давка коричневага (кнопка в меню)\n"
@@ -408,6 +406,11 @@ async def cmd_help(message: types.Message):
         "• Чай сливовый (500р) - -2 атмосферы\n"
         "• Бублэки (800р) - +35% к находкам\n"
         "• Курвасаны (1500р) - +2 авторитета\n\n"
+        
+        "<b>👤 Никнейм и репутация:</b>\n"
+        "• Первая смена ника бесплатно\n"
+        "• Репутация = авторитет\n"
+        "• Повышай авторитет через радёмки\n\n"
         
         "<b>🎯 Советы:</b>\n"
         "• Атмосферы восстанавливаются каждые 10 минут\n"
@@ -440,8 +443,7 @@ async def cmd_stats(message: types.Message):
         
         f"<b>🎮 Общая:</b>\n"
         f"⭐ Авторитет: {patsan['avtoritet']}\n"
-        f"📈 Уровень: {patsan.get('level', 1)}\n"
-        f"📚 Опыт: {patsan.get('experience', 0)}\n"
+        f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n"
         f"💰 Деньги: {patsan['dengi']}р\n"
         f"🐍 Всего собрано змия: {patsan['zmiy']:.1f}кг\n\n"
         
@@ -526,7 +528,6 @@ async def cmd_shop(message: types.Message):
         "<i>💡 Совет: Купи все улучшения для достижения 'Все нагнетатели' (+1500р)!</i>"
     )
     
-    from keyboards.keyboards import shop_keyboard
     await message.answer(
         text,
         reply_markup=shop_keyboard(),
@@ -559,7 +560,8 @@ async def cmd_version(message: types.Message):
         "• 📈 <b>Уровни и опыт</b> - прогрессируй и получай награды\n"
         "• 🏆 <b>Уровневые достижения</b> - долгосрочные цели\n"
         "• 🕵️ <b>Разведка радёмки</b> - узнавай шансы перед боем\n"
-        "• ⭐ <b>Система званий</b> - от Пацанчика до Царя гофры\n\n"
+        "• ⭐ <b>Система званий</b> - от Пацанчика до Царя гофры\n"
+        "• 👤 <b>Никнейм и репутация</b> - система авторитета\n\n"
         
         "<b>⚖️ Балансные изменения:</b>\n"
         "• Цены в магазине пересмотрены\n"
@@ -581,3 +583,32 @@ async def cmd_version(message: types.Message):
         reply_markup=main_keyboard(),
         parse_mode="HTML"
     )
+
+@router.message(Command("nickname"))
+async def cmd_nickname(message: types.Message):
+    """Команда /nickname - меню никнейма и репутации (ОБНОВЛЁННАЯ)"""
+    user_id = message.from_user.id
+    
+    try:
+        patsan = await get_patsan_cached(user_id)
+        
+        message_text = (
+            f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n"
+            f"📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
+            f"⭐ <b>Авторитет:</b> {patsan.get('avtoritet', 1)} (используется как репутация)\n"
+            f"💰 <b>Стоимость смены ника:</b> {'Бесплатно (первый раз)' if not patsan.get('nickname_changed', False) else '5000 руб.'}\n\n"
+            f"<i>Выбери действие:</i>"
+        )
+        
+        await message.answer(
+            message_text,
+            reply_markup=nickname_keyboard(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"Ошибка в команде /nickname: {e}")
+        await message.answer(
+            "❌ Ошибка при загрузке меню никнейма.\n"
+            "Попробуйте позже.",
+            parse_mode="HTML"
+        )
