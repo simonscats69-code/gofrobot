@@ -11,23 +11,18 @@ router = Router()
 # =================== ФИКС ДЛЯ РАНГОВ ===================
 def get_user_rank(patsan: dict) -> tuple:
     """Безопасное получение ранга пользователя"""
-    # Если поля уже есть - возвращаем их
     if 'rank_emoji' in patsan and 'rank_name' in patsan:
         return patsan['rank_emoji'], patsan['rank_name']
     
-    # Если нет - определяем вручную
     av = patsan.get('avtoritet', 1)
-    # Ранги из db_manager.py
     RANKS = {1:("👶","Пацанчик"), 11:("👊","Браток"), 51:("👑","Авторитет"), 
              201:("🐉","Царь гофры"), 501:("🏛️","Император"), 1001:("💩","БОГ ГОВНА")}
     
-    # Определяем ранг
-    rank_name, rank_emoji = "Пацанчик", "👶"  # значения по умолчанию
+    rank_name, rank_emoji = "Пацанчик", "👶"
     for thr, (emoji, name) in sorted(RANKS.items()):
         if av >= thr:
             rank_name, rank_emoji = name, emoji
     
-    # Сохраняем в словарь на будущее
     patsan['rank_emoji'] = rank_emoji
     patsan['rank_name'] = rank_name
     
@@ -70,9 +65,7 @@ router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
 # =================== ОБРАБОТЧИКИ ===================
 async def mm_text(p):
-    """Текст главного меню (ИСПРАВЛЕННЫЙ)"""
     atm, max_a = p.get('atm_count',0), p.get('max_atm',12)
-    # ИСПРАВЛЕНО: используем функцию get_user_rank вместо прямого доступа
     rank_emoji, rank_name = get_user_rank(p)
     
     return (f"<b>Главное меню</b>\n{rank_emoji} <b>{rank_name}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n"
@@ -173,7 +166,6 @@ async def cb_inventory(c):
 @router.callback_query(F.data == "profile")
 async def cb_profile(c):
     p = await get_patsan_cached(c.from_user.id)
-    # ИСПРАВЛЕНО: используем функцию get_user_rank
     re, rn = get_user_rank(p)
     ac, ma = p.get('atm_count',0), p.get('max_atm',12)
     up = p.get("upgrades",{})
@@ -416,7 +408,16 @@ async def cb_show_top(c):
         if st == "rademka_wins":
             cn = await get_connection()
             cur = await cn.execute('SELECT u.user_id,u.nickname,u.avtoritet,COUNT(rf.id)as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.avtoritet ORDER BY wins DESC LIMIT 10')
-            tp = [dict(r)|{"wins":r["wins"]or 0,"rank":"?","zmiy":0,"dengi":0,"level":1} for r in await cur.fetchall()]
+            rows = await cur.fetchall()
+            tp = []
+            for r in rows:
+                row_dict = dict(r)
+                row_dict["wins"] = row_dict["wins"] or 0
+                row_dict["rank"] = "?"
+                row_dict["zmiy"] = 0
+                row_dict["dengi"] = 0
+                row_dict["level"] = 1
+                tp.append(row_dict)
             await cn.close()
         else:
             tp = await get_top_players(limit=10, sort_by=dk)
@@ -432,48 +433,71 @@ async def cb_show_top(c):
     tt = f"{em} <b>Топ пацанов по {sn}:</b>\n\n"
     for i, pl in enumerate(tp):
         md = mds[i] if i<len(mds) else f"{i+1}."
-        nn = pl.get('nickname',f'Пацан_{pl.get("user_id","?")}')
+        nn = pl.get('nickname', f'Пацан_{pl.get("user_id", "?")}')
         if len(nn)>20: nn = nn[:17]+"..."
         
-        if st=="avtoritet": v=f"⭐ {pl.get('avtoritet',0)}"
-        elif st=="dengi": v=f"💰 {pl.get('dengi_formatted',f'{pl.get('dengi',0)}р')}"
-        elif st=="zmiy": v=f"🐍 {pl.get('zmiy_formatted',f'{pl.get('zmiy',0):.1f}кг')}"
-        elif st=="total_skill": v=f"💪 {pl.get('total_skill',0)} ур."
-        elif st=="level": v=f"📈 {pl.get('level',1)} ур."
-        elif st=="rademka_wins": v=f"👊 {pl.get('wins',0)} побед"
-        else: v=""
+        if st=="avtoritet": 
+            v = f"⭐ {pl.get('avtoritet',0)}"
+        elif st=="dengi": 
+            dengi_val = pl.get('dengi', 0)
+            dengi_formatted = pl.get('dengi_formatted', f'{dengi_val}р')
+            v = f"💰 {dengi_formatted}"
+        elif st=="zmiy": 
+            zmiy_val = pl.get('zmiy', 0)
+            zmiy_formatted = pl.get('zmiy_formatted', f'{zmiy_val:.1f}кг')
+            v = f"🐍 {zmiy_formatted}"
+        elif st=="total_skill": 
+            v = f"💪 {pl.get('total_skill',0)} ур."
+        elif st=="level": 
+            v = f"📈 {pl.get('level',1)} ур."
+        elif st=="rademka_wins": 
+            v = f"👊 {pl.get('wins',0)} побед"
+        else: 
+            v=""
         
-        ri=f" ({pl.get('rank','').split(' ')[1]})" if st!="rademka_wins" and len(pl.get('rank','').split(' '))>1 else ""
-        tt+=f"{md} <code>{nn}</code>{ri} — {v}\n"
+        rank_val = pl.get('rank','')
+        if st!="rademka_wins" and ' ' in rank_val:
+            rank_parts = rank_val.split(' ')
+            if len(rank_parts) > 1:
+                ri = f" ({rank_parts[1]})"
+            else:
+                ri = ""
+        else:
+            ri = ""
+        
+        tt += f"{md} <code>{nn}</code>{ri} — {v}\n"
     
-    tt+=f"\n📊 <i>Всего пацанов в системе: {len(tp)}</i>"
-    uid=c.from_user.id
-    for i,pl in enumerate(tp):
-        if pl.get('user_id')==uid:
-            tt+=f"\n\n🎯 <b>Твоя позиция:</b> {mds[i] if i<len(mds) else str(i+1)}"
+    tt += f"\n📊 <i>Всего пацанов в системе: {len(tp)}</i>"
+    uid = c.from_user.id
+    for i, pl in enumerate(tp):
+        if pl.get('user_id') == uid:
+            user_medal = mds[i] if i < len(mds) else str(i+1)
+            tt += f"\n\n🎯 <b>Твоя позиция:</b> {user_medal}"
             break
     
     await edit_or_answer(c, tt, top_sort_keyboard())
 
 @router.callback_query(F.data.startswith("inventory_"))
 async def cb_inv_action(c):
-    a=c.data.replace("inventory_","")
-    if a=="use": await c.answer("Функция использования предметов в разработке!", show_alert=True)
-    elif a=="sort": 
+    a = c.data.replace("inventory_","")
+    if a == "use": 
+        await c.answer("Функция использования предметов в разработке!", show_alert=True)
+    elif a == "sort": 
         await c.answer("Инвентарь отсортирован!", show_alert=True)
         await cb_inventory(c)
-    elif a=="trash": 
+    elif a == "trash": 
         await edit_or_answer(c, "🗑️ <b>ВЫБРОСИТЬ МУСОР</b>\n\nТы уверен? Это действие удалит:\n• Все 'перчатки'\n• Все 'швабры'\n• Все 'вёдра'\n\nЗато освободит место в инвентаре!", confirmation_keyboard("trash_inventory"))
-    else: await c.answer("Неизвестное действие", show_alert=True)
+    else: 
+        await c.answer("Неизвестное действие", show_alert=True)
 
 @router.callback_query(F.data == "confirm_trash_inventory")
 async def cb_confirm_trash(c):
-    p=await get_patsan(c.from_user.id)
-    inv=p.get("inventory",[])
-    new=[i for i in inv if i not in ["перчатки","швабра","ведро"]]
-    r=len(inv)-len(new)
+    p = await get_patsan(c.from_user.id)
+    inv = p.get("inventory",[])
+    new = [i for i in inv if i not in ["перчатки","швабра","ведро"]]
+    r = len(inv)-len(new)
     if r>0:
-        p["inventory"]=new
+        p["inventory"] = new
         await save_patsan(p)
         await edit_or_answer(c, f"✅ <b>МУСОР ВЫБРОШЕН!</b>\n\nВыброшено предметов: {r}\nОсталось в инвентаре: {len(new)}\n\n<i>Теперь есть место для чего-то полезного!</i>", main_keyboard())
     else:
