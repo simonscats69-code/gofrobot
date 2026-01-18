@@ -9,565 +9,441 @@ from keyboards.keyboards import *
 router = Router()
 
 # =================== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ===================
-async def edit_or_answer(callback: types.CallbackQuery, text: str, keyboard=None, parse_mode="HTML"):
-    try:
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode=parse_mode)
+async def edit_or_answer(c, text, kb=None, parse="HTML"):
+    try: await c.message.edit_text(text, reply_markup=kb, parse_mode=parse)
     except TelegramBadRequest as e:
-        if "message is not modified" not in str(e):
-            raise
+        if "message is not modified" not in str(e): raise
 
-def progress_bar(current: int, total: int, length: int = 10) -> str:
-    filled = int((current / total) * length) if total > 0 else 0
-    return "█" * filled + "░" * (length - filled)
+def pb(current, total, length=10): 
+    filled = int((current/total)*length) if total>0 else 0
+    return "█"*filled + "░"*(length-filled)
 
-def format_time(seconds: int) -> str:
-    if seconds < 60: return f"{seconds}с"
-    minutes = seconds // 60
-    hours = minutes // 60
-    return f"{hours}ч {minutes % 60}м" if hours > 0 else f"{minutes}м {seconds % 60}с"
+def ft(sec):
+    if sec<60: return f"{sec}с"
+    m, h = sec//60, sec//3600
+    return f"{h}ч {m%60}м" if h>0 else f"{m}м {sec%60}с"
 
-def get_item_emoji(item_name: str) -> str:
-    emoji_map = {
-        "двенашка": "🧱", "атмосфера": "🌀", "энергетик": "⚡",
-        "перчатки": "🧤", "швабра": "🧹", "ведро": "🪣",
-        "золотая_двенашка": "🌟", "кристалл_атмосферы": "💎",
-        "секретная_схема": "📜", "супер_двенашка": "✨",
-        "вечный_двигатель": "⚙️", "царский_обед": "👑", "бустер_атмосфер": "🌀"
-    }
-    return emoji_map.get(item_name, "📦")
+def get_emoji(item):
+    emoji_map = {"двенашка":"🧱","атмосфера":"🌀","энергетик":"⚡","перчатки":"🧤",
+                 "швабра":"🧹","ведро":"🪣","золотая_двенашка":"🌟","кристалл_атмосферы":"💎",
+                 "секретная_схема":"📜","супер_двенашка":"✨","вечный_двигатель":"⚙️",
+                 "царский_обед":"👑","бустер_атмосфер":"🌀"}
+    return emoji_map.get(item, "📦")
 
 # =================== МИДЛВАРЬ ===================
 class IgnoreNotModifiedMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
-        try:
-            return await handler(event, data)
+        try: return await handler(event, data)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e) or ("Bad Request" in str(e) and "exactly the same" in str(e)):
-                if callback := data.get('callback_query', getattr(event, 'callback_query', None)):
-                    if hasattr(callback, 'answer'):
-                        await callback.answer()
+                if cb := data.get('callback_query', getattr(event, 'callback_query', None)):
+                    if hasattr(cb, 'answer'): await cb.answer()
                 return
             raise
 
 router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
-# =================== ОБРАБОТЧИКИ ГЛАВНОГО МЕНЮ ===================
-async def get_main_menu_text(patsan: dict) -> str:
-    atm_count = patsan.get('atm_count', 0)
-    max_atm = patsan.get('max_atm', 12)
-    return (f"<b>Главное меню</b>\n"
-            f"{patsan.get('rank_emoji', '👶')} <b>{patsan.get('rank_name', 'Пацанчик')}</b> | ⭐ {patsan.get('avtoritet', 1)} | 📈 Ур. {patsan.get('level', 1)}\n\n"
-            f"🌀 Атмосферы: [{progress_bar(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
-            f"💸 Деньги: {patsan.get('dengi', 0)}р | 🐍 Змий: {patsan.get('zmiy', 0):.1f}кг\n\n"
-            f"<i>Выбери действие, пацан:</i>")
+# =================== ОБРАБОТЧИКИ ===================
+async def mm_text(p):
+    atm, max_a = p.get('atm_count',0), p.get('max_atm',12)
+    return (f"<b>Главное меню</b>\n{p.get('rank_emoji','👶')} <b>{p.get('rank_name','Пацанчик')}</b> | ⭐ {p.get('avtoritet',1)} | 📈 Ур. {p.get('level',1)}\n\n"
+            f"🌀 Атмосферы: [{pb(atm,max_a)}] {atm}/{max_a}\n💸 Деньги: {p.get('dengi',0)}р | 🐍 Змий: {p.get('zmiy',0):.1f}кг\n\n<i>Выбери действие, пацан:</i>")
 
 @router.callback_query(F.data == "back_main")
-async def back_to_main(callback: types.CallbackQuery):
-    patsan = await get_patsan_cached(callback.from_user.id)
-    await edit_or_answer(callback, await get_main_menu_text(patsan), main_keyboard())
+async def back_main(c):
+    await edit_or_answer(c, await mm_text(await get_patsan_cached(c.from_user.id)), main_keyboard())
 
 @router.callback_query(F.data == "nickname_menu")
-async def callback_nickname_menu(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
+async def nickname_menu(c):
     try:
-        patsan = await get_patsan_cached(user_id)
-        cost_text = "Бесплатно (первый раз)" if not patsan.get('nickname_changed', False) else "5000 руб."
-        await edit_or_answer(callback, 
-            f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
-            f"⭐ <b>Авторитет:</b> {patsan.get('avtoritet', 1)} (используется как репутация)\n"
-            f"💰 <b>Стоимость смены ника:</b> {cost_text}\n\n<i>Выбери действие:</i>",
-            nickname_keyboard())
+        p = await get_patsan_cached(c.from_user.id)
+        cost = "Бесплатно (первый раз)" if not p.get('nickname_changed',False) else "5000 руб."
+        await edit_or_answer(c, f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n📝 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💰 <b>Стоимость смены ника:</b> {cost}\n\n<i>Выбери действие:</i>", nickname_keyboard())
     except Exception as e:
-        print(f"Ошибка в nickname_menu: {e}")
-        await callback.answer("Ошибка при загрузке меню", show_alert=True)
+        print(f"Ошибка nickname_menu: {e}")
+        await c.answer("Ошибка при загрузке меню", show_alert=True)
 
-# =================== ОБРАБОТЧИКИ ДЕЙСТВИЙ ===================
 ACTION_HANDLERS = {
-    "davka": {
-        "func": davka_zmiy,
-        "success_template": """<b>Заварвариваем дело...</b>{nagnetatel_msg}{spec_bonus_msg}
+    "davka": {"func": davka_zmiy, "t": """<b>Заварвариваем дело...</b>{nm}{sm}
 🔄 Потрачено атмосфер: {cost}
-<i>"{weight_msg} говна за 25 секунд высрал я сейчас"</i>
-➕ {total_grams:.3f} кг коричневага{dvenashka_msg}{rare_item_msg}{exp_msg}
+<i>"{wm} говна за 25 секунд высрал я сейчас"</i>
+➕ {tg:.3f} кг коричневага{dm}{rm}{em}
 Всего змия накоплено: {zmiy:.3f} кг
-⚡ Осталось атмосфер: {atm_count}/{max_atm}"""
-    },
-    "sdat": {
-        "func": sdat_zmiy,
-        "success_template": """<b>Сдал коричневага на металлолом</b>
-📦 Сдано: {old_zmiy:.3f} кг змия
-💰 <b>Получил: {total_money} руб.</b>{avtoritet_bonus_text}{exp_msg}
+⚡ Осталось атмосфер: {atm_count}/{max_atm}"""},
+    "sdat": {"func": sdat_zmiy, "t": """<b>Сдал коричневага на металлолом</b>
+📦 Сдано: {oz:.3f} кг змия
+💰 <b>Получил: {tm} руб.</b>{abt}{em}
 💸 Теперь на кармане: {dengi} руб.
 📈 Уровень: {level} ({experience}/?? опыта)
-<i>Приёмщик: "Опять эту дрянь принёс... Но плачу больше!"</i>"""
-    }
+<i>Приёмщик: "Опять эту дрянь принёс... Но плачу больше!"</i>"""}
 }
 
-async def handle_action(callback: types.CallbackQuery, action: str):
-    handler = ACTION_HANDLERS.get(action)
-    if not handler: return
-    user_id = callback.from_user.id
-    patsan, result = await handler["func"](user_id)
-    if patsan is None:
-        await callback.answer(result, show_alert=True)
+async def handle_act(c, act):
+    h = ACTION_HANDLERS.get(act)
+    if not h: return
+    uid = c.from_user.id
+    p, r = await h["func"](uid)
+    if p is None:
+        await c.answer(r, show_alert=True)
         return
-    extra = {}
-    if action == "davka":
-        upgrades = patsan.get("upgrades", {})
-        extra["nagnetatel_msg"] = "\n🥛 <i>Ряженка жмёт двенашку как надо! (+75%)</i>" if upgrades.get("ryazhenka") else \
-                                 "\n🧋 <i>Бублэки создают нужную турбулентность! (+35% к шансу)</i>" if upgrades.get("bubbleki") else ""
-        extra["spec_bonus_msg"] = "\n💪 <b>Специализация 'Давила': +50% к давке!</b>" if patsan.get("specialization") == "давила" else ""
-        extra["dvenashka_msg"] = "\n✨ <b>Нашёл двенашку в турбулентности!</b>" if result.get("dvenashka_found") else ""
-        extra["rare_item_msg"] = f"\n🌟 <b>Редкая находка: {result['rare_item_found']}!</b>" if result.get("rare_item_found") else ""
-        extra["exp_msg"] = f"\n📚 +{result.get('exp_gained', 0)} опыта" if result.get('exp_gained', 0) > 0 else ""
-    elif action == "sdat":
-        extra["avtoritet_bonus_text"] = f"\n⭐ <b>Бонус авторитета:</b> +{result['avtoritet_bonus']}р" if result.get('avtoritet_bonus', 0) > 0 else ""
-        extra["exp_msg"] = f"\n📚 +{result.get('exp_gained', 0)} опыта" if result.get('exp_gained', 0) > 0 else ""
-    format_data = {**patsan, **result, **extra}
-    format_data['total_grams'] = result.get('total_grams', 0) / 1000 if result.get('total_grams') else 0
-    await edit_or_answer(callback, handler["success_template"].format(**format_data), main_keyboard())
+    ex = {}
+    if act == "davka":
+        up = p.get("upgrades",{})
+        ex["nm"] = "\n🥛 <i>Ряженка жмёт двенашку как надо! (+75%)</i>" if up.get("ryazhenka") else "\n🧋 <i>Бублэки создают нужную турбулентность! (+35% к шансу)</i>" if up.get("bubbleki") else ""
+        ex["sm"] = "\n💪 <b>Специализация 'Давила': +50% к давке!</b>" if p.get("specialization") == "давила" else ""
+        ex["dm"] = "\n✨ <b>Нашёл двенашку в турбулентности!</b>" if r.get("dvenashka_found") else ""
+        ex["rm"] = f"\n🌟 <b>Редкая находка: {r['rare_item_found']}!</b>" if r.get("rare_item_found") else ""
+        ex["em"] = f"\n📚 +{r.get('exp_gained',0)} опыта" if r.get('exp_gained',0) > 0 else ""
+        ex["tg"] = r.get('total_grams',0) / 1000
+    elif act == "sdat":
+        ex["abt"] = f"\n⭐ <b>Бонус авторитета:</b> +{r['avtoritet_bonus']}р" if r.get('avtoritet_bonus',0) > 0 else ""
+        ex["em"] = f"\n📚 +{r.get('exp_gained',0)} опыта" if r.get('exp_gained',0) > 0 else ""
+    await edit_or_answer(c, h["t"].format(**{**p, **r, **ex}), main_keyboard())
 
 @router.callback_query(F.data == "davka")
-async def callback_davka(callback: types.CallbackQuery):
-    await handle_action(callback, "davka")
+async def cb_davka(c): await handle_act(c, "davka")
 
 @router.callback_query(F.data == "sdat")
-async def callback_sdat(callback: types.CallbackQuery):
-    await handle_action(callback, "sdat")
+async def cb_sdat(c): await handle_act(c, "sdat")
 
-# =================== ПРОКАЧКА ===================
 @router.callback_query(F.data == "pump")
-async def callback_pump(callback: types.CallbackQuery):
-    patsan = await get_patsan_cached(callback.from_user.id)
-    davka, zashita, nahodka = patsan.get('skill_davka', 1), patsan.get('skill_zashita', 1), patsan.get('skill_nahodka', 1)
-    costs = {'davka': 180 + (davka * 10), 'zashita': 270 + (zashita * 15), 'nahodka': 225 + (nahodka * 12)}
-    text = (f"<b>Прокачка скиллов:</b>\n💰 Деньги: {patsan.get('dengi', 0)} руб.\n"
-            f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n\n"
-            f"💪 <b>Давка змия</b> (+100г за уровень)\nУровень: {davka} | Следующий: {costs['davka']}р/ур\n\n"
-            f"🛡️ <b>Защита атмосфер</b> (ускоряет восстановление)\nУровень: {zashita} | Следующий: {costs['zashita']}р/ур\n\n"
-            f"🔍 <b>Находка двенашек</b> (+5% шанс за уровень)\nУровень: {nahodka} | Следующий: {costs['nahodka']}р/ур\n\n"
-            f"<i>Выбери, что прокачать:</i>")
-    await edit_or_answer(callback, text, pump_keyboard())
+async def cb_pump(c):
+    p = await get_patsan_cached(c.from_user.id)
+    d,z,n = p.get('skill_davka',1), p.get('skill_zashita',1), p.get('skill_nahodka',1)
+    costs = {'davka':180+(d*10), 'zashita':270+(z*15), 'nahodka':225+(n*12)}
+    await edit_or_answer(c, f"<b>Прокачка скиллов:</b>\n💰 Деньги: {p.get('dengi',0)} руб.\n📈 Уровень: {p.get('level',1)} | 📚 Опыт: {p.get('experience',0)}\n\n💪 <b>Давка змия</b> (+100г за уровень)\nУровень: {d} | Следующий: {costs['davka']}р/ур\n\n🛡️ <b>Защита атмосфер</b> (ускоряет восстановление)\nУровень: {z} | Следующий: {costs['zashita']}р/ур\n\n🔍 <b>Находка двенашек</b> (+5% шанс за уровень)\nУровень: {n} | Следующий: {costs['nahodka']}р/ур\n\n<i>Выбери, что прокачать:</i>", pump_keyboard())
 
 @router.callback_query(F.data.startswith("pump_"))
-async def callback_pump_skill(callback: types.CallbackQuery):
-    skill = callback.data.split("_")[1]
-    user_id = callback.from_user.id
-    patsan, result = await pump_skill(user_id, skill)
-    if patsan is None:
-        await callback.answer(result, show_alert=True)
-        return
-    await callback.answer(result, show_alert=True)
-    await callback_pump(callback)
+async def cb_pump_skill(c):
+    skill, uid = c.data.split("_")[1], c.from_user.id
+    p, res = await pump_skill(uid, skill)
+    await c.answer(res if p else res, show_alert=True)
+    if p: await cb_pump(c)
 
-# =================== ИНВЕНТАРЬ ===================
 @router.callback_query(F.data == "inventory")
-async def callback_inventory(callback: types.CallbackQuery):
-    patsan = await get_patsan_cached(callback.from_user.id)
-    inv = patsan.get("inventory", [])
-    if not inv:
-        inv_text = "Пусто... Только пыль и тоска"
+async def cb_inventory(c):
+    p = await get_patsan_cached(c.from_user.id)
+    inv = p.get("inventory",[])
+    if not inv: t = "Пусто... Только пыль и тоска"
     else:
-        item_count = {}
-        for item in inv:
-            item_count[item] = item_count.get(item, 0) + 1
-        inv_text = "<b>Твои вещи:</b>\n" + "\n".join(f"{get_item_emoji(item)} {item}: {count} шт." for item, count in item_count.items())
+        cnt = {}
+        for i in inv: cnt[i] = cnt.get(i,0)+1
+        t = "<b>Твои вещи:</b>\n" + "\n".join(f"{get_emoji(i)} {i}: {n} шт." for i,n in cnt.items())
     
-    boosts_text = ""
-    active_boosts = patsan.get("active_boosts", {})
-    if active_boosts:
-        boosts_text = "\n\n<b>🔮 Активные бусты:</b>\n"
-        for boost, end_time in active_boosts.items():
-            if isinstance(end_time, (int, float)):
-                time_left = int(end_time) - int(time.time())
-                if time_left > 0:
-                    boosts_text += f"• {boost}: {time_left//3600}ч {(time_left%3600)//60}м\n"
+    ab = p.get("active_boosts",{})
+    if ab:
+        t += "\n\n<b>🔮 Активные бусты:</b>\n"
+        for b,e in ab.items():
+            if isinstance(e,(int,float)):
+                tl = int(e)-int(time.time())
+                if tl>0: t += f"• {b}: {tl//3600}ч {(tl%3600)//60}м\n"
     
-    text = f"{inv_text}{boosts_text}\n\n🐍 Коричневагый змий: {patsan.get('zmiy', 0):.3f} кг\n🔨 Скрафчено предметов: {len(patsan.get('crafted_items', []))}"
-    await edit_or_answer(callback, text, inventory_management_keyboard())
+    await edit_or_answer(c, f"{t}\n\n🐍 Коричневагый змий: {p.get('zmiy',0):.3f} кг\n🔨 Скрафчено предметов: {len(p.get('crafted_items',[]))}", inventory_management_keyboard())
 
-# =================== ПРОФИЛЬ ===================
 @router.callback_query(F.data == "profile")
-async def callback_profile(callback: types.CallbackQuery):
-    patsan = await get_patsan_cached(callback.from_user.id)
-    rank_emoji, rank_name = patsan.get('rank_emoji', '👶'), patsan.get('rank_name', 'Пацанчик')
-    atm_count, max_atm = patsan.get('atm_count', 0), patsan.get('max_atm', 12)
-    upgrades = patsan.get("upgrades", {})
-    bought_upgrades = [k for k, v in upgrades.items() if v] if upgrades else []
-    upgrade_text = "\n<b>🛒 Нагнетатели:</b>\n" + "\n".join(f"• {upg}" for upg in bought_upgrades) if bought_upgrades else ""
+async def cb_profile(c):
+    p = await get_patsan_cached(c.from_user.id)
+    re, rn = p.get('rank_emoji','👶'), p.get('rank_name','Пацанчик')
+    ac, ma = p.get('atm_count',0), p.get('max_atm',12)
+    up = p.get("upgrades",{})
+    bu = [k for k,v in up.items() if v] if up else []
+    ut = "\n<b>🛒 Нагнетатели:</b>\n" + "\n".join(f"• {u}" for u in bu) if bu else ""
     
-    spec_text = ""
-    spec = patsan.get("specialization")
-    if spec:
-        spec_bonuses = get_specialization_bonuses(spec)
-        spec_text = f"\n<b>🌳 Специализация:</b> {spec}"
-        if spec_bonuses:
-            spec_text += f"\n<i>Бонусы: {', '.join(spec_bonuses.keys())}</i>"
+    sp = p.get("specialization")
+    st = f"\n<b>🌳 Специализация:</b> {sp}" if sp else ""
+    if sp:
+        sb = get_specialization_bonuses(sp)
+        if sb: st += f"\n<i>Бонусы: {', '.join(sb.keys())}</i>"
     
-    text = (f"<b>📊 ПРОФИЛЬ ПАЦАНА:</b>\n\n{rank_emoji} <b>{rank_name}</b>\n👤 {patsan.get('nickname', 'Неизвестно')}\n"
-            f"⭐ Авторитет: {patsan.get('avtoritet', 1)}\n📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n\n"
-            f"<b>Ресурсы:</b>\n🌀 Атмосферы: [{progress_bar(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
-            f"⏱️ Восстановление: {format_time(calculate_atm_regen_time(patsan))}\n"
-            f"🐍 Коричневаг: {patsan.get('zmiy', 0):.3f} кг\n💰 Деньги: {patsan.get('dengi', 0)} руб.\n\n"
-            f"<b>Скиллы:</b>\n💪 Давка: {patsan.get('skill_davka', 1)}\n🛡️ Защита: {patsan.get('skill_zashita', 1)}\n"
-            f"🔍 Находка: {patsan.get('skill_nahodka', 1)}{upgrade_text}{spec_text}")
-    await edit_or_answer(callback, text, profile_extended_keyboard())
+    await edit_or_answer(c, f"<b>📊 ПРОФИЛЬ ПАЦАНА:</b>\n\n{re} <b>{rn}</b>\n👤 {p.get('nickname','Неизвестно')}\n⭐ Авторитет: {p.get('avtoritet',1)}\n📈 Уровень: {p.get('level',1)} | 📚 Опыт: {p.get('experience',0)}\n\n<b>Ресурсы:</b>\n🌀 Атмосферы: [{pb(ac,ma)}] {ac}/{ma}\n⏱️ Восстановление: {ft(calculate_atm_regen_time(p))}\n🐍 Коричневаг: {p.get('zmiy',0):.3f} кг\n💰 Деньги: {p.get('dengi',0)} руб.\n\n<b>Скиллы:</b>\n💪 Давка: {p.get('skill_davka',1)}\n🛡️ Защита: {p.get('skill_zashita',1)}\n🔍 Находка: {p.get('skill_nahodka',1)}{ut}{st}", profile_extended_keyboard())
 
-# =================== СПЕЦИАЛИЗАЦИИ ===================
-SPECIALIZATIONS = {
-    "davila": {"name": "Давила", "desc": "Мастер давления коричневага", "req": "💪 Давка змия: 5 ур.\n🐍 Накоплено змия: 50кг",
-               "bonuses": "• +50% к выходу змия\n• -1 атмосфера на действие\n• Открывает: Гигантская давка", "price": 1500},
-    "ohotnik": {"name": "Охотник за двенашками", "desc": "Находит то, что другие не видят",
-                "req": "🔍 Находка двенашек: 5 ур.\n🧱 Двенашка в инвентаре",
-                "bonuses": "• +15% к шансу находок\n• 5% шанс на редкий предмет\n• Открывает: Детектор двенашек", "price": 1200},
-    "neprobivaemy": {"name": "Непробиваемый", "desc": "Железные кишки и стальные нервы",
-                     "req": "🛡️ Защита атмосфер: 5 ур.\n⭐ Авторитет: 20",
-                     "bonuses": "• -10% времени восстановления атмосфер\n• +15% защиты в радёмках\n• Открывает: Железный живот", "price": 2000}
+SPECS = {
+    "davila": {"n":"Давила","d":"Мастер давления коричневага","r":"💪 Давка змия: 5 ур.\n🐍 Накоплено змия: 50кг","b":"• +50% к выходу змия\n• -1 атмосфера на действие\n• Открывает: Гигантская давка","p":1500},
+    "ohotnik": {"n":"Охотник за двенашками","d":"Находит то, что другие не видят","r":"🔍 Находка двенашек: 5 ур.\n🧱 Двенашка в инвентаре","b":"• +15% к шансу находок\n• 5% шанс на редкий предмет\n• Открывает: Детектор двенашек","p":1200},
+    "neprobivaemy": {"n":"Непробиваемый","d":"Железные кишки и стальные нервы","r":"🛡️ Защита атмосфер: 5 ур.\n⭐ Авторитет: 20","b":"• -10% времени восстановления атмосфер\n• +15% защиты в радёмках\n• Открывает: Железный живот","p":2000}
 }
 
 @router.callback_query(F.data == "specializations")
-async def callback_specializations(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    current_spec = patsan.get("specialization", "")
-    if current_spec:
-        spec_bonuses = get_specialization_bonuses(current_spec)
-        bonuses_text = "\n".join(f"• {k}: {v}" for k, v in spec_bonuses.items())
-        await edit_or_answer(callback, f"<b>🌳 Твоя специализация:</b> {current_spec}\n\n<b>Бонусы:</b>\n{bonuses_text}\n\n"
-                              "<i>Сейчас у тебя может быть только одна специализация.</i>\n<i>Чтобы сменить, нужно сначала сбросить текущую (стоимость: 2000р).</i>",
-                              back_to_specializations_keyboard())
+async def cb_specs(c):
+    uid, p = c.from_user.id, await get_patsan_cached(c.from_user.id)
+    cs = p.get("specialization","")
+    if cs:
+        sb = get_specialization_bonuses(cs)
+        bt = "\n".join(f"• {k}: {v}" for k,v in sb.items())
+        await edit_or_answer(c, f"<b>🌳 Твоя специализация:</b> {cs}\n\n<b>Бонусы:</b>\n{bt}\n\n<i>Сейчас у тебя может быть только одна специализация.</i>\n<i>Чтобы сменить, нужно сначала сбросить текущую (стоимость: 2000р).</i>", back_to_specializations_keyboard())
         return
     
-    available_specs = await get_available_specializations(user_id)
-    text = "<b>🌳 ВЫБОР СПЕЦИАЛИЗАЦИИ</b>\n\n<i>Специализация даёт уникальные бонусы и открывает новые возможности.</i>\n<i>Можно выбрать только одну. Выбор бесплатен при выполнении требований.</i>\n\n"
-    for spec in available_specs:
-        status = "✅ Доступна" if spec["available"] else "❌ Недоступна"
-        price_text = f" | Цена: {spec['price']}р" if spec['available'] else ""
-        text += f"<b>{spec['name']}</b> {status}{price_text}\n<i>{spec['description']}</i>\n"
-        if not spec["available"] and spec["missing"]:
-            text += f"<code>Требуется: {', '.join(spec['missing'])}</code>\n"
-        text += "\n"
-    text += "<i>Выбери специализацию для подробной информации:</i>"
-    await edit_or_answer(callback, text, specializations_keyboard())
+    av = await get_available_specializations(uid)
+    t = "<b>🌳 ВЫБОР СПЕЦИАЛИЗАЦИИ</b>\n\n<i>Специализация даёт уникальные бонусы и открывает новые возможности.</i>\n<i>Можно выбрать только одну. Выбор бесплатен при выполнении требований.</i>\n\n"
+    for s in av:
+        st = "✅ Доступна" if s["available"] else "❌ Недоступна"
+        pt = f" | Цена: {s['price']}р" if s['available'] else ""
+        t += f"<b>{s['name']}</b> {st}{pt}\n<i>{s['description']}</i>\n"
+        if not s["available"] and s["missing"]:
+            t += f"<code>Требуется: {', '.join(s['missing'])}</code>\n"
+        t += "\n"
+    t += "<i>Выбери специализацию для подробной информации:</i>"
+    await edit_or_answer(c, t, specializations_keyboard())
 
 @router.callback_query(F.data.startswith("specialization_"))
-async def callback_specialization_detail(callback: types.CallbackQuery):
-    spec_type = callback.data.replace("specialization_", "")
-    if spec_type == "info":
-        await edit_or_answer(callback, "<b>🌳 ИНФОРМАЦИЯ О СПЕЦИАЛИЗАЦИЯХ</b>\n\n<b>Что даёт специализация?</b>\n• Уникальные бонусы к игровым механикам\n• Новые возможности и действия\n• Преимущества в определённых ситуациях\n\n<b>Как получить?</b>\n1. Выполнить требования специализации\n2. Иметь достаточно денег для покупки\n3. Выбрать и активировать\n\n<b>Можно ли сменить?</b>\nДа, но за 2000р. Текущая специализация сбрасывается.",
-                              specializations_info_keyboard())
+async def cb_spec_detail(c):
+    st = c.data.replace("specialization_","")
+    if st == "info":
+        await edit_or_answer(c, "<b>🌳 ИНФОРМАЦИЯ О СПЕЦИАЛИЗАЦИЯХ</b>\n\n<b>Что даёт специализация?</b>\n• Уникальные бонусы к игровым механикам\n• Новые возможности и действия\n• Преимущества в определённых ситуациях\n\n<b>Как получить?</b>\n1. Выполнить требования специализации\n2. Иметь достаточно денег для покупки\n3. Выбрать и активировать\n\n<b>Можно ли сменить?</b>\nДа, но за 2000р. Текущая специализация сбрасывается.", specializations_info_keyboard())
         return
     
-    if spec_type not in SPECIALIZATIONS:
-        await callback.answer("Неизвестная специализация", show_alert=True)
+    if st not in SPECS:
+        await c.answer("Неизвестная специализация", show_alert=True)
         return
     
-    spec = SPECIALIZATIONS[spec_type]
-    await edit_or_answer(callback, f"<b>🌳 {spec['name'].upper()}</b>\n\n<i>{spec['desc']}</i>\n\n<b>💰 Цена:</b> {spec['price']}р\n\n<b>📋 Требования:</b>\n{spec['req']}\n\n<b>🎁 Бонусы:</b>\n{spec['bonuses']}\n\n<i>Выбрать эту специализацию?</i>",
-                          specialization_confirmation_keyboard(spec_type))
+    s = SPECS[st]
+    await edit_or_answer(c, f"<b>🌳 {s['n'].upper()}</b>\n\n<i>{s['d']}</i>\n\n<b>💰 Цена:</b> {s['p']}р\n\n<b>📋 Требования:</b>\n{s['r']}\n\n<b>🎁 Бонусы:</b>\n{s['b']}\n\n<i>Выбрать эту специализацию?</i>", specialization_confirmation_keyboard(st))
 
 @router.callback_query(F.data.startswith("specialization_buy_"))
-async def callback_specialization_buy(callback: types.CallbackQuery):
-    spec_id = callback.data.replace("specialization_buy_", "")
-    user_id = callback.from_user.id
-    success, message = await buy_specialization(user_id, spec_id)
-    if success:
-        await edit_or_answer(callback, f"🎉 <b>ПОЗДРАВЛЯЮ!</b>\n\n{message}\n\nТеперь ты обладатель уникальной специализации!\nИспользуй её бонусы по максимуму.", main_keyboard())
+async def cb_spec_buy(c):
+    sid, uid = c.data.replace("specialization_buy_",""), c.from_user.id
+    ok, msg = await buy_specialization(uid, sid)
+    if ok:
+        await edit_or_answer(c, f"🎉 <b>ПОЗДРАВЛЯЮ!</b>\n\n{msg}\n\nТеперь ты обладатель уникальной специализации!\nИспользуй её бонусы по максимуму.", main_keyboard())
     else:
-        await callback.answer(message, show_alert=True)
-        await callback_specializations(callback)
+        await c.answer(msg, show_alert=True)
+        await cb_specs(c)
 
-# =================== КРАФТ ===================
 @router.callback_query(F.data == "craft")
-async def callback_craft(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    await edit_or_answer(callback, 
-        f"<b>🔨 КРАФТ ПРЕДМЕТОВ</b>\n\n<i>Создавай мощные предметы из ингредиентов!</i>\n\n"
-        f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n🔨 Скрафчено: {len(patsan.get('crafted_items', []))} предметов\n"
-        f"💰 Деньги: {patsan.get('dengi', 0)}р\n\n<b>Выбери действие:</b>",
-        craft_keyboard())
+async def cb_craft(c):
+    p = await get_patsan_cached(c.from_user.id)
+    await edit_or_answer(c, f"<b>🔨 КРАФТ ПРЕДМЕТОВ</b>\n\n<i>Создавай мощные предметы из ингредиентов!</i>\n\n📦 Инвентарь: {len(p.get('inventory',[]))} предметов\n🔨 Скрафчено: {len(p.get('crafted_items',[]))} предметов\n💰 Деньги: {p.get('dengi',0)}р\n\n<b>Выбери действие:</b>", craft_keyboard())
 
 @router.callback_query(F.data == "craft_items")
-async def callback_craft_items(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    craftable_items = await get_craftable_items(user_id)
-    if not craftable_items:
-        await edit_or_answer(callback, "😕 <b>НЕТ ДОСТУПНЫХ РЕЦЕПТОВ</b>\n\nУ тебя пока нет нужных ингредиентов для крафта.\nСобирай двенашки, атмосферы и другие предметы!", 
-                              back_to_craft_keyboard())
+async def cb_craft_items(c):
+    ci = await get_craftable_items(c.from_user.id)
+    if not ci:
+        await edit_or_answer(c, "😕 <b>НЕТ ДОСТУПНЫХ РЕЦЕПТОВ</b>\n\nУ тебя пока нет нужных ингредиентов для крафта.\nСобирай двенашки, атмосферы и другие предметы!", back_to_craft_keyboard())
         return
     
-    text = "<b>🔨 ДОСТУПНЫЕ ДЛЯ КРАФТА:</b>\n\n"
-    for item in craftable_items:
-        status = "✅ МОЖНО" if item["can_craft"] else "❌ НЕЛЬЗЯ"
-        text += f"<b>{item['name']}</b> {status}\n<i>{item['description']}</i>\n🎲 Шанс успеха: {int(item['success_chance'] * 100)}%\n"
-        if not item["can_craft"] and item["missing"]:
-            text += f"<code>Не хватает: {', '.join(item['missing'][:2])}</code>\n"
-        text += "\n"
-    text += "<i>Выбери предмет для крафта:</i>"
-    await edit_or_answer(callback, text, craft_items_keyboard())
+    t = "<b>🔨 ДОСТУПНЫЕ ДЛЯ КРАФТА:</b>\n\n"
+    for i in ci:
+        st = "✅ МОЖНО" if i["can_craft"] else "❌ НЕЛЬЗЯ"
+        t += f"<b>{i['name']}</b> {st}\n<i>{i['description']}</i>\n🎲 Шанс успеха: {int(i['success_chance']*100)}%\n"
+        if not i["can_craft"] and i["missing"]:
+            t += f"<code>Не хватает: {', '.join(i['missing'][:2])}</code>\n"
+        t += "\n"
+    t += "<i>Выбери предмет для крафта:</i>"
+    await edit_or_answer(c, t, craft_items_keyboard())
 
 @router.callback_query(F.data.startswith("craft_execute_"))
-async def callback_craft_execute(callback: types.CallbackQuery):
-    recipe_id = callback.data.replace("craft_execute_", "")
-    user_id = callback.from_user.id
-    success, message, result = await craft_item(user_id, recipe_id)
-    if success:
-        item_name, duration = result.get("item", "предмет"), result.get("duration")
-        duration_text = f"\n⏱️ Действует: {duration // 3600} часов" if duration else ""
-        await edit_or_answer(callback, f"✨ <b>КРАФТ УСПЕШЕН!</b>\n\n{message}{duration_text}\n\n🎉 Ты создал новый предмет!\nПроверь инвентарь, чтобы использовать его.", main_keyboard())
-        await unlock_achievement(user_id, "successful_craft", f"Успешный крафт: {item_name}", 100)
+async def cb_craft_exec(c):
+    rid, uid = c.data.replace("craft_execute_",""), c.from_user.id
+    ok, msg, res = await craft_item(uid, rid)
+    if ok:
+        iname, dur = res.get("item","предмет"), res.get("duration")
+        dt = f"\n⏱️ Действует: {dur//3600} часов" if dur else ""
+        await edit_or_answer(c, f"✨ <b>КРАФТ УСПЕШЕН!</b>\n\n{msg}{dt}\n\n🎉 Ты создал новый предмет!\nПроверь инвентарь, чтобы использовать его.", main_keyboard())
+        await unlock_achievement(uid, "successful_craft", f"Успешный крафт: {iname}", 100)
     else:
-        await edit_or_answer(callback, f"💥 <b>КРАФТ ПРОВАЛЕН</b>\n\n{message}\n\nИнгредиенты потеряны...\nПопробуй снова, когда соберёшь больше!", back_to_craft_keyboard())
+        await edit_or_answer(c, f"💥 <b>КРАФТ ПРОВАЛЕН</b>\n\n{msg}\n\nИнгредиенты потеряны...\nПопробуй снова, когда соберёшь больше!", back_to_craft_keyboard())
 
 @router.callback_query(F.data == "craft_recipes")
-async def callback_craft_recipes(callback: types.CallbackQuery):
-    await edit_or_answer(callback, "<b>📜 ВСЕ РЕЦЕПТЫ КРАФТА</b>\n\n<b>✨ Супер-двенашка</b>\nИнгредиенты: 3× двенашка, 500р\nШанс: 100% | Эффект: Повышает удачу на 1 час\n\n<b>⚡ Вечный двигатель</b>\nИнгредиенты: 5× атмосфера, 1× энергетик\nШанс: 80% | Эффект: Ускоряет восстановление атмосфер на 24ч\n\n<b>👑 Царский обед</b>\nИнгредиенты: 1× курвасаны, 1× ряженка, 300р\nШанс: 100% | Эффект: Максимальный буст на 30 минут\n\n<b>🌀 Бустер атмосфер</b>\nИнгредиенты: 2× энергетик, 1× двенашка, 2000р\nШанс: 70% | Эффект: +3 к максимальному запасу атмосфер\n\n<i>Собирай ингредиенты и создавай мощные предметы!</i>",
-                          craft_recipes_keyboard())
+async def cb_craft_recipes(c):
+    await edit_or_answer(c, "<b>📜 ВСЕ РЕЦЕПТЫ КРАФТА</b>\n\n<b>✨ Супер-двенашка</b>\nИнгредиенты: 3× двенашка, 500р\nШанс: 100% | Эффект: Повышает удачу на 1 час\n\n<b>⚡ Вечный двигатель</b>\nИнгредиенты: 5× атмосфера, 1× энергетик\nШанс: 80% | Эффект: Ускоряет восстановление атмосфер на 24ч\n\n<b>👑 Царский обед</b>\nИнгредиенты: 1× курвасаны, 1× ряженка, 300р\nШанс: 100% | Эффект: Максимальный буст на 30 минут\n\n<b>🌀 Бустер атмосфер</b>\nИнгредиенты: 2× энергетик, 1× двенашка, 2000р\nШанс: 70% | Эффект: +3 к максимальному запасу атмосфер\n\n<i>Собирай ингредиенты и создавай мощные предметы!</i>", craft_recipes_keyboard())
 
-# =================== РАЗВЕДКА РАДЁМКИ ===================
 @router.callback_query(F.data == "rademka_scout_menu")
-async def callback_rademka_scout_menu(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    scouts_used = patsan.get("rademka_scouts", 0)
-    free_left = max(0, 5 - scouts_used)
-    await edit_or_answer(callback, 
-        f"<b>🕵️ РАЗВЕДКА РАДЁМКИ</b>\n\n<i>Узнай точный шанс успеха перед атакой!</i>\n\n🎯 <b>Преимущества разведки:</b>\n• Точно знаешь шанс победы\n• Учитываются все факторы\n• Можно выбрать другую цель\n\n📊 <b>Твоя статистика:</b>\n• Использовано разведок: {scouts_used}\n• Бесплатных осталось: {free_left}/5\n• Стоимость разведки: {0 if free_left > 0 else 50}р\n\n<i>Выбери действие:</i>",
-        rademka_scout_keyboard())
+async def cb_scout_menu(c):
+    p = await get_patsan_cached(c.from_user.id)
+    su, fl = p.get("rademka_scouts",0), max(0,5-p.get("rademka_scouts",0))
+    await edit_or_answer(c, f"<b>🕵️ РАЗВЕДКА РАДЁМКИ</b>\n\n<i>Узнай точный шанс успеха перед атакой!</i>\n\n🎯 <b>Преимущества разведки:</b>\n• Точно знаешь шанс победы\n• Учитываются все факторы\n• Можно выбрать другую цель\n\n📊 <b>Твоя статистика:</b>\n• Использовано разведок: {su}\n• Бесплатных осталось: {fl}/5\n• Стоимость разведки: {0 if fl>0 else 50}р\n\n<i>Выбери действие:</i>", rademka_scout_keyboard())
 
 @router.callback_query(F.data == "rademka_scout_random")
-async def callback_rademka_scout_random(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    top_players = await get_top_players(limit=50, sort_by="avtoritet")
-    possible_targets = [p for p in top_players if p.get("user_id") != user_id]
-    if not possible_targets:
-        await edit_or_answer(callback, "😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>\n\nНа гофроцентрале кроме тебя никого нет...\nПриведи друзей, чтобы было кого разведывать!", 
-                              back_to_rademka_keyboard())
+async def cb_scout_random(c):
+    uid, tp = c.from_user.id, await get_top_players(limit=50, sort_by="avtoritet")
+    targets = [p for p in tp if p.get("user_id") != uid]
+    if not targets:
+        await edit_or_answer(c, "😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>\n\nНа гофроцентрале кроме тебя никого нет...\nПриведи друзей, чтобы было кого разведывать!", back_to_rademka_keyboard())
         return
     
-    target = random.choice(possible_targets)
-    target_id = target.get("user_id")
-    success, message, scout_data = await rademka_scout(user_id, target_id)
-    if not success:
-        await callback.answer(message, show_alert=True)
+    t = random.choice(targets)
+    ok, msg, sd = await rademka_scout(uid, t.get("user_id"))
+    if not ok:
+        await c.answer(msg, show_alert=True)
         return
     
-    chance, target_name = scout_data.get("chance", 50), target.get("nickname", "Неизвестно")
-    factors = scout_data.get("factors", [])
-    factors_text = "\n".join(f"• {f}" for f in factors) if factors else "• Неизвестные факторы"
-    atk_stats, tgt_stats = scout_data.get('attacker_stats', {}), scout_data.get('target_stats', {})
-    atk_rank, tgt_rank = atk_stats.get('rank', ('👶', 'Пацанчик'))[1], tgt_stats.get('rank', ('👶', 'Пацанчик'))[1]
+    ch, tn = sd.get("chance",50), t.get("nickname","Неизвестно")
+    f = sd.get("factors",[])
+    ftx = "\n".join(f"• {x}" for x in f) if f else "• Неизвестные факторы"
+    as_, ts = sd.get('attacker_stats',{}), sd.get('target_stats',{})
+    ar, tr = as_.get('rank',('👶','Пацанчик'))[1], ts.get('rank',('👶','Пацанчик'))[1]
     
-    text = (f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n<b>Цель:</b> {target_name}\n🎲 <b>Точный шанс победы:</b> {chance}%\n\n"
-            f"<b>📊 Факторы:</b>\n{factors_text}\n\n<b>📈 Статистика:</b>\n• Твой авторитет: {atk_stats.get('avtoritet', 0)} ({atk_rank})\n"
-            f"• Его авторитет: {tgt_stats.get('avtoritet', 0)} ({tgt_rank})\n• Последняя активность: {tgt_stats.get('last_active_hours', 0)}ч назад\n\n"
-            f"💸 Стоимость разведки: {'Бесплатно' if scout_data.get('cost', 0) == 0 else '50р'}\n🕵️ Бесплатных разведок осталось: {scout_data.get('free_scouts_left', 0)}\n\n<i>Атаковать эту цель?</i>")
-    await edit_or_answer(callback, text, rademka_fight_keyboard(target_id, scouted=True))
+    txt = (f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n<b>Цель:</b> {tn}\n🎲 <b>Точный шанс победы:</b> {ch}%\n\n<b>📊 Факторы:</b>\n{ftx}\n\n<b>📈 Статистика:</b>\n• Твой авторитет: {as_.get('avtoritet',0)} ({ar})\n• Его авторитет: {ts.get('avtoritet',0)} ({tr})\n• Последняя активность: {ts.get('last_active_hours',0)}ч назад\n\n💸 Стоимость разведки: {'Бесплатно' if sd.get('cost',0)==0 else '50р'}\n🕵️ Бесплатных разведок осталось: {sd.get('free_scouts_left',0)}\n\n<i>Атаковать эту цель?</i>")
+    await edit_or_answer(c, txt, rademka_fight_keyboard(t.get("user_id"), scouted=True))
 
 @router.callback_query(F.data.startswith("rademka_scout_"))
-async def callback_rademka_scout_target(callback: types.CallbackQuery):
-    data = callback.data.replace("rademka_scout_", "")
-    if data == "choose":
-        await edit_or_answer(callback, "🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\nДля этой функции нужен список игроков.\nПока используй случайную цель или выбери из топа.", rademka_scout_keyboard())
-    elif data == "stats":
-        user_id = callback.from_user.id
-        patsan = await get_patsan_cached(user_id)
-        scouts_used = patsan.get("rademka_scouts", 0)
-        free_used, paid_used = min(5, scouts_used), max(0, scouts_used - 5)
-        await edit_or_answer(callback, f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n🕵️ Всего разведок: {scouts_used}\n🎯 Бесплатных: {free_used}/5\n💰 Платных: {paid_used}\n💸 Потрачено на разведки: {paid_used * 50}р\n\n", rademka_scout_keyboard())
+async def cb_scout_target(c):
+    d = c.data.replace("rademka_scout_","")
+    if d == "choose":
+        await edit_or_answer(c, "🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\nДля этой функции нужен список игроков.\nПока используй случайную цель или выбери из топа.", rademka_scout_keyboard())
+    elif d == "stats":
+        p = await get_patsan_cached(c.from_user.id)
+        su, fu, pu = p.get("rademka_scouts",0), min(5,p.get("rademka_scouts",0)), max(0,p.get("rademka_scouts",0)-5)
+        await edit_or_answer(c, f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n🕵️ Всего разведок: {su}\n🎯 Бесплатных: {fu}/5\n💰 Платных: {pu}\n💸 Потрачено на разведки: {pu*50}р\n\n", rademka_scout_keyboard())
     else:
         try:
-            target_id = int(data)
-            user_id = callback.from_user.id
-            success, message, _ = await rademka_scout(user_id, target_id)
-            await callback.answer("Разведка выполнена!" if success else message, show_alert=True)
+            ok, msg, _ = await rademka_scout(c.from_user.id, int(d))
+            await c.answer("Разведка выполнена!" if ok else msg, show_alert=True)
         except ValueError:
-            await callback.answer("Ошибка: неверный ID цели", show_alert=True)
+            await c.answer("Ошибка: неверный ID цели", show_alert=True)
 
-# =================== ДОСТИЖЕНИЯ ===================
-ACHIEVEMENTS = {
-    "zmiy_collector": {"name": "Коллекционер змия", "desc": "Собери определённое количество змия",
-        "levels": [{"goal": 10, "reward": 50, "title": "Новичок", "exp": 10}, {"goal": 100, "reward": 300, "title": "Любитель", "exp": 50},
-                   {"goal": 1000, "reward": 1500, "title": "Профессионал", "exp": 200}, {"goal": 10000, "reward": 5000, "title": "КОРОЛЬ ГОФРОЦЕНТРАЛА", "exp": 1000}]},
-    "money_maker": {"name": "Денежный мешок", "desc": "Заработай много денег",
-        "levels": [{"goal": 1000, "reward": 100, "title": "Бедолага", "exp": 10}, {"goal": 10000, "reward": 1000, "title": "Состоятельный", "exp": 100},
-                   {"goal": 100000, "reward": 5000, "title": "Олигарх", "exp": 500}, {"goal": 1000000, "reward": 25000, "title": "РОТШИЛЬД", "exp": 2500}]},
-    "rademka_king": {"name": "Король радёмок", "desc": "Победи в множестве радёмок",
-        "levels": [{"goal": 5, "reward": 200, "title": "Задира", "exp": 20}, {"goal": 25, "reward": 1000, "title": "Гроза района", "exp": 100},
-                   {"goal": 100, "reward": 5000, "title": "Неприкасаемый", "exp": 500}, {"goal": 500, "reward": 25000, "title": "ЛЕГЕНДА РАДЁМКИ", "exp": 2500}]}
+ACHS = {
+    "zmiy_collector": {"n":"Коллекционер змия","d":"Собери определённое количество змия",
+        "l":[{"g":10,"r":50,"t":"Новичок","e":10},{"g":100,"r":300,"t":"Любитель","e":50},
+             {"g":1000,"r":1500,"t":"Профессионал","e":200},{"g":10000,"r":5000,"t":"КОРОЛЬ ГОФРОЦЕНТРАЛА","e":1000}]},
+    "money_maker": {"n":"Денежный мешок","d":"Заработай много денег",
+        "l":[{"g":1000,"r":100,"t":"Бедолага","e":10},{"g":10000,"r":1000,"t":"Состоятельный","e":100},
+             {"g":100000,"r":5000,"t":"Олигарх","e":500},{"g":1000000,"r":25000,"t":"РОТШИЛЬД","e":2500}]},
+    "rademka_king": {"n":"Король радёмок","d":"Победи в множестве радёмок",
+        "l":[{"g":5,"r":200,"t":"Задира","e":20},{"g":25,"r":1000,"t":"Гроза района","e":100},
+             {"g":100,"r":5000,"t":"Неприкасаемый","e":500},{"g":500,"r":25000,"t":"ЛЕГЕНДА РАДЁМКИ","e":2500}]}
 }
 
 @router.callback_query(F.data == "achievements_progress")
-async def callback_achievements_progress(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    progress_data = await get_achievement_progress(user_id)
-    if not progress_data:
-        await edit_or_answer(callback, "📊 <b>ПРОГРЕСС ДОСТИЖЕНИЙ</b>\n\nПока нет прогресса по уровневым достижениям.\nИграй активно, и прогресс появится!", achievements_progress_keyboard())
+async def cb_ach_progress(c):
+    pd = await get_achievement_progress(c.from_user.id)
+    if not pd:
+        await edit_or_answer(c, "📊 <b>ПРОГРЕСС ДОСТИЖЕНИЙ</b>\n\nПока нет прогресса по уровневым достижениям.\nИграй активно, и прогресс появится!", achievements_progress_keyboard())
         return
     
-    text = "<b>📊 ПРОГРЕСС ПО УРОВНЕВЫМ ДОСТИЖЕНИЯМ</b>\n\n"
-    for ach_id, data in progress_data.items():
-        text += f"<b>{data['name']}</b>\n"
-        if data['next_level']:
-            text += f"Уровень: {data['current_level']}/{len(data['all_levels'])}\nПрогресс: {data['current_progress']:.1f}/{data['next_level']['goal']} ({data['progress_percent']:.1f}%)\n"
-            text += f"Следующий уровень: {data['next_level']['title']} (+{data['next_level']['reward']}р, +{data['next_level']['exp']} опыта)\n"
+    t = "<b>📊 ПРОГРЕСС ПО УРОВНЕВЫМ ДОСТИЖЕНИЯМ</b>\n\n"
+    for aid, d in pd.items():
+        t += f"<b>{d['name']}</b>\n"
+        if d['next_level']:
+            t += f"Уровень: {d['current_level']}/{len(d['all_levels'])}\nПрогресс: {d['current_progress']:.1f}/{d['next_level']['goal']} ({d['progress_percent']:.1f}%)\n"
+            t += f"Следующий уровень: {d['next_level']['title']} (+{d['next_level']['reward']}р, +{d['next_level']['exp']} опыта)\n"
         else:
-            text += f"✅ Все уровни пройдены! (Максимум)\n"
-        text += "\n"
-    text += "<i>Выбери достижение для подробной информации:</i>"
-    await edit_or_answer(callback, text, achievements_progress_keyboard())
+            t += f"✅ Все уровни пройдены! (Максимум)\n"
+        t += "\n"
+    t += "<i>Выбери достижение для подробной информации:</i>"
+    await edit_or_answer(c, t, achievements_progress_keyboard())
 
 @router.callback_query(F.data.startswith("achievement_"))
-async def callback_achievement_detail(callback: types.CallbackQuery):
-    ach_type = callback.data.replace("achievement_", "")
-    if ach_type not in ACHIEVEMENTS:
-        await callback.answer("Неизвестное достижение", show_alert=True)
+async def cb_ach_detail(c):
+    at = c.data.replace("achievement_","")
+    if at not in ACHS:
+        await c.answer("Неизвестное достижение", show_alert=True)
         return
     
-    ach = ACHIEVEMENTS[ach_type]
-    text = f"<b>🏆 {ach['name'].upper()}</b>\n\n<i>{ach['desc']}</i>\n\n<b>📊 Уровни:</b>\n"
-    for i, level in enumerate(ach['levels'], 1):
-        text += f"{i}. <b>{level['title']}</b>: {level['goal']} → +{level['reward']}р (+{level['exp']} опыта)\n"
-    text += "\n<i>Прогресс автоматически отслеживается во время игры.</i>"
-    await edit_or_answer(callback, text, back_to_profile_keyboard())
+    a = ACHS[at]
+    t = f"<b>🏆 {a['n'].upper()}</b>\n\n<i>{a['d']}</i>\n\n<b>📊 Уровни:</b>\n"
+    for i, l in enumerate(a['l'], 1):
+        t += f"{i}. <b>{l['t']}</b>: {l['g']} → +{l['r']}р (+{l['e']} опыта)\n"
+    t += "\n<i>Прогресс автоматически отслеживается во время игры.</i>"
+    await edit_or_answer(c, t, back_to_profile_keyboard())
 
-# =================== СТАТИСТИКА УРОВНЕЙ ===================
 @router.callback_query(F.data == "level_stats")
-async def callback_level_stats(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    cur_lvl, cur_exp = patsan.get("level", 1), patsan.get("experience", 0)
-    req_exp = int(100 * (cur_lvl ** 1.5))
-    progress_percent = (cur_exp / req_exp) * 100 if req_exp > 0 else 0
-    next_reward = (cur_lvl + 1) * 100
-    atm_increase = (cur_lvl + 1) % 5 == 0
-    text = (f"<b>📈 СТАТИСТИКА УРОВНЕЙ</b>\n\n🏆 <b>Текущий уровень:</b> {cur_lvl}\n📚 <b>Опыт:</b> {cur_exp}/{req_exp}\n"
-            f"📊 <b>Прогресс:</b> [{progress_bar(cur_exp, req_exp, 10)}] {progress_percent:.1f}%\n\n🎁 <b>Награда за {cur_lvl + 1} уровень:</b>\n• +{next_reward}р\n")
-    if atm_increase:
-        text += f"• +1 к максимальным атмосферам\n"
-    text += f"\n<b>ℹ️ Информация:</b>\n• Опыт даётся за все действия\n• Каждый 5 уровень увеличивает запас атмосфер\n• Уровень влияет на ежедневные награды\n"
-    await edit_or_answer(callback, text, level_stats_keyboard())
+async def cb_level_stats(c):
+    p = await get_patsan_cached(c.from_user.id)
+    cl, ce = p.get("level",1), p.get("experience",0)
+    re, pp = int(100*(cl**1.5)), (ce/re*100) if re>0 else 0
+    nr, ai = (cl+1)*100, (cl+1)%5==0
+    t = f"<b>📈 СТАТИСТИКА УРОВНЕЙ</b>\n\n🏆 <b>Текущий уровень:</b> {cl}\n📚 <b>Опыт:</b> {ce}/{re}\n📊 <b>Прогресс:</b> [{pb(ce,re,10)}] {pp:.1f}%\n\n🎁 <b>Награда за {cl+1} уровень:</b>\n• +{nr}р\n"
+    if ai: t += "• +1 к максимальным атмосферам\n"
+    t += f"\n<b>ℹ️ Информация:</b>\n• Опыт даётся за все действия\n• Каждый 5 уровень увеличивает запас атмосфер\n• Уровень влияет на ежедневные награды\n"
+    await edit_or_answer(c, t, level_stats_keyboard())
 
-# =================== СОСТОЯНИЕ АТМОСФЕР ===================
 @router.callback_query(F.data == "atm_status")
-async def callback_atm_status(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    atm_count, max_atm = patsan.get('atm_count', 0), patsan.get('max_atm', 12)
-    regen_time = calculate_atm_regen_time(patsan)
-    bonuses = []
-    if patsan.get("skill_zashita", 1) >= 10: bonuses.append("Скилл защиты ≥10: -10% времени")
-    if patsan.get("specialization") == "непробиваемый": bonuses.append("Специализация: -10% времени")
-    if "вечный_двигатель" in patsan.get("active_boosts", {}): bonuses.append("Вечный двигатель: -30% времени")
+async def cb_atm_status(c):
+    p = await get_patsan_cached(c.from_user.id)
+    ac, ma = p.get('atm_count',0), p.get('max_atm',12)
+    rt = calculate_atm_regen_time(p)
+    bs = []
+    if p.get("skill_zashita",1)>=10: bs.append("Скилл защиты ≥10: -10% времени")
+    if p.get("specialization")=="непробиваемый": bs.append("Специализация: -10% времени")
+    if "вечный_двигатель" in p.get("active_boosts",{}): bs.append("Вечный двигатель: -30% времени")
     
-    text = (f"<b>🌡️ СОСТОЯНИЕ АТМОСФЕР</b>\n\n🌀 <b>Текущий запас:</b> {atm_count}/{max_atm}\n"
-            f"📊 <b>Заполненность:</b> [{progress_bar(atm_count, max_atm)}] {(atm_count/max_atm)*100:.1f}%\n\n"
-            f"⏱️ <b>Время восстановления:</b>\n• 1 атмосфера: {format_time(regen_time)}\n• До полного: {format_time(regen_time * (max_atm - atm_count))}\n\n")
-    if bonuses:
-        text += f"⚡ <b>Активные бонусы:</b>\n" + "\n".join(f"• {b}" for b in bonuses) + "\n\n"
-    text += (f"<b>ℹ️ Как увеличить?</b>\n• Каждый 5 уровень: +1 к максимуму\n• Бустер атмосфер: +3 к максимуму\n• Прокачка защиты: ускоряет восстановление\n")
-    await edit_or_answer(callback, text, atm_status_keyboard())
+    t = f"<b>🌡️ СОСТОЯНИЕ АТМОСФЕР</b>\n\n🌀 <b>Текущий запас:</b> {ac}/{ma}\n📊 <b>Заполненность:</b> [{pb(ac,ma)}] {(ac/ma)*100:.1f}%\n\n⏱️ <b>Время восстановления:</b>\n• 1 атмосфера: {ft(rt)}\n• До полного: {ft(rt*(ma-ac))}\n\n"
+    if bs: t += f"⚡ <b>Активные бонусы:</b>\n" + "\n".join(f"• {b}" for b in bs) + "\n\n"
+    t += f"<b>ℹ️ Как увеличить?</b>\n• Каждый 5 уровень: +1 к максимуму\n• Бустер атмосфер: +3 к максимуму\n• Прокачка защиты: ускоряет восстановление\n"
+    await edit_or_answer(c, t, atm_status_keyboard())
 
-# =================== ТОП ИГРОКОВ ===================
-TOP_SORT_TYPES = {
-    "avtoritet": ("авторитету", "⭐", "avtoritet"), "dengi": ("деньгам", "💰", "dengi"),
-    "zmiy": ("змию", "🐍", "zmiy"), "total_skill": ("сумме скиллов", "💪", "total_skill"),
-    "level": ("уровню", "📈", "level"), "rademka_wins": ("победам в радёмках", "👊", "rademka_wins")
+TOPS = {
+    "avtoritet":("авторитету","⭐","avtoritet"),"dengi":("деньгам","💰","dengi"),
+    "zmiy":("змию","🐍","zmiy"),"total_skill":("сумме скиллов","💪","total_skill"),
+    "level":("уровню","📈","level"),"rademka_wins":("победам в радёмках","👊","rademka_wins")
 }
 
 @router.callback_query(F.data == "top")
-async def callback_top_menu(callback: types.CallbackQuery):
-    await edit_or_answer(callback, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>",
-                          top_sort_keyboard())
+async def cb_top_menu(c):
+    await edit_or_answer(c, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>", top_sort_keyboard())
 
 @router.callback_query(F.data.startswith("top_"))
-async def show_top(callback: types.CallbackQuery):
-    sort_type = callback.data.replace("top_", "")
-    if sort_type not in TOP_SORT_TYPES:
-        await callback.answer("Неизвестный тип топа", show_alert=True)
+async def cb_show_top(c):
+    st = c.data.replace("top_","")
+    if st not in TOPS:
+        await c.answer("Неизвестный тип топа", show_alert=True)
         return
     
-    sort_name, emoji, db_key = TOP_SORT_TYPES[sort_type]
+    sn, em, dk = TOPS[st]
     try:
-        if sort_type == "rademka_wins":
-            conn = await get_connection()
-            cursor = await conn.execute('SELECT u.user_id, u.nickname, u.avtoritet, COUNT(rf.id) as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id = rf.winner_id GROUP BY u.user_id, u.nickname, u.avtoritet ORDER BY wins DESC LIMIT 10')
-            rows = await cursor.fetchall()
-            top_players = [dict(row) | {"wins": row["wins"] or 0, "rank": "?", "zmiy": 0, "dengi": 0, "level": 1} for row in rows]
-            await conn.close()
+        if st == "rademka_wins":
+            cn = await get_connection()
+            cur = await cn.execute('SELECT u.user_id,u.nickname,u.avtoritet,COUNT(rf.id)as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.avtoritet ORDER BY wins DESC LIMIT 10')
+            tp = [dict(r)|{"wins":r["wins"]or0,"rank":"?","zmiy":0,"dengi":0,"level":1} for r in await cur.fetchall()]
+            await cn.close()
         else:
-            top_players = await get_top_players(limit=10, sort_by=db_key)
+            tp = await get_top_players(limit=10, sort_by=dk)
     except Exception as e:
-        await callback.answer(f"Ошибка при получении топа: {e}", show_alert=True)
+        await c.answer(f"Ошибка при получении топа: {e}", show_alert=True)
         return
     
-    if not top_players:
-        await edit_or_answer(callback, "😕 <b>Топ пуст!</b>\n\nЕщё никто не заслужил места в рейтинге.\nБудь первым!", top_sort_keyboard())
+    if not tp:
+        await edit_or_answer(c, "😕 <b>Топ пуст!</b>\n\nЕщё никто не заслужил места в рейтинге.\nБудь первым!", top_sort_keyboard())
         return
     
-    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    top_text = f"{emoji} <b>Топ пацанов по {sort_name}:</b>\n\n"
-    for i, player in enumerate(top_players):
-        medal = medals[i] if i < len(medals) else f"{i+1}."
-        nickname = player.get('nickname', f'Пацан_{player.get("user_id", "?")}')
-        if len(nickname) > 20:
-            nickname = nickname[:17] + "..."
+    mds = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
+    tt = f"{em} <b>Топ пацанов по {sn}:</b>\n\n"
+    for i, pl in enumerate(tp):
+        md = mds[i] if i<len(mds) else f"{i+1}."
+        nn = pl.get('nickname',f'Пацан_{pl.get("user_id","?")}')
+        if len(nn)>20: nn = nn[:17]+"..."
         
-        if sort_type == "avtoritet":
-            value = f"⭐ {player.get('avtoritet', 0)}"
-        elif sort_type == "dengi":
-            value = f"💰 {player.get('dengi_formatted', f'{player.get("dengi", 0)}р')}"
-        elif sort_type == "zmiy":
-            value = f"🐍 {player.get('zmiy_formatted', f'{player.get("zmiy", 0):.1f}кг')}"
-        elif sort_type == "total_skill":
-            value = f"💪 {player.get('total_skill', 0)} ур."
-        elif sort_type == "level":
-            value = f"📈 {player.get('level', 1)} ур."
-        elif sort_type == "rademka_wins":
-            value = f"👊 {player.get('wins', 0)} побед"
-        else:
-            value = ""
+        if st=="avtoritet": v=f"⭐ {pl.get('avtoritet',0)}"
+        elif st=="dengi": v=f"💰 {pl.get('dengi_formatted',f'{pl.get('dengi',0)}р')}"
+        elif st=="zmiy": v=f"🐍 {pl.get('zmiy_formatted',f'{pl.get('zmiy',0):.1f}кг')}"
+        elif st=="total_skill": v=f"💪 {pl.get('total_skill',0)} ур."
+        elif st=="level": v=f"📈 {pl.get('level',1)} ур."
+        elif st=="rademka_wins": v=f"👊 {pl.get('wins',0)} побед"
+        else: v=""
         
-        rank_info = f" ({player.get('rank', '').split(' ')[1]})" if sort_type != "rademka_wins" and len(player.get('rank', '').split(' ')) > 1 else ""
-        top_text += f"{medal} <code>{nickname}</code>{rank_info} — {value}\n"
+        ri=f" ({pl.get('rank','').split(' ')[1]})" if st!="rademka_wins" and len(pl.get('rank','').split(' '))>1 else ""
+        tt+=f"{md} <code>{nn}</code>{ri} — {v}\n"
     
-    top_text += f"\n📊 <i>Всего пацанов в системе: {len(top_players)}</i>"
-    current_user_id = callback.from_user.id
-    for i, player in enumerate(top_players):
-        if player.get('user_id') == current_user_id:
-            user_medal = medals[i] if i < len(medals) else str(i+1)
-            top_text += f"\n\n🎯 <b>Твоя позиция:</b> {user_medal}"
+    tt+=f"\n📊 <i>Всего пацанов в системе: {len(tp)}</i>"
+    uid=c.from_user.id
+    for i,pl in enumerate(tp):
+        if pl.get('user_id')==uid:
+            tt+=f"\n\n🎯 <b>Твоя позиция:</b> {mds[i] if i<len(mds) else str(i+1)}"
             break
     
-    await edit_or_answer(callback, top_text, top_sort_keyboard())
+    await edit_or_answer(c, tt, top_sort_keyboard())
 
-# =================== ДЕЙСТВИЯ С ИНВЕНТАРЁМ ===================
 @router.callback_query(F.data.startswith("inventory_"))
-async def callback_inventory_action(callback: types.CallbackQuery):
-    action = callback.data.replace("inventory_", "")
-    if action == "use":
-        await callback.answer("Функция использования предметов в разработке!", show_alert=True)
-    elif action == "sort":
-        await callback.answer("Инвентарь отсортирован!", show_alert=True)
-        await callback_inventory(callback)
-    elif action == "trash":
-        await edit_or_answer(callback, "🗑️ <b>ВЫБРОСИТЬ МУСОР</b>\n\nТы уверен? Это действие удалит:\n• Все 'перчатки'\n• Все 'швабры'\n• Все 'вёдра'\n\nЗато освободит место в инвентаре!",
-                              confirmation_keyboard("trash_inventory"))
-    else:
-        await callback.answer("Неизвестное действие", show_alert=True)
+async def cb_inv_action(c):
+    a=c.data.replace("inventory_","")
+    if a=="use": await c.answer("Функция использования предметов в разработке!", show_alert=True)
+    elif a=="sort": 
+        await c.answer("Инвентарь отсортирован!", show_alert=True)
+        await cb_inventory(c)
+    elif a=="trash": 
+        await edit_or_answer(c, "🗑️ <b>ВЫБРОСИТЬ МУСОР</b>\n\nТы уверен? Это действие удалит:\n• Все 'перчатки'\n• Все 'швабры'\n• Все 'вёдра'\n\nЗато освободит место в инвентаре!", confirmation_keyboard("trash_inventory"))
+    else: await c.answer("Неизвестное действие", show_alert=True)
 
 @router.callback_query(F.data == "confirm_trash_inventory")
-async def callback_confirm_trash_inventory(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    patsan = await get_patsan(user_id)
-    inventory = patsan.get("inventory", [])
-    trash_items = ["перчатки", "швабра", "ведро"]
-    new_inventory = [item for item in inventory if item not in trash_items]
-    removed = len(inventory) - len(new_inventory)
-    if removed > 0:
-        patsan["inventory"] = new_inventory
-        await save_patsan(patsan)
-        await edit_or_answer(callback, f"✅ <b>МУСОР ВЫБРОШЕН!</b>\n\nВыброшено предметов: {removed}\nОсталось в инвентаре: {len(new_inventory)}\n\n<i>Теперь есть место для чего-то полезного!</i>", main_keyboard())
+async def cb_confirm_trash(c):
+    p=await get_patsan(c.from_user.id)
+    inv=p.get("inventory",[])
+    new=[i for i in inv if i not in ["перчатки","швабра","ведро"]]
+    r=len(inv)-len(new)
+    if r>0:
+        p["inventory"]=new
+        await save_patsan(p)
+        await edit_or_answer(c, f"✅ <b>МУСОР ВЫБРОШЕН!</b>\n\nВыброшено предметов: {r}\nОсталось в инвентаре: {len(new)}\n\n<i>Теперь есть место для чего-то полезного!</i>", main_keyboard())
     else:
-        await edit_or_answer(callback, "🤷 <b>НЕТ МУСОРА</b>\n\nВ твоём инвентаре не нашлось мусора.\nВсё полезное, всё пригодится!", main_keyboard())
+        await edit_or_answer(c, "🤷 <b>НЕТ МУСОРА</b>\n\nВ твоём инвентаре не нашлось мусора.\nВсё полезное, всё пригодится!", main_keyboard())
