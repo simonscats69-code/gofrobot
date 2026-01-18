@@ -80,87 +80,97 @@ async def back_to_main(callback: types.CallbackQuery):
     patsan = await get_patsan_cached(callback.from_user.id)
     await edit_or_answer(callback, await get_main_menu_text(patsan), main_keyboard())
 
+@router.callback_query(F.data == "nickname_menu")
+async def callback_nickname_menu(callback: types.CallbackQuery):
+    """Обработка кнопки никнейма из главного меню"""
+    user_id = callback.from_user.id
+    
+    try:
+        patsan = await get_patsan_cached(user_id)
+        
+        message_text = (
+            f"👤 <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n"
+            f"📝 <b>Твой ник:</b> <code>{patsan.get('nickname', 'Неизвестно')}</code>\n"
+            f"⭐ <b>Авторитет:</b> {patsan.get('avtoritet', 1)} (используется как репутация)\n"
+            f"💰 <b>Стоимость смены ника:</b> {'Бесплатно (первый раз)' if not patsan.get('nickname_changed', False) else '5000 руб.'}\n\n"
+            f"<i>Выбери действие:</i>"
+        )
+        
+        await edit_or_answer(callback, message_text, nickname_keyboard())
+        
+    except Exception as e:
+        print(f"Ошибка в nickname_menu: {e}")
+        await callback.answer("Ошибка при загрузке меню", show_alert=True)
+
 # =================== ОБРАБОТЧИКИ ДЕЙСТВИЙ ===================
+ACTION_HANDLERS = {
+    "davka": {
+        "func": davka_zmiy,
+        "success_template": """<b>Заварвариваем дело...</b>{nagnetatel_msg}{spec_bonus_msg}
+
+🔄 Потрачено атмосфер: {cost}
+<i>"{weight_msg} говна за 25 секунд высрал я сейчас"</i>
+
+➕ {total_grams:.3f} кг коричневага{dvenashka_msg}{rare_item_msg}{exp_msg}
+
+Всего змия накоплено: {zmiy:.3f} кг
+⚡ Осталось атмосфер: {atm_count}/{max_atm}"""
+    },
+    "sdat": {
+        "func": sdat_zmiy,
+        "success_template": """<b>Сдал коричневага на металлолом</b>
+
+📦 Сдано: {old_zmiy:.3f} кг змия
+💰 <b>Получил: {total_money} руб.</b>{avtoritet_bonus_text}{exp_msg}
+
+💸 Теперь на кармане: {dengi} руб.
+📈 Уровень: {level} ({experience}/?? опыта)
+
+<i>Приёмщик: "Опять эту дрянь принёс... Но плачу больше!"</i>"""
+    }
+}
+
+async def handle_action(callback: types.CallbackQuery, action: str):
+    """Универсальный обработчик действий"""
+    user_id = callback.from_user.id
+    handler = ACTION_HANDLERS.get(action)
+    if not handler:
+        return
+    
+    patsan, result = await handler["func"](user_id)
+    if patsan is None:
+        await callback.answer(result, show_alert=True)
+        return
+    
+    # Формируем дополнительные сообщения
+    extra = {}
+    
+    if action == "davka":
+        extra["nagnetatel_msg"] = "\n🥛 <i>Ряженка жмёт двенашку как надо! (+75%)</i>" if patsan["upgrades"].get("ryazhenka") else \
+                                 "\n🧋 <i>Бублэки создают нужную турбулентность! (+35% к шансу)</i>" if patsan["upgrades"].get("bubbleki") else ""
+        extra["spec_bonus_msg"] = "\n💪 <b>Специализация 'Давила': +50% к давке!</b>" if patsan.get("specialization") == "давила" else ""
+        extra["dvenashka_msg"] = "\n✨ <b>Нашёл двенашку в турбулентности!</b>" if result.get("dvenashka_found") else ""
+        extra["rare_item_msg"] = f"\n🌟 <b>Редкая находка: {result['rare_item_found']}!</b>" if result.get("rare_item_found") else ""
+        extra["exp_msg"] = f"\n📚 +{result.get('exp_gained', 0)} опыта" if result.get('exp_gained', 0) > 0 else ""
+        
+    elif action == "sdat":
+        extra["avtoritet_bonus_text"] = f"\n⭐ <b>Бонус авторитета:</b> +{result['avtoritet_bonus']}р" if result['avtoritet_bonus'] > 0 else ""
+        extra["exp_msg"] = f"\n📚 +{result.get('exp_gained', 0)} опыта" if result.get('exp_gained', 0) > 0 else ""
+    
+    # Объединяем данные для форматирования
+    format_data = {**patsan, **result, **extra}
+    format_data['total_grams'] = result.get('total_grams', 0) / 1000
+    
+    text = handler["success_template"].format(**format_data)
+    await edit_or_answer(callback, text, main_keyboard())
 
 @router.callback_query(F.data == "davka")
 async def callback_davka(callback: types.CallbackQuery):
-    """Давка змия"""
-    user_id = callback.from_user.id
-    patsan, result = await davka_zmiy(user_id)
-    
-    if patsan is None:
-        await callback.answer(result, show_alert=True)
-        return
-    
-    # Формируем сообщение
-    cost = result.get("cost", 2)
-    total = result.get("total", 0)
-    kg, g = total//1000, total%1000
-    weight_msg = f"{kg}кг {g}г" if g else f"{kg}кг"
-    
-    nagnetatel_msg = ""
-    if patsan["upgrades"].get("ryazhenka"):
-        nagnetatel_msg = "\n🥛 <i>Ряженка жмёт двенашку как надо! (+75%)</i>"
-    elif patsan["upgrades"].get("bubbleki"):
-        nagnetatel_msg = "\n🧋 <i>Бублэки создают нужную турбулентность! (+35% к шансу)</i>"
-    
-    spec_bonus_msg = ""
-    if patsan.get("specialization") == "давила":
-        spec_bonus_msg = "\n💪 <b>Специализация 'Давила': +50% к давке!</b>"
-    
-    dvenashka_msg = ""
-    if result.get("found"):
-        dvenashka_msg = "\n✨ <b>Нашёл двенашку в турбулентности!</b>"
-    
-    rare_item_msg = ""
-    if result.get("rare"):
-        rare_item_msg = f"\n🌟 <b>Редкая находка: {result['rare']}!</b>"
-    
-    exp_msg = ""
-    if result.get("exp", 0) > 0:
-        exp_msg = f"\n📚 +{result['exp']} опыта"
-    
-    text = f"""<b>Заварвариваем дело...</b>{nagnetatel_msg}{spec_bonus_msg}
-
-🔄 Потрачено атмосфер: {cost}
-<i>"{weight_msg} коричневага за 25 секунд высрал я сейчас"</i>
-
-➕ {total/1000:.3f} кг коричневага{dvenashka_msg}{rare_item_msg}{exp_msg}
-
-Всего змия накоплено: {patsan['zmiy']:.3f} кг
-⚡ Осталось атмосфер: {patsan['atm_count']}/{patsan.get('max_atm', 12)}"""
-    
-    await edit_or_answer(callback, text, main_keyboard())
+    await handle_action(callback, "davka")
 
 @router.callback_query(F.data == "sdat")
 async def callback_sdat(callback: types.CallbackQuery):
-    """Сдать змия"""
-    user_id = callback.from_user.id
-    patsan, result = await sdat_zmiy(user_id)
-    
-    if patsan is None:
-        await callback.answer(result, show_alert=True)
-        return
-    
-    avtoritet_bonus_text = ""
-    if result.get("bonus", 0) > 0:
-        avtoritet_bonus_text = f"\n⭐ <b>Бонус авторитета:</b> +{result['bonus']}р"
-    
-    exp_msg = ""
-    if result.get("exp", 0) > 0:
-        exp_msg = f"\n📚 +{result['exp']} опыта"
-    
-    text = f"""<b>Сдал коричневага на металлолом</b>
-
-📦 Сдано: {result['old']:.3f} кг змия
-💰 <b>Получил: {result['money']} руб.</b>{avtoritet_bonus_text}{exp_msg}
-
-💸 Теперь на кармане: {patsan['dengi']} руб.
-📈 Уровень: {patsan.get('level', 1)} ({patsan.get('experience', 0)} опыта)
-
-<i>Приёмщик: "Опять эту дрянь принёс... Но плачу больше!"</i>"""
-    
-    await edit_or_answer(callback, text, main_keyboard())
+    await handle_action(callback, "sdat")
 
 # =================== ПРОКАЧКА ===================
 @router.callback_query(F.data == "pump")
@@ -282,10 +292,32 @@ async def callback_profile(callback: types.CallbackQuery):
     await edit_or_answer(callback, text, profile_extended_keyboard())
 
 # =================== СПЕЦИАЛИЗАЦИИ ===================
+SPECIALIZATIONS = {
+    "davila": {
+        "name": "Давила",
+        "description": "Мастер давления коричневага",
+        "requirements": "💪 Давка змия: 5 ур.\n🐍 Накоплено змия: 50кг",
+        "bonuses": "• +50% к выходу змия\n• -1 атмосфера на действие\n• Открывает: Гигантская давка",
+        "price": 1500
+    },
+    "ohotnik": {
+        "name": "Охотник за двенашками",
+        "description": "Находит то, что другие не видят",
+        "requirements": "🔍 Находка двенашек: 5 ур.\n🧱 Двенашка в инвентаре",
+        "bonuses": "• +15% к шансу находок\n• 5% шанс на редкий предмет\n• Открывает: Детектор двенашек",
+        "price": 1200
+    },
+    "neprobivaemy": {
+        "name": "Непробиваемый",
+        "description": "Железные кишки и стальные нервы",
+        "requirements": "🛡️ Защита атмосфер: 5 ур.\n⭐ Авторитет: 20",
+        "bonuses": "• -10% времени восстановления атмосфер\n• +15% защиты в радёмках\n• Открывает: Железный живот",
+        "price": 2000
+    }
+}
 
 @router.callback_query(F.data == "specializations")
 async def callback_specializations(callback: types.CallbackQuery):
-    """Меню специализаций"""
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
     current_spec = patsan.get("specialization", "")
@@ -311,7 +343,7 @@ async def callback_specializations(callback: types.CallbackQuery):
         status = "✅ Доступна" if spec["available"] else "❌ Недоступна"
         price_text = f" | Цена: {spec['price']}р" if spec['available'] else ""
         text += f"<b>{spec['name']}</b> {status}{price_text}\n"
-        text += f"<i>{spec['desc']}</i>\n"
+        text += f"<i>{spec['description']}</i>\n"
         if not spec["available"] and spec["missing"]:
             text += f"<code>Требуется: {', '.join(spec['missing'])}</code>\n"
         text += "\n"
@@ -338,37 +370,17 @@ async def callback_specialization_detail(callback: types.CallbackQuery):
         await edit_or_answer(callback, text, specializations_info_keyboard())
         return
     
-    # Получаем информацию о конкретной специализации
-    user_id = callback.from_user.id
-    available_specs = await get_available_specializations(user_id)
-    
-    spec_found = None
-    for spec in available_specs:
-        if spec["id"] == spec_type:
-            spec_found = spec
-            break
-    
-    if not spec_found:
+    if spec_type not in SPECIALIZATIONS:
         await callback.answer("Неизвестная специализация", show_alert=True)
         return
     
-    text = (f"<b>🌳 {spec_found['name'].upper()}</b>\n\n"
-            f"<i>{spec_found['desc']}</i>\n\n"
-            f"<b>💰 Цена:</b> {spec_found['price']}р\n\n")
-    
-    if spec_found["bon"]:
-        text += "<b>🎁 Бонусы:</b>\n"
-        for bonus, value in spec_found["bon"].items():
-            text += f"• {bonus}: {value}\n"
-        text += "\n"
-    
-    if not spec_found["available"] and spec_found["missing"]:
-        text += f"<b>❌ Требования не выполнены:</b>\n"
-        for miss in spec_found["missing"]:
-            text += f"• {miss}\n"
-        text += "\n"
-    
-    text += f"<i>Выбрать эту специализацию?</i>"
+    spec_data = SPECIALIZATIONS[spec_type]
+    text = (f"<b>🌳 {spec_data['name'].upper()}</b>\n\n"
+            f"<i>{spec_data['description']}</i>\n\n"
+            f"<b>💰 Цена:</b> {spec_data['price']}р\n\n"
+            f"<b>📋 Требования:</b>\n{spec_data['requirements']}\n\n"
+            f"<b>🎁 Бонусы:</b>\n{spec_data['bonuses']}\n\n"
+            f"<i>Выбрать эту специализацию?</i>")
     
     await edit_or_answer(callback, text, specialization_confirmation_keyboard(spec_type))
 
@@ -418,12 +430,12 @@ async def callback_craft_items(callback: types.CallbackQuery):
     
     text = "<b>🔨 ДОСТУПНЫЕ ДЛЯ КРАФТА:</b>\n\n"
     for item in craftable_items:
-        status = "✅ МОЖНО" if item["can"] else "❌ НЕЛЬЗЯ"
+        status = "✅ МОЖНО" if item["can_craft"] else "❌ НЕЛЬЗЯ"
         text += f"<b>{item['name']}</b> {status}\n"
-        text += f"<i>{item['desc']}</i>\n"
-        text += f"🎲 Шанс успеха: {int(item['chance'] * 100)}%\n"
-        if not item["can"] and item["miss"]:
-            text += f"<code>Не хватает: {', '.join(item['miss'][:2])}</code>\n"
+        text += f"<i>{item['description']}</i>\n"
+        text += f"🎲 Шанс успеха: {int(item['success_chance'] * 100)}%\n"
+        if not item["can_craft"] and item["missing"]:
+            text += f"<code>Не хватает: {', '.join(item['missing'][:2])}</code>\n"
         text += "\n"
     
     text += "<i>Выбери предмет для крафта:</i>"
@@ -438,12 +450,8 @@ async def callback_craft_execute(callback: types.CallbackQuery):
     
     if success:
         item_name = result.get("item", "предмет")
-        duration = result.get("dur")
-        duration_text = ""
-        if duration:
-            hours = duration // 3600
-            if hours > 0:
-                duration_text = f"\n⏱️ Действует: {hours} часов"
+        duration = result.get("duration")
+        duration_text = f"\n⏱️ Действует: {duration // 3600} часов" if duration else ""
         
         text = (f"✨ <b>КРАФТ УСПЕШЕН!</b>\n\n"
                 f"{message}{duration_text}\n\n"
@@ -484,7 +492,6 @@ async def callback_craft_recipes(callback: types.CallbackQuery):
 async def callback_rademka_scout_menu(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
-    
     scouts_used = patsan.get("rademka_scouts", 0)
     free_scouts_left = max(0, 5 - scouts_used)
     
@@ -505,7 +512,7 @@ async def callback_rademka_scout_menu(callback: types.CallbackQuery):
 @router.callback_query(F.data == "rademka_scout_random")
 async def callback_rademka_scout_random(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    top_players = await get_top_players(limit=50, sort="avtoritet")
+    top_players = await get_top_players(limit=50, sort_by="avtoritet")
     possible_targets = [p for p in top_players if p["user_id"] != user_id]
     
     if not possible_targets:
@@ -532,20 +539,89 @@ async def callback_rademka_scout_random(callback: types.CallbackQuery):
             f"🎲 <b>Точный шанс победы:</b> {chance}%\n\n"
             f"<b>📊 Факторы:</b>\n{factors_text}\n\n"
             f"<b>📈 Статистика:</b>\n"
-            f"• Твой авторитет: {scout_data['attacker']['av']} ({scout_data['attacker']['rank'][1]})\n"
-            f"• Его авторитет: {scout_data['target']['av']} ({scout_data['target']['rank'][1]})\n"
-            f"• Последняя активность: {scout_data['target']['last_hrs']}ч назад\n\n"
+            f"• Твой авторитет: {scout_data['attacker_stats']['avtoritet']} ({scout_data['attacker_stats']['rank'][1]})\n"
+            f"• Его авторитет: {scout_data['target_stats']['avtoritet']} ({scout_data['target_stats']['rank'][1]})\n"
+            f"• Последняя активность: {scout_data['target_stats']['last_active_hours']}ч назад\n\n"
             f"💸 Стоимость разведки: {'Бесплатно' if scout_data['cost'] == 0 else '50р'}\n"
-            f"🕵️ Бесплатных разведок осталось: {scout_data['free_left']}\n\n"
+            f"🕵️ Бесплатных разведок осталось: {scout_data['free_scouts_left']}\n\n"
             f"<i>Атаковать эту цель?</i>")
     
     await edit_or_answer(callback, text, rademka_fight_keyboard(target_id, scouted=True))
 
+@router.callback_query(F.data.startswith("rademka_scout_"))
+async def callback_rademka_scout_target(callback: types.CallbackQuery):
+    data = callback.data.replace("rademka_scout_", "")
+    
+    if data == "choose":
+        text = ("🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\n"
+                "Для этой функции нужен список игроков.\n"
+                "Пока используй случайную цель или выбери из топа.")
+        await edit_or_answer(callback, text, rademka_scout_keyboard())
+    
+    elif data == "stats":
+        user_id = callback.from_user.id
+        patsan = await get_patsan_cached(user_id)
+        scouts_used = patsan.get("rademka_scouts", 0)
+        free_used = min(5, scouts_used)
+        paid_used = max(0, scouts_used - 5)
+        
+        text = (f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n"
+                f"🕵️ Всего разведок: {scouts_used}\n"
+                f"🎯 Бесплатных: {free_used}/5\n"
+                f"💰 Платных: {paid_used}\n"
+                f"💸 Потрачено на разведки: {paid_used * 50}р\n\n")
+        
+        await edit_or_answer(callback, text, rademka_scout_keyboard())
+    
+    else:
+        try:
+            target_id = int(data)
+            user_id = callback.from_user.id
+            success, message, scout_data = await rademka_scout(user_id, target_id)
+            
+            if success:
+                await callback.answer("Разведка выполнена!", show_alert=True)
+            else:
+                await callback.answer(message, show_alert=True)
+        except ValueError:
+            await callback.answer("Ошибка: неверный ID цели", show_alert=True)
+
 # =================== ДОСТИЖЕНИЯ ===================
+ACHIEVEMENTS = {
+    "zmiy_collector": {
+        "name": "Коллекционер змия",
+        "description": "Собери определённое количество змия",
+        "levels": [
+            {"goal": 10, "reward": 50, "title": "Новичок", "exp": 10},
+            {"goal": 100, "reward": 300, "title": "Любитель", "exp": 50},
+            {"goal": 1000, "reward": 1500, "title": "Профессионал", "exp": 200},
+            {"goal": 10000, "reward": 5000, "title": "КОРОЛЬ ГОФРОЦЕНТРАЛА", "exp": 1000}
+        ]
+    },
+    "money_maker": {
+        "name": "Денежный мешок",
+        "description": "Заработай много денег",
+        "levels": [
+            {"goal": 1000, "reward": 100, "title": "Бедолага", "exp": 10},
+            {"goal": 10000, "reward": 1000, "title": "Состоятельный", "exp": 100},
+            {"goal": 100000, "reward": 5000, "title": "Олигарх", "exp": 500},
+            {"goal": 1000000, "reward": 25000, "title": "РОТШИЛЬД", "exp": 2500}
+        ]
+    },
+    "rademka_king": {
+        "name": "Король радёмок",
+        "description": "Победи в множестве радёмок",
+        "levels": [
+            {"goal": 5, "reward": 200, "title": "Задира", "exp": 20},
+            {"goal": 25, "reward": 1000, "title": "Гроза района", "exp": 100},
+            {"goal": 100, "reward": 5000, "title": "Неприкасаемый", "exp": 500},
+            {"goal": 500, "reward": 25000, "title": "ЛЕГЕНДА РАДЁМКИ", "exp": 2500}
+        ]
+    }
+}
 
 @router.callback_query(F.data == "achievements_progress")
 async def callback_achievements_progress(callback: types.CallbackQuery):
-    """Прогресс достижений"""
     user_id = callback.from_user.id
     progress_data = await get_achievement_progress(user_id)
     
@@ -559,17 +635,36 @@ async def callback_achievements_progress(callback: types.CallbackQuery):
     text = "<b>📊 ПРОГРЕСС ПО УРОВНЕВЫМ ДОСТИЖЕНИЯМ</b>\n\n"
     for ach_id, data in progress_data.items():
         text += f"<b>{data['name']}</b>\n"
-        if data['next']:
-            text += f"Уровень: {data['cur_lvl']}\n"
-            text += f"Прогресс: {data['prog']:.1f}/{data['next']} "
-            text += f"({data['perc']:.1f}%)\n"
-            text += f"Следующий уровень: {data['title']}\n"
+        if data['next_level']:
+            text += f"Уровень: {data['current_level']}/{len(data['all_levels'])}\n"
+            text += f"Прогресс: {data['current_progress']:.1f}/{data['next_level']['goal']} "
+            text += f"({data['progress_percent']:.1f}%)\n"
+            text += f"Следующий уровень: {data['next_level']['title']} "
+            text += f"(+{data['next_level']['reward']}р, +{data['next_level']['exp']} опыта)\n"
         else:
             text += f"✅ Все уровни пройдены! (Максимум)\n"
         text += "\n"
     
     text += "<i>Выбери достижение для подробной информации:</i>"
     await edit_or_answer(callback, text, achievements_progress_keyboard())
+
+@router.callback_query(F.data.startswith("achievement_"))
+async def callback_achievement_detail(callback: types.CallbackQuery):
+    ach_type = callback.data.replace("achievement_", "")
+    
+    if ach_type not in ACHIEVEMENTS:
+        await callback.answer("Неизвестное достижение", show_alert=True)
+        return
+    
+    ach_data = ACHIEVEMENTS[ach_type]
+    text = f"<b>🏆 {ach_data['name'].upper()}</b>\n\n"
+    text += f"<i>{ach_data['description']}</i>\n\n"
+    text += "<b>📊 Уровни:</b>\n"
+    for i, level in enumerate(ach_data['levels'], 1):
+        text += f"{i}. <b>{level['title']}</b>: {level['goal']} → +{level['reward']}р (+{level['exp']} опыта)\n"
+    text += "\n<i>Прогресс автоматически отслеживается во время игры.</i>"
+    
+    await edit_or_answer(callback, text, back_to_profile_keyboard())
 
 # =================== СТАТИСТИКА УРОВНЕЙ ===================
 @router.callback_query(F.data == "level_stats")
@@ -579,38 +674,27 @@ async def callback_level_stats(callback: types.CallbackQuery):
     
     current_level = patsan.get("level", 1)
     current_exp = patsan.get("experience", 0)
-    
-    # Рассчитываем опыт для следующего уровня
     required_exp = int(100 * (current_level ** 1.5))
-    progress_percent = (current_exp / required_exp) * 100
+    progress_percent = (current_exp / required_exp) * 100 if required_exp > 0 else 0
     
-    # Прогресс-бар
-    progress_bars = 10
-    filled_bars = int(progress_percent / 10)
-    progress_bar_str = "█" * filled_bars + "░" * (progress_bars - filled_bars)
-    
-    # Награда за следующий уровень
+    progress = progress_bar(current_exp, required_exp, 10)
     next_level_reward = (current_level + 1) * 100
     max_atm_increase = (current_level + 1) % 5 == 0
     
-    text = (
-        f"<b>📈 ИНФОРМАЦИЯ ОБ УРОВНЕ</b>\n\n"
-        f"🏆 <b>Текущий уровень:</b> {current_level}\n"
-        f"📚 <b>Опыт:</b> {current_exp}/{required_exp}\n"
-        f"📊 <b>Прогресс:</b> [{progress_bar_str}] {progress_percent:.1f}%\n\n"
-        f"🎁 <b>Награда за {current_level + 1} уровень:</b>\n"
-        f"• +{next_level_reward}р\n"
-    )
+    text = (f"<b>📈 СТАТИСТИКА УРОВНЕЙ</b>\n\n"
+            f"🏆 <b>Текущий уровень:</b> {current_level}\n"
+            f"📚 <b>Опыт:</b> {current_exp}/{required_exp}\n"
+            f"📊 <b>Прогресс:</b> [{progress}] {progress_percent:.1f}%\n\n"
+            f"🎁 <b>Награда за {current_level + 1} уровень:</b>\n"
+            f"• +{next_level_reward}р\n")
     
     if max_atm_increase:
         text += f"• +1 к максимальным атмосферам\n"
     
-    text += f"\n<b>ℹ️ Как получить опыт?</b>\n"
-    text += f"• Давка коричневага: 1-10 опыта\n"
-    text += f"• Сдача змия: 5-20 опыта\n"
-    text += f"• Прокачка скиллов: 15-30 опыта\n"
-    text += f"• Достижения: 10-1000 опыта\n"
-    text += f"• Ежедневные награды: переменный\n"
+    text += (f"\n<b>ℹ️ Информация:</b>\n"
+             f"• Опыт даётся за все действия\n"
+             f"• Каждый 5 уровень увеличивает запас атмосфер\n"
+             f"• Уровень влияет на ежедневные награды\n")
     
     await edit_or_answer(callback, text, level_stats_keyboard())
 
@@ -657,6 +741,15 @@ async def callback_atm_status(callback: types.CallbackQuery):
     await edit_or_answer(callback, text, atm_status_keyboard())
 
 # =================== ТОП ИГРОКОВ ===================
+TOP_SORT_TYPES = {
+    "avtoritet": ("авторитету", "⭐", "avtoritet"),
+    "dengi": ("деньгам", "💰", "dengi"),
+    "zmiy": ("змию", "🐍", "zmiy"),
+    "total_skill": ("сумме скиллов", "💪", "total_skill"),
+    "level": ("уровню", "📈", "level"),
+    "rademka_wins": ("победам в радёмках", "👊", "rademka_wins")
+}
+
 @router.callback_query(F.data == "top")
 async def callback_top_menu(callback: types.CallbackQuery):
     text = ("🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\n"
@@ -671,22 +764,45 @@ async def callback_top_menu(callback: types.CallbackQuery):
 async def show_top(callback: types.CallbackQuery):
     sort_type = callback.data.replace("top_", "")
     
-    sort_map = {
-        "avtoritet": ("авторитету", "⭐", "avtoritet"),
-        "dengi": ("деньгам", "💰", "dengi"),
-        "zmiy": ("змию", "🐍", "zmiy"),
-        "level": ("уровню", "📈", "level")
-    }
-    
-    if sort_type not in sort_map:
+    if sort_type not in TOP_SORT_TYPES:
         await callback.answer("Неизвестный тип топа", show_alert=True)
         return
     
-    sort_name, emoji, db_key = sort_map[sort_type]
+    sort_name, emoji, db_key = TOP_SORT_TYPES[sort_type]
     
     # Получаем топ
     try:
-        top_players = await get_top_players(limit=10, sort=db_key)
+        if sort_type == "rademka_wins":
+            from database.db_manager import get_connection
+            conn = await get_connection()
+            cursor = await conn.execute('''
+                SELECT 
+                    u.user_id,
+                    u.nickname,
+                    u.avtoritet,
+                    COUNT(rf.id) as wins
+                FROM users u
+                LEFT JOIN rademka_fights rf ON u.user_id = rf.winner_id
+                GROUP BY u.user_id, u.nickname, u.avtoritet
+                ORDER BY wins DESC
+                LIMIT 10
+            ''')
+            top_players_raw = await cursor.fetchall()
+            await conn.close()
+            
+            top_players = []
+            for row in top_players_raw:
+                player = dict(row)
+                player["wins"] = player["wins"] or 0
+                player["rank"] = "?"
+                player["zmiy"] = 0
+                player["dengi"] = 0
+                player["level"] = 1
+                player["zmiy_formatted"] = "0кг"
+                player["dengi_formatted"] = "0р"
+                top_players.append(player)
+        else:
+            top_players = await get_top_players(limit=10, sort_by=db_key)
     except Exception as e:
         await callback.answer(f"Ошибка при получении топа: {e}", show_alert=True)
         return
@@ -710,11 +826,19 @@ async def show_top(callback: types.CallbackQuery):
         if sort_type == "avtoritet":
             value = f"⭐ {player['avtoritet']}"
         elif sort_type == "dengi":
-            value = f"💰 {player['dengi']}р"
+            dengi_value = player.get('dengi', 0)
+            dengi_formatted = player.get('dengi_formatted', f"{dengi_value}р")
+            value = f"💰 {dengi_formatted}"
         elif sort_type == "zmiy":
-            value = f"🐍 {player['zmiy']:.1f}кг"
+            zmiy_value = player.get('zmiy', 0)
+            zmiy_formatted = player.get('zmiy_formatted', f"{zmiy_value:.1f}кг")
+            value = f"🐍 {zmiy_formatted}"
+        elif sort_type == "total_skill":
+            value = f"💪 {player.get('total_skill', 0)} ур."
         elif sort_type == "level":
             value = f"📈 {player.get('level', 1)} ур."
+        elif sort_type == "rademka_wins":
+            value = f"👊 {player.get('wins', 0)} побед"
         else:
             value = ""
         
@@ -723,8 +847,10 @@ async def show_top(callback: types.CallbackQuery):
             nickname = nickname[:17] + "..."
         
         rank_info = ""
-        if "rank_name" in player:
-            rank_info = f" ({player['rank_name']})"
+        if sort_type != "rademka_wins":
+            rank_name = player.get("rank", "").split(" ")
+            if len(rank_name) > 1:
+                rank_info = f" ({rank_name[1]})"
         
         top_text += f"{medal} <code>{nickname}</code>{rank_info} — {value}\n"
     
