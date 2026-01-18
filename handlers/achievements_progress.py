@@ -1,7 +1,7 @@
 from aiogram import Router, types, F
 from database.db_manager import get_patsan_cached, get_achievement_progress
 from keyboards.keyboards import main_keyboard
-from keyboards.new_keyboards import achievements_progress_keyboard, back_to_profile_keyboard
+from keyboards.keyboards import achievements_progress_keyboard, back_to_profile_keyboard
 
 router = Router()
 
