@@ -187,9 +187,10 @@ class UserDataManager:
                 try: user[field] = json.loads(val) if val else ([] if field in ["inventory","achievements","crafted_items"] else {})
                 except: user[field] = [] if field in ["inventory","achievements","crafted_items"] else {}
         
+        # ИСПРАВЛЕННАЯ ЧАСТЬ: Определение ранга с гарантированными значениями
         av = user.get("avtoritet", 1)
-        for thr, (emoji, name) in sorted(RANKS.items(), reverse=True):
-            if av >= thr: user.update({"rank_emoji": emoji, "rank_name": name}); break
+        rank_name, rank_emoji = get_rank(av)  # Используем исправленную функцию get_rank
+        user.update({"rank_emoji": rank_emoji, "rank_name": rank_name})
     
     def mark_dirty(self, uid):
         if uid in self._cache:
@@ -222,8 +223,12 @@ class UserDataManager:
 user_manager = UserDataManager()
 
 def get_rank(av):
-    for thr, (e,n) in sorted(RANKS.items(), reverse=True):
-        if av >= thr: return n, e
+    """ИСПРАВЛЕННАЯ функция определения ранга. Всегда возвращает гарантированные значения."""
+    # Сортируем ранги по возрастанию порогов
+    for threshold, (emoji, name) in sorted(RANKS.items()):
+        if av >= threshold:
+            return name, emoji
+    # Возвращаем значения по умолчанию, если не найдено
     return "Пацанчик", "👶"
 
 def calc_atm_time(user):
@@ -633,7 +638,7 @@ def calculate_atm_regen_time(user):
     boosts = user.get("active_boosts", {})
     if isinstance(boosts, dict) and "вечный_двигатель" in boosts:
         base_time *= 0.7
-    elif isinstance(boosts, str) and "вечный_двигатель" in boosts:
+    elif isinstance(boosts, str) and "вещий_двигатель" in boosts:
         base_time *= 0.7
     
     return int(max(60, base_time))  # Не меньше 60 секунд
