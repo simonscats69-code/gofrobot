@@ -97,12 +97,6 @@ class UserCache:
 class UserDataManager:
     def __init__(self):
         self._cache, self._dirty, self._lock, self._save_task = {}, set(), asyncio.Lock(), None
-        self._user_locks = {}
-    
-    def _get_user_lock(self, uid):
-        if uid not in self._user_locks:
-            self._user_locks[uid] = asyncio.Lock()
-        return self._user_locks[uid]
     
     async def start_batch_saver(self):
         if not self._save_task:
@@ -144,20 +138,15 @@ class UserDataManager:
         if not force and uid in self._cache and now - self._cache[uid].timestamp < CACHE_TTL:
             return self._cache[uid].data
         
-        user_lock = self._get_user_lock(uid)
-        async with user_lock:
-            if not force and uid in self._cache and now - self._cache[uid].timestamp < CACHE_TTL:
-                return self._cache[uid].data
-            
-            pool = await DatabaseManager.get_pool()
-            async with pool.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
-                row = await c.fetchone()
-                if row: user = dict(row); await self._process_user(user)
-                else: user = await self._create_user(uid)
-            
-            self._cache[uid] = UserCache(user, now)
-            if len(self._cache) > MAX_CACHE: self._clean_cache()
-            return user
+        pool = await DatabaseManager.get_pool()
+        async with pool.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
+            row = await c.fetchone()
+            if row: user = dict(row); await self._process_user(user)
+            else: user = await self._create_user(uid)
+        
+        self._cache[uid] = UserCache(user, now)
+        if len(self._cache) > MAX_CACHE: self._clean_cache()
+        return user
     
     async def _create_user(self, uid):
         now = int(time.time())
@@ -238,254 +227,182 @@ async def save_patsan(d):
         await user_manager.save_user(uid)
 
 async def davka_zmiy(uid):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        cost = 2
-        if p.get("upgrades",{}).get("tea_slivoviy"): cost = max(1, cost-1)
-        bon = SPECS.get(p.get("specialization",""),{}).get("bon",{})
-        if bon.get("atm_red"): cost = max(1, cost-bon["atm_red"])
-        
-        if p.get("atm_count",0) < cost: return None, "Не хватает атмосфер!"
-        p["atm_count"] = p.get("atm_count",0) - cost
-        
-        base = random.randint(200,1500) + p.get("skill_davka",1)*100
-        mul = 1.0
-        if p.get("upgrades",{}).get("ryazhenka"): mul = 1.75
-        if bon.get("davka_mul"): mul *= bon["davka_mul"]
-        total = int(base * mul)
-        
-        exp = min(10, total//100)
-        p["experience"] = p.get("experience",0) + exp
-        await check_lvl(p)
-        p["zmiy"] = p.get("zmiy",0.0) + total/1000
-        
-        chance = p.get("skill_nahodka",1)*0.05
-        if p.get("upgrades",{}).get("bubbleki"): chance += 0.35
-        if bon.get("find_chance"): chance += bon["find_chance"]
-        
-        found, rare = False, None
-        if random.random() < chance:
-            if "inventory" not in p: p["inventory"] = []
-            p["inventory"].append("двенашка")
-            found = True
-            if bon.get("rare_chance") and random.random() < bon["rare_chance"]:
-                rare = random.choice(["золотая_двенашка","кристалл_атмосферы","секретная_схема"])
-                p["inventory"].append(rare)
-        
-        user_manager.mark_dirty(uid)
-        
-        asyncio.create_task(_async_upd_ach(uid, "zmiy_collector", total/1000))
-        
-        kg, g = total//1000, total%1000
-        w = f"{kg}кг {g}г" if g else f"{kg}кг"
-        res = {"cost":cost, "weight":w, "total_grams":total, "dvenashka_found":found, "rare_item_found":rare, "exp_gained":exp}
-        return p, res
-
-async def _async_upd_ach(uid, aid, inc):
-    try:
-        if aid not in ACH_LEVELS: return {"lvled":False}
-        pool = await DatabaseManager.get_pool()
-        async with pool.execute('SELECT progress,level FROM user_achievements WHERE user_id=? AND achievement_id=?', (uid,aid)) as c:
-            row = await c.fetchone()
-            if row: prog, lvl = row["progress"]+inc, row["level"]
-            else: 
-                prog, lvl = inc, 0
-                await pool.execute('INSERT INTO user_achievements (user_id,achievement_id,progress) VALUES (?,?,?)', (uid,aid,prog))
-        
-        ach = ACH_LEVELS[aid]
-        if lvl < len(ach.get("lvls",[])):
-            goal, rew, title, exp = ach["lvls"][lvl]
-            if prog >= goal:
-                user_lock = user_manager._get_user_lock(uid)
-                async with user_lock:
-                    p = await user_manager.get_user(uid)
-                    p["dengi"] = p.get("dengi",0) + rew
-                    p["experience"] = p.get("experience",0) + exp
-                    user_manager.mark_dirty(uid)
-                
-                await pool.execute('UPDATE user_achievements SET progress=?,level=? WHERE user_id=? AND achievement_id=?', 
-                                 (prog, lvl+1, uid, aid))
-                
-                asyncio.create_task(_add_achievement_to_user(uid, aid, lvl+1, title, rew, exp))
-                
-                return {"lvled":True, "lvl":lvl+1, "title":title, "rew":rew, "exp":exp}
-            else:
-                await pool.execute('UPDATE user_achievements SET progress=? WHERE user_id=? AND achievement_id=?', (prog, uid, aid))
-        else:
-            await pool.execute('UPDATE user_achievements SET progress=? WHERE user_id=? AND achievement_id=?', (prog, uid, aid))
-        return {"lvled":False, "prog":prog}
-    except Exception:
-        return {"lvled":False}
-
-async def _add_achievement_to_user(uid, aid, lvl, title, rew, exp):
-    try:
-        pool = await DatabaseManager.get_pool()
-        async with pool.execute('SELECT achievements FROM users WHERE user_id=?', (uid,)) as c:
-            u = await c.fetchone()
-            if u and u["achievements"]:
-                ach = json.loads(u["achievements"])
-                ach_name = ACH_LEVELS.get(aid, {}).get("name", aid)
-                ach.append({
-                    "id": f"{aid}_lvl_{lvl}", 
-                    "name": f"{ach_name}: {title}",
-                    "unlocked": int(time.time()), 
-                    "rew": rew, 
-                    "exp": exp
-                })
-                await pool.execute('UPDATE users SET achievements=? WHERE user_id=?', (json.dumps(ach), uid))
-    except Exception:
-        pass
+    p = await user_manager.get_user(uid)
+    cost = 2
+    if p.get("upgrades",{}).get("tea_slivoviy"): cost = max(1, cost-1)
+    bon = SPECS.get(p.get("specialization",""),{}).get("bon",{})
+    if bon.get("atm_red"): cost = max(1, cost-bon["atm_red"])
+    
+    if p.get("atm_count",0) < cost: return None, "Не хватает атмосфер!"
+    p["atm_count"] = p.get("atm_count",0) - cost
+    
+    base = random.randint(200,1500) + p.get("skill_davka",1)*100
+    mul = 1.0
+    if p.get("upgrades",{}).get("ryazhenka"): mul = 1.75
+    if bon.get("davka_mul"): mul *= bon["davka_mul"]
+    total = int(base * mul)
+    
+    exp = min(10, total//100)
+    p["experience"] = p.get("experience",0) + exp
+    await check_lvl(p)
+    p["zmiy"] = p.get("zmiy",0.0) + total/1000
+    
+    chance = p.get("skill_nahodka",1)*0.05
+    if p.get("upgrades",{}).get("bubbleki"): chance += 0.35
+    if bon.get("find_chance"): chance += bon["find_chance"]
+    
+    found, rare = False, None
+    if random.random() < chance:
+        if "inventory" not in p: p["inventory"] = []
+        p["inventory"].append("двенашка")
+        found = True
+        if bon.get("rare_chance") and random.random() < bon["rare_chance"]:
+            rare = random.choice(["золотая_двенашка","кристалл_атмосферы","секретная_схема"])
+            p["inventory"].append(rare)
+    
+    user_manager.mark_dirty(uid)
+    await upd_ach(uid, "zmiy_collector", total/1000)
+    
+    kg, g = total//1000, total%1000
+    w = f"{kg}кг {g}г" if g else f"{kg}кг"
+    res = {"cost":cost, "weight":w, "total_grams":total, "dvenashka_found":found, "rare_item_found":rare, "exp_gained":exp}
+    return p, res
 
 async def buy_spec(uid, spec):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        if spec not in SPECS: return False, "Нет такой спецы"
-        s = SPECS[spec]
-        for k,v in s.get("req",{}).items():
-            if k == "inv_contains":
-                if v not in p.get("inventory",[]): return False, f"Нужен: {v}"
-            elif p.get(k,0) < v: return False, f"Недостаточно {k}: {v}"
-        if p.get("dengi",0) < s.get("price",0): return False, f"Не хватает {s['price']-p['dengi']}р"
-        if p.get("specialization"): return False, "Уже есть спеца"
-        p["dengi"] = p.get("dengi",0) - s["price"]
-        p["specialization"] = spec
-        asyncio.create_task(unlock_ach(uid, "first_spec", "Первая специализация", 500))
-        user_manager.mark_dirty(uid)
-        return True, f"✅ Куплена '{s['name']}' за {s['price']}р!"
+    p = await user_manager.get_user(uid)
+    if spec not in SPECS: return False, "Нет такой спецы"
+    s = SPECS[spec]
+    for k,v in s.get("req",{}).items():
+        if k == "inv_contains":
+            if v not in p.get("inventory",[]): return False, f"Нужен: {v}"
+        elif p.get(k,0) < v: return False, f"Недостаточно {k}: {v}"
+    if p.get("dengi",0) < s.get("price",0): return False, f"Не хватает {s['price']-p['dengi']}р"
+    if p.get("specialization"): return False, "Уже есть спеца"
+    p["dengi"] = p.get("dengi",0) - s["price"]
+    p["specialization"] = spec
+    await unlock_ach(uid, "first_spec", "Первая специализация", 500)
+    user_manager.mark_dirty(uid)
+    return True, f"✅ Куплена '{s['name']}' за {s['price']}р!"
 
 async def get_available_specs(uid):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        avail = []
-        for sid, s in SPECS.items():
-            ok, miss = True, []
-            for k,v in s.get("req",{}).items():
-                if k == "inv_contains":
-                    if v not in p.get("inventory",[]): ok=False; miss.append(f"Предмет: {v}")
-                elif p.get(k,0) < v: ok=False; miss.append(f"{k}: {p.get(k,0)}/{v}")
-            avail.append({"id":sid, "name":s.get("name",""), "description":s.get("description",""), "price":s.get("price",0),
-                          "available":ok, "missing":miss, "bon":s.get("bon",{})})
-        return avail
+    p = await user_manager.get_user(uid)
+    avail = []
+    for sid, s in SPECS.items():
+        ok, miss = True, []
+        for k,v in s.get("req",{}).items():
+            if k == "inv_contains":
+                if v not in p.get("inventory",[]): ok=False; miss.append(f"Предмет: {v}")
+            elif p.get(k,0) < v: ok=False; miss.append(f"{k}: {p.get(k,0)}/{v}")
+        avail.append({"id":sid, "name":s.get("name",""), "description":s.get("description",""), "price":s.get("price",0),
+                      "available":ok, "missing":miss, "bon":s.get("bon",{})})
+    return avail
 
 async def craft_item(uid, rid):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        if rid not in CRAFT: return False, "Нет рецепта", {}
-        r = CRAFT[rid]
-        inv = p.get("inventory",[])
-        cnt = {i:inv.count(i) for i in set(inv)}
-        miss = []
-        for itm, need in r.get("ing",{}).items():
-            if itm == "деньги":
-                if p.get("dengi",0) < need: miss.append(f"Деньги: {need}р")
-            elif cnt.get(itm,0) < need: miss.append(f"{itm}: {cnt.get(itm,0)}/{need}")
-        if miss: return False, f"Не хватает: {', '.join(miss)}", {}
-        
-        for itm, need in r.get("ing",{}).items():
-            if itm == "деньги": 
-                p["dengi"] = p.get("dengi",0) - need
-            else:
-                for _ in range(need): 
-                    if itm in p.get("inventory",[]): 
-                        p["inventory"].remove(itm)
-        
-        ok = random.random() < r.get("chance",0)
-        if ok:
-            res = r.get("res",{})
-            if res.get("item"): 
-                if "inventory" not in p: p["inventory"] = []
-                p["inventory"].append(res["item"])
-                if res.get("dur"): 
-                    if "active_boosts" not in p: p["active_boosts"] = {}
-                    p["active_boosts"][res["item"]] = int(time.time()) + res["dur"]
-            crafted = p.get("crafted_items",[])
-            crafted.append({"recipe":rid, "item":res.get("item",""), "time":int(time.time())})
-            p["crafted_items"] = crafted
-            asyncio.create_task(unlock_ach(uid, "first_craft", "Первый крафт", 100))
-            msg = f"✅ Успешно: {r['name']}!"
-        else: 
-            msg = f"❌ Неудача: {r['name']}"
-        
-        pool = await DatabaseManager.get_pool()
-        await pool.execute('INSERT INTO craft_history (user_id, recipe_id, success) VALUES (?,?,?)', (uid,rid,ok))
-        user_manager.mark_dirty(uid)
-        return ok, msg, r.get("res",{})
+    p = await user_manager.get_user(uid)
+    if rid not in CRAFT: return False, "Нет рецепта", {}
+    r = CRAFT[rid]
+    inv = p.get("inventory",[])
+    cnt = {i:inv.count(i) for i in set(inv)}
+    miss = []
+    for itm, need in r.get("ing",{}).items():
+        if itm == "деньги":
+            if p.get("dengi",0) < need: miss.append(f"Деньги: {need}р")
+        elif cnt.get(itm,0) < need: miss.append(f"{itm}: {cnt.get(itm,0)}/{need}")
+    if miss: return False, f"Не хватает: {', '.join(miss)}", {}
+    
+    for itm, need in r.get("ing",{}).items():
+        if itm == "деньги": 
+            p["dengi"] = p.get("dengi",0) - need
+        else:
+            for _ in range(need): 
+                if itm in p.get("inventory",[]): 
+                    p["inventory"].remove(itm)
+    
+    ok = random.random() < r.get("chance",0)
+    if ok:
+        res = r.get("res",{})
+        if res.get("item"): 
+            if "inventory" not in p: p["inventory"] = []
+            p["inventory"].append(res["item"])
+            if res.get("dur"): 
+                if "active_boosts" not in p: p["active_boosts"] = {}
+                p["active_boosts"][res["item"]] = int(time.time()) + res["dur"]
+        crafted = p.get("crafted_items",[])
+        crafted.append({"recipe":rid, "item":res.get("item",""), "time":int(time.time())})
+        p["crafted_items"] = crafted
+        await unlock_ach(uid, "first_craft", "Первый крафт", 100)
+        msg = f"✅ Успешно: {r['name']}!"
+    else: 
+        msg = f"❌ Неудача: {r['name']}"
+    
+    pool = await DatabaseManager.get_pool()
+    await pool.execute('INSERT INTO craft_history (user_id, recipe_id, success) VALUES (?,?,?)', (uid,rid,ok))
+    user_manager.mark_dirty(uid)
+    return ok, msg, r.get("res",{})
 
 async def get_craftable(uid):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        inv = p.get("inventory",[])
-        cnt = {i:inv.count(i) for i in set(inv)}
-        craftable = []
-        for rid, r in CRAFT.items():
-            ok, miss = True, []
-            for itm, need in r.get("ing",{}).items():
-                if itm == "деньги":
-                    if p.get("dengi",0) < need: ok=False; miss.append(f"Деньги: {need}р")
-                elif cnt.get(itm,0) < need: ok=False; miss.append(f"{itm}: {cnt.get(itm,0)}/{need}")
-            craftable.append({"id":rid, "name":r.get("name",""), "description":r.get("description",""), "ing":r.get("ing",{}),
-                              "can_craft":ok, "missing":miss, "success_chance":r.get("chance",0), "res":r.get("res",{})})
-        return craftable
+    p = await user_manager.get_user(uid)
+    inv = p.get("inventory",[])
+    cnt = {i:inv.count(i) for i in set(inv)}
+    craftable = []
+    for rid, r in CRAFT.items():
+        ok, miss = True, []
+        for itm, need in r.get("ing",{}).items():
+            if itm == "деньги":
+                if p.get("dengi",0) < need: ok=False; miss.append(f"Деньги: {need}р")
+            elif cnt.get(itm,0) < need: ok=False; miss.append(f"{itm}: {cnt.get(itm,0)}/{need}")
+        craftable.append({"id":rid, "name":r.get("name",""), "description":r.get("description",""), "ing":r.get("ing",{}),
+                          "can_craft":ok, "missing":miss, "success_chance":r.get("chance",0), "res":r.get("res",{})})
+    return craftable
 
 async def sdat_zmiy(uid):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        if p.get("zmiy",0) <= 0: return None, "Нечего сдавать!"
-        money = int(p["zmiy"] * 62.5) + p.get("avtoritet",1)*8
-        old = p["zmiy"]
-        p["dengi"] = p.get("dengi",0) + money
-        p["zmiy"] = 0
-        exp = min(20, money//100)
-        p["experience"] = p.get("experience",0) + exp
-        await check_lvl(p)
-        user_manager.mark_dirty(uid)
-        asyncio.create_task(_async_upd_ach(uid, "money_maker", money))
-        return p, {"old":old, "money":money, "avtoritet_bonus":p.get("avtoritet",1)*8, "exp_gained":exp}
+    p = await user_manager.get_user(uid)
+    if p.get("zmiy",0) <= 0: return None, "Нечего сдавать!"
+    money = int(p["zmiy"] * 62.5) + p.get("avtoritet",1)*8
+    old = p["zmiy"]
+    p["dengi"] = p.get("dengi",0) + money
+    p["zmiy"] = 0
+    exp = min(20, money//100)
+    p["experience"] = p.get("experience",0) + exp
+    await check_lvl(p)
+    user_manager.mark_dirty(uid)
+    await upd_ach(uid, "money_maker", money)
+    return p, {"old":old, "money":money, "avtoritet_bonus":p.get("avtoritet",1)*8, "exp_gained":exp}
 
 async def buy_upgrade(uid, upg):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        prices = {"ryazhenka":300, "tea_slivoviy":500, "bubbleki":800, "kuryasany":1500}
-        if upg not in prices: return None, "Нет такого"
-        if p.get("upgrades",{}).get(upg): return None, "Уже куплено"
-        price = prices[upg]
-        if p.get("dengi",0) < price: return None, f"Не хватает {price-p['dengi']}р"
-        p["dengi"] = p.get("dengi",0) - price
-        if "upgrades" not in p: p["upgrades"] = {}
-        p["upgrades"][upg] = True
-        if upg == "kuryasany": 
-            p["avtoritet"] = p.get("avtoritet",1) + 2
-        user_manager.mark_dirty(uid)
-        all_upg = ["ryazhenka","tea_slivoviy","bubbleki","kuryasany"]
-        if all(p.get("upgrades",{}).get(u,False) for u in all_upg):
-            asyncio.create_task(unlock_ach(uid, "all_upg", "Все нагнетатели", 1500))
-        return p, f"✅ Куплено '{upg}' за {price}р!"
+    p = await user_manager.get_user(uid)
+    prices = {"ryazhenka":300, "tea_slivoviy":500, "bubbleki":800, "kuryasany":1500}
+    if upg not in prices: return None, "Нет такого"
+    if p.get("upgrades",{}).get(upg): return None, "Уже куплено"
+    price = prices[upg]
+    if p.get("dengi",0) < price: return None, f"Не хватает {price-p['dengi']}р"
+    p["dengi"] = p.get("dengi",0) - price
+    if "upgrades" not in p: p["upgrades"] = {}
+    p["upgrades"][upg] = True
+    if upg == "kuryasany": 
+        p["avtoritet"] = p.get("avtoritet",1) + 2
+    user_manager.mark_dirty(uid)
+    all_upg = ["ryazhenka","tea_slivoviy","bubbleki","kuryasany"]
+    if all(p.get("upgrades",{}).get(u,False) for u in all_upg):
+        await unlock_ach(uid, "all_upg", "Все нагнетатели", 1500)
+    return p, f"✅ Куплено '{upg}' за {price}р!"
 
 async def pump_skill(uid, skill):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        prices = {"davka":180, "zashita":270, "nahodka":225}
-        cost = prices.get(skill,180)
-        if p.get("dengi",0) < cost: return None, f"Не хватает {cost-p['dengi']}р"
-        p["dengi"] = p.get("dengi",0) - cost
-        exp = cost//10
-        p["experience"] = p.get("experience",0) + exp
-        old = p.get(f"skill_{skill}",1)
-        p[f"skill_{skill}"] = old + 1
-        await check_lvl(p)
-        user_manager.mark_dirty(uid)
-        new = p[f"skill_{skill}"]
-        if new >= 10: asyncio.create_task(unlock_ach(uid, f"skill_{skill}_10", f"Мастер {skill}", 500))
-        if new >= 25: asyncio.create_task(unlock_ach(uid, f"skill_{skill}_25", f"Гуру {skill}", 2000))
-        return p, f"✅ Прокачано '{skill}' {old}→{new} за {cost}р! (+{exp} опыта)"
+    p = await user_manager.get_user(uid)
+    prices = {"davka":180, "zashita":270, "nahodka":225}
+    cost = prices.get(skill,180)
+    if p.get("dengi",0) < cost: return None, f"Не хватает {cost-p['dengi']}р"
+    p["dengi"] = p.get("dengi",0) - cost
+    exp = cost//10
+    p["experience"] = p.get("experience",0) + exp
+    old = p.get(f"skill_{skill}",1)
+    p[f"skill_{skill}"] = old + 1
+    await check_lvl(p)
+    user_manager.mark_dirty(uid)
+    new = p[f"skill_{skill}"]
+    if new >= 10: await unlock_ach(uid, f"skill_{skill}_10", f"Мастер {skill}", 500)
+    if new >= 25: await unlock_ach(uid, f"skill_{skill}_25", f"Гуру {skill}", 2000)
+    return p, f"✅ Прокачано '{skill}' {old}→{new} за {cost}р! (+{exp} опыта)"
 
 async def check_lvl(u):
     cur, exp = u.get("level",1), u.get("experience",0)
@@ -499,16 +416,43 @@ async def check_lvl(u):
         if u["level"] % 5 == 0:
             u["max_atm"] = u.get("max_atm",12) + 1
             u["atm_count"] = min(u.get("atm_count",0)+1, u["max_atm"])
-        uid = u.get("user_id")
-        if uid:
-            if u["level"] >= 10: asyncio.create_task(unlock_ach(uid, "lvl_10", "10 уровень", 500))
-            if u["level"] >= 25: asyncio.create_task(unlock_ach(uid, "lvl_25", "25 уровень", 2000))
-            if u["level"] >= 50: asyncio.create_task(unlock_ach(uid, "lvl_50", "Полвека", 5000))
+        if u["level"] >= 10: await unlock_ach(u.get("user_id"), "lvl_10", "10 уровень", 500)
+        if u["level"] >= 25: await unlock_ach(u.get("user_id"), "lvl_25", "25 уровень", 2000)
+        if u["level"] >= 50: await unlock_ach(u.get("user_id"), "lvl_50", "Полвека", 5000)
         return True, {"old":old, "new":u["level"], "rew":rew, "atm_inc":u["level"]%5==0}
     return False, None
 
 async def upd_ach(uid, aid, inc):
-    return await _async_upd_ach(uid, aid, inc)
+    if aid not in ACH_LEVELS: return {"lvled":False}
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT progress,level FROM user_achievements WHERE user_id=? AND achievement_id=?', (uid,aid)) as c:
+        row = await c.fetchone()
+        if row: prog, lvl = row["progress"]+inc, row["level"]
+        else: 
+            prog, lvl = inc, 0
+            await pool.execute('INSERT INTO user_achievements (user_id,achievement_id,progress) VALUES (?,?,?)', (uid,aid,prog))
+    
+    ach = ACH_LEVELS[aid]
+    if lvl < len(ach.get("lvls",[])):
+        goal, rew, title, exp = ach["lvls"][lvl]
+        if prog >= goal:
+            p = await user_manager.get_user(uid)
+            p["dengi"] = p.get("dengi",0) + rew
+            p["experience"] = p.get("experience",0) + exp
+            await pool.execute('UPDATE user_achievements SET progress=?,level=? WHERE user_id=? AND achievement_id=?', 
+                              (prog, lvl+1, uid, aid))
+            user_manager.mark_dirty(uid)
+            ach_list = p.get("achievements",[])
+            ach_list.append({"id":f"{aid}_lvl_{lvl+1}", "name":f"{ach['name']}: {title}",
+                            "unlocked":int(time.time()), "rew":rew, "exp":exp})
+            p["achievements"] = ach_list
+            user_manager.mark_dirty(uid)
+            return {"lvled":True, "lvl":lvl+1, "title":title, "rew":rew, "exp":exp}
+        else:
+            await pool.execute('UPDATE user_achievements SET progress=? WHERE user_id=? AND achievement_id=?', (prog, uid, aid))
+    else:
+        await pool.execute('UPDATE user_achievements SET progress=? WHERE user_id=? AND achievement_id=?', (prog, uid, aid))
+    return {"lvled":False, "prog":prog}
 
 async def get_ach_progress(uid):
     pool = await DatabaseManager.get_pool()
@@ -530,46 +474,44 @@ async def get_ach_progress(uid):
         return res
 
 async def rademka_scout(uid, tid):
-    user_lock = user_manager._get_user_lock(uid)
-    async with user_lock:
-        p = await user_manager.get_user(uid)
-        t = await user_manager.get_user(tid)
-        if not t: return False, "Нет цели", {}
-        cost = 0 if p.get("rademka_scouts",0) < 5 else 50
-        if p.get("dengi",0) < cost: return False, f"Не хватает {cost-p['dengi']}р", {}
-        
-        base = 50
-        diff = p.get("avtoritet",1) - t.get("avtoritet",1)
-        chance = base + (diff*5)
-        if p.get("specialization") == "neprobivaemy": chance += 5
-        if p.get("avtoritet",1) < t.get("avtoritet",1): chance += 20
-        chance = max(10, min(95, chance))
-        
-        now = time.time()
-        last = t.get("last_update",now)
-        if now - last > 86400: chance += 15
-        
-        if cost > 0: 
-            p["dengi"] = p.get("dengi",0) - cost
-        p["rademka_scouts"] = p.get("rademka_scouts",0) + 1
-        user_manager.mark_dirty(uid)
-        
-        pool = await DatabaseManager.get_pool()
-        await pool.execute('UPDATE rademka_fights SET scouted=1 WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)', 
-                          (uid,tid,tid,uid))
-        
-        factors = [f"Разница авторитета: {'+' if diff>0 else ''}{diff*5}%"]
-        if p.get("avtoritet",1) < t.get("avtoritet",1): factors.append("Гандикап слабого: +20%")
-        if now - last > 86400: factors.append("Цель неактивна: +15%")
-        if p.get("specialization") == "neprobivaemy": factors.append("Специализация: +5%")
-        
-        return True, f"Разведка {'бесплатная' if cost==0 else 'за 50р'} успешна!", {
-            "chance":int(chance), "cost":cost, "free_scouts_left":max(0,5-p.get("rademka_scouts",0)),
-            "attacker_stats":{"avtoritet":p.get("avtoritet",1),"rank":get_rank(p.get("avtoritet",1))},
-            "target_stats":{"avtoritet":t.get("avtoritet",1),"rank":get_rank(t.get("avtoritet",1)),
-                           "last_active_hours":int((now-last)/3600) if last else 0},
-            "factors":factors
-        }
+    p = await user_manager.get_user(uid)
+    t = await user_manager.get_user(tid)
+    if not t: return False, "Нет цели", {}
+    cost = 0 if p.get("rademka_scouts",0) < 5 else 50
+    if p.get("dengi",0) < cost: return False, f"Не хватает {cost-p['dengi']}р", {}
+    
+    base = 50
+    diff = p.get("avtoritet",1) - t.get("avtoritet",1)
+    chance = base + (diff*5)
+    if p.get("specialization") == "neprobivaemy": chance += 5
+    if p.get("avtoritet",1) < t.get("avtoritet",1): chance += 20
+    chance = max(10, min(95, chance))
+    
+    now = time.time()
+    last = t.get("last_update",now)
+    if now - last > 86400: chance += 15
+    
+    if cost > 0: 
+        p["dengi"] = p.get("dengi",0) - cost
+    p["rademka_scouts"] = p.get("rademka_scouts",0) + 1
+    user_manager.mark_dirty(uid)
+    
+    pool = await DatabaseManager.get_pool()
+    await pool.execute('UPDATE rademka_fights SET scouted=1 WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)', 
+                      (uid,tid,tid,uid))
+    
+    factors = [f"Разница авторитета: {'+' if diff>0 else ''}{diff*5}%"]
+    if p.get("avtoritet",1) < t.get("avtoritet",1): factors.append("Гандикап слабого: +20%")
+    if now - last > 86400: factors.append("Цель неактивна: +15%")
+    if p.get("specialization") == "neprobivaemy": factors.append("Специализация: +5%")
+    
+    return True, f"Разведка {'бесплатная' if cost==0 else 'за 50р'} успешна!", {
+        "chance":int(chance), "cost":cost, "free_scouts_left":max(0,5-p.get("rademka_scouts",0)),
+        "attacker_stats":{"avtoritet":p.get("avtoritet",1),"rank":get_rank(p.get("avtoritet",1))},
+        "target_stats":{"avtoritet":t.get("avtoritet",1),"rank":get_rank(t.get("avtoritet",1)),
+                       "last_active_hours":int((now-last)/3600) if last else 0},
+        "factors":factors
+    }
 
 async def get_daily(uid):
     pool = await DatabaseManager.get_pool()
@@ -631,7 +573,7 @@ async def change_nick(uid, nick):
         if not u: return False, "Нет юзера"
         if not u["nickname_changed"]:
             await pool.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
-            asyncio.create_task(unlock_ach(uid, "first_nick", "Первая бирка", 100))
+            await unlock_ach(uid, "first_nick", "Первая бирка", 100)
             await user_manager.get_user(uid, True)
             return True, "Ник изменён! (бесплатно) +100р"
         if u["dengi"] < cost: return False, f"Не хватает {cost-u['dengi']}р"
