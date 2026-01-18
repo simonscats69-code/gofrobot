@@ -2,7 +2,7 @@ from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from database.db_manager import get_patsan_cached, get_craftable_items, craft_item
 from keyboards.keyboards import main_keyboard, craft_keyboard, craft_items_keyboard, back_to_craft_keyboard
-from keyboards.new_keyboards import craft_recipes_keyboard, craft_confirmation_keyboard
+from keyboards.keyboards import craft_recipes_keyboard, craft_confirmation_keyboard
 
 router = Router()
 
