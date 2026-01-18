@@ -16,32 +16,26 @@ from keyboards.new_keyboards import (
 
 router = Router()
 
-# Декоратор для обработки ошибки "message is not modified"
 def ignore_not_modified_error(func):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                # Игнорируем эту ошибку - ничего страшного
                 if len(args) > 0 and hasattr(args[0], 'callback_query'):
                     await args[0].callback_query.answer()
                 return
-            raise  # Пропускаем другие ошибки
+            raise
     return wrapper
-
-# ==================== СМЕНА НИКА (FSM) - БЕЗ ИЗМЕНЕНИЙ ====================
 
 class NicknameChange(StatesGroup):
     waiting_for_nickname = State()
 
 @router.message(Command("nickname"))
 async def cmd_nickname(message: types.Message, state: FSMContext):
-    """Команда /nickname - смена ника"""
     user_id = message.from_user.id
     patsan = await get_patsan_cached(user_id)
     
-    # Проверяем текущее состояние
     current_state = await state.get_state()
     if current_state == NicknameChange.waiting_for_nickname.state:
         await message.answer("Ты уже в процессе смены ника! Напиши новый ник или отмени командой /cancel")
@@ -77,11 +71,9 @@ async def cmd_nickname(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "change_nickname")
 async def callback_change_nickname(callback: types.CallbackQuery, state: FSMContext):
-    """Кнопка смены ника"""
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
     
-    # Проверяем текущее состояние - если уже в состоянии смены ника, не редактируем
     current_state = await state.get_state()
     if current_state == NicknameChange.waiting_for_nickname.state:
         await callback.answer("Ты уже в процессе смены ника! Напиши новый ник.")
@@ -107,7 +99,6 @@ async def callback_change_nickname(callback: types.CallbackQuery, state: FSMCont
             f"Напиши новый ник (3-20 символов, только буквы и цифры):"
         )
     
-    # Отправляем новое сообщение вместо редактирования старого
     await callback.message.answer(
         message_text,
         reply_markup=nickname_keyboard(),
@@ -119,11 +110,9 @@ async def callback_change_nickname(callback: types.CallbackQuery, state: FSMCont
 
 @router.message(NicknameChange.waiting_for_nickname)
 async def process_nickname(message: types.Message, state: FSMContext):
-    """Обработка нового ника"""
     user_id = message.from_user.id
     new_nickname = message.text.strip()
     
-    # Валидация ника
     if len(new_nickname) < 3:
         await message.answer(
             "❌ Слишком короткий ник! Минимум 3 символа.\n"
@@ -140,7 +129,6 @@ async def process_nickname(message: types.Message, state: FSMContext):
         )
         return
     
-    # Проверка на допустимые символы
     if not all(c.isalnum() or c in "_- " for c in new_nickname):
         await message.answer(
             "❌ Используй только буквы, цифры, пробелы, дефисы и подчёркивания!\n"
@@ -149,7 +137,6 @@ async def process_nickname(message: types.Message, state: FSMContext):
         )
         return
     
-    # Пробуем сменить ник
     success, result_message = await change_nickname(user_id, new_nickname)
     
     if success:
@@ -169,10 +156,8 @@ async def process_nickname(message: types.Message, state: FSMContext):
     
     await state.clear()
 
-# Команда для отмены смены ника
 @router.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
-    """Отмена смены ника"""
     current_state = await state.get_state()
     if current_state is None:
         await message.answer("Нечего отменять.")
@@ -184,11 +169,8 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
         reply_markup=main_keyboard()
     )
 
-# ==================== ОБНОВЛЁННАЯ РАДЁМКА С НОВЫМИ СИСТЕМАМИ ====================
-
 @router.message(Command("rademka"))
 async def cmd_rademka(message: types.Message):
-    """Команда /rademka - меню радёмки (ОБНОВЛЁННАЯ)"""
     user_id = message.from_user.id
     patsan = await get_patsan_cached(user_id)
     
@@ -227,7 +209,6 @@ async def cmd_rademka(message: types.Message):
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
 async def callback_rademka(callback: types.CallbackQuery):
-    """Кнопка радёмки (ОБНОВЛЁННАЯ)"""
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
     
@@ -262,10 +243,8 @@ async def callback_rademka(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-# Добавьте этот обработчик для кнопки "Разведка цели" из rademka_keyboard
 @router.callback_query(F.data == "rademka_scout_menu")
 async def rademka_scout_menu(callback: types.CallbackQuery):
-    """Меню разведки радёмки"""
     user_id = callback.from_user.id
     patsan = await get_patsan_cached(user_id)
     
@@ -295,15 +274,12 @@ async def rademka_scout_menu(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "rademka_random")
 async def rademka_random(callback: types.CallbackQuery):
-    """Случайный пацан для радёмки (ОБНОВЛЁННЫЙ)"""
     import random
     
     user_id = callback.from_user.id
     
-    # Получаем топ игроков (кроме себя)
     top_players = await get_top_players(limit=50, sort_by="avtoritet")
     
-    # Фильтруем себя
     possible_targets = [p for p in top_players if p["user_id"] != user_id]
     
     if not possible_targets:
@@ -316,43 +292,35 @@ async def rademka_random(callback: types.CallbackQuery):
         )
         return
     
-    # Выбираем случайную цель
     target = random.choice(possible_targets)
     target_id = target["user_id"]
     target_name = target["nickname"]
     target_avtoritet = target["avtoritet"]
     
-    # Получаем данные атакующего
     patsan = await get_patsan_cached(user_id)
     attacker_avtoritet = patsan["avtoritet"]
     
-    # Рассчитываем шансы С УЧЁТОМ НОВЫХ СИСТЕМ
     base_chance = 50
     
-    # Влияние авторитета
     if attacker_avtoritet > target_avtoritet:
         chance = base_chance + min(30, (attacker_avtoritet - target_avtoritet) * 5)
     elif target_avtoritet > attacker_avtoritet:
-        # Гандикап для слабого против сильного
         chance = base_chance + 20 - min(30, (target_avtoritet - attacker_avtoritet) * 5)
     else:
         chance = base_chance
     
-    # Бонус от специализации
     if patsan.get("specialization") == "непробиваемый":
         chance += 5
     
-    # Если цель давно неактивна
     import time
     target_data = await get_patsan(target_id)
     if target_data:
         last_active = target_data.get("last_update", time.time())
-        if time.time() - last_active > 86400:  # 24 часа
+        if time.time() - last_active > 86400:
             chance += 15
     
-    chance = max(10, min(95, chance))  # Ограничиваем 10-95%
+    chance = max(10, min(95, chance))
     
-    # Получаем звания обоих игроков
     from database.db_manager import get_rank
     attacker_rank_name, attacker_rank_emoji = get_rank(attacker_avtoritet)
     target_rank_name, target_rank_emoji = get_rank(target_avtoritet)
@@ -387,21 +355,17 @@ async def rademka_random(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("rademka_scout_"))
 async def rademka_scout_callback(callback: types.CallbackQuery):
-    """Обработка разведки радёмки"""
     import random
     
     data = callback.data.replace("rademka_scout_", "")
     
     if data == "menu":
-        # Меню разведки - теперь перенаправляем на rademka_scout_menu
         await rademka_scout_menu(callback)
         return
     
     elif data == "random":
-        # Разведка случайной цели
         user_id = callback.from_user.id
         
-        # Получаем топ игроков
         top_players = await get_top_players(limit=50, sort_by="avtoritet")
         possible_targets = [p for p in top_players if p["user_id"] != user_id]
         
@@ -414,18 +378,15 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
             )
             return
         
-        # Выбираем случайную цель
         target = random.choice(possible_targets)
         target_id = target["user_id"]
         
-        # Выполняем разведку
         success, message, scout_data = await rademka_scout(user_id, target_id)
         
         if not success:
             await callback.answer(message, show_alert=True)
             return
         
-        # Форматируем результат разведки
         target_name = target["nickname"]
         chance = scout_data["chance"]
         
@@ -449,7 +410,6 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
         return
     
     elif data == "choose":
-        # Выбор цели для разведки (упрощённая версия)
         await callback.message.edit_text(
             "🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\n"
             "Для точного выбора цели используй кнопку 'Случайная цель'.\n"
@@ -460,7 +420,6 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
         return
     
     elif data == "stats":
-        # Статистика разведок
         user_id = callback.from_user.id
         patsan = await get_patsan_cached(user_id)
         
@@ -468,7 +427,6 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
         free_used = min(5, scouts_used)
         paid_used = max(0, scouts_used - 5)
         
-        # Получаем историю успешных разведок
         conn = await get_connection()
         try:
             cursor = await conn.execute('''
@@ -499,7 +457,6 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
                 nickname = scout["nickname"]
                 result = "✅ Победа" if scout["winner_id"] == user_id else "❌ Поражение"
                 
-                # Обрезаем длинные ники
                 if len(nickname) > 15:
                     nickname = nickname[:12] + "..."
                 
@@ -514,14 +471,12 @@ async def rademka_scout_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("rademka_confirm_"))
 async def rademka_confirm(callback: types.CallbackQuery):
-    """Подтверждение радёмки (ОБНОВЛЁННАЯ С УЧЁТОМ НОВЫХ СИСТЕМ)"""
     import random
     import time
     
     user_id = callback.from_user.id
     target_id = int(callback.data.replace("rademka_confirm_", ""))
     
-    # Получаем данные обоих пацанов
     attacker = await get_patsan(user_id)
     target = await get_patsan(target_id)
     
@@ -529,57 +484,44 @@ async def rademka_confirm(callback: types.CallbackQuery):
         await callback.answer("Ошибка: один из пацанов не найден!", show_alert=True)
         return
     
-    # Рассчитываем шансы С УЧЁТОМ НОВЫХ ФАКТОРОВ
     base_chance = 50
     avtoritet_diff = attacker["avtoritet"] - target["avtoritet"]
     chance = base_chance + (avtoritet_diff * 5)
     
-    # Гандикап для слабого против сильного
     if attacker["avtoritet"] < target["avtoritet"]:
         chance += 20
     
-    # Бонус от специализации
     if attacker.get("specialization") == "непробиваемый":
         chance += 5
     
-    # Штраф за разницу в уровнях
     attacker_level = attacker.get("level", 1)
     target_level = target.get("level", 1)
     level_diff = target_level - attacker_level
     if level_diff > 0:
         chance -= min(15, level_diff * 3)
     
-    # Если цель давно неактивна
     last_active = target.get("last_update", time.time())
-    if time.time() - last_active > 86400:  # 24 часа
+    if time.time() - last_active > 86400:
         chance += 15
     
     chance = max(10, min(95, chance))
     
-    # Случайный исход
     success = random.random() < (chance / 100)
     
-    # Переменные для статистики
     money_taken = 0
     item_stolen = None
     exp_gained = 0
     
     if success:
-        # УСПЕШНАЯ РАДЁМКА!
-        
-        # Награда: 10% денег цели
         money_taken = int(target["dengi"] * 0.1)
         attacker["dengi"] += money_taken
         target["dengi"] -= money_taken
         
-        # Минимальная сумма у цели
         if target["dengi"] < 10:
             target["dengi"] = 10
         
-        # +1 авторитет атакующему
         attacker["avtoritet"] += 1
         
-        # Шанс забрать двенашку (30%)
         if target.get("inventory") and "двенашка" in target["inventory"] and random.random() < 0.3:
             target["inventory"].remove("двенашка")
             attacker["inventory"].append("двенашка")
@@ -588,11 +530,9 @@ async def rademka_confirm(callback: types.CallbackQuery):
         else:
             item_stolen_text = ""
         
-        # Опыт за успешную радёмку
         exp_gained = 25 + (target["avtoritet"] // 10)
         attacker["experience"] = attacker.get("experience", 0) + exp_gained
         
-        # Бонус за победу над сильным противником
         if target["avtoritet"] > attacker["avtoritet"]:
             bonus_exp = (target["avtoritet"] - attacker["avtoritet"]) * 2
             attacker["experience"] += bonus_exp
@@ -609,28 +549,20 @@ async def rademka_confirm(callback: types.CallbackQuery):
             f"<i>Он теперь будет тебя бояться!</i>"
         )
         
-        # Достижение за первую радёмку
         await unlock_achievement(user_id, "first_rademka", "Первая радёмка", 200)
         
-        # Достижение за победу над сильным
         if target["avtoritet"] > attacker["avtoritet"] + 20:
             await unlock_achievement(user_id, "rademka_underdog", "Победа над сильнейшим", 500)
         
     else:
-        # ПРОВАЛ РАДЁМКИ
-        
-        # Штраф: 5% денег атакующего
         money_penalty = int(attacker["dengi"] * 0.05)
         attacker["dengi"] -= money_penalty
         
-        # -1 авторитет
         attacker["avtoritet"] = max(1, attacker["avtoritet"] - 1)
         
-        # Опыт даже за поражение (меньше)
         exp_gained = 5
         attacker["experience"] = attacker.get("experience", 0) + exp_gained
         
-        # Шанс получить ответку (20%)
         revenge_text = ""
         revenge_money = 0
         if random.random() < 0.2:
@@ -650,11 +582,9 @@ async def rademka_confirm(callback: types.CallbackQuery):
             f"<i>Теперь над тобой смеются...</i>"
         )
     
-    # Сохраняем изменения в пользователях
     await save_patsan(attacker)
     await save_patsan(target)
     
-    # Сохраняем статистику боя (разведка = False, так как это прямой бой)
     await save_rademka_fight(
         winner_id=user_id if success else target_id,
         loser_id=target_id if success else user_id,
@@ -663,15 +593,14 @@ async def rademka_confirm(callback: types.CallbackQuery):
         scouted=False
     )
     
-    # Проверяем повышение уровня
     from database.db_manager import check_level_up
     level_up_result = await check_level_up(attacker)
     level_up_text = ""
     
-    if level_up_result[0]:  # Если уровень повышен
+    if level_up_result[0]:
         new_level = attacker["level"]
         level_up_text = f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {new_level} уровня!"
-        await save_patsan(attacker)  # Сохраняем с новым уровнем
+        await save_patsan(attacker)
     
     await callback.message.edit_text(
         result_text + level_up_text,
@@ -682,13 +611,11 @@ async def rademka_confirm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "rademka_stats")
 async def rademka_stats(callback: types.CallbackQuery):
-    """Статистика радёмок (ОБНОВЛЁННАЯ)"""
     user_id = callback.from_user.id
     
     try:
         conn = await get_connection()
         
-        # Получаем общую статистику
         cursor = await conn.execute('''
             SELECT 
                 COUNT(*) as total_fights,
@@ -722,7 +649,6 @@ async def rademka_stats(callback: types.CallbackQuery):
                 f"💎 <b>Чистая прибыль:</b> {net_profit}р\n\n"
             )
             
-            # Самые частые цели (если есть победы)
             if wins > 0:
                 cursor = await conn.execute('''
                     SELECT loser_id, COUNT(*) as fights, SUM(money_taken) as total_money
@@ -746,13 +672,11 @@ async def rademka_stats(callback: types.CallbackQuery):
                         nickname = target_user["nickname"] if target_user else f"Пацан_{target['loser_id']}"
                         avtoritet = target_user["avtoritet"] if target_user else 1
                         
-                        # Обрезаем длинные ники
                         if len(nickname) > 20:
                             nickname = nickname[:17] + "..."
                         
                         message_text += f"{i}. {nickname} (⭐{avtoritet}) - {target['fights']} раз, +{target['total_money'] or 0}р\n"
             
-            # Самые частые противники (если есть поражения)
             if losses > 0:
                 cursor = await conn.execute('''
                     SELECT winner_id, COUNT(*) as fights, SUM(money_taken) as total_money
@@ -781,7 +705,6 @@ async def rademka_stats(callback: types.CallbackQuery):
                         message_text += f"{i}. {nickname} - {opponent['fights']} раз, -{opponent['total_money'] or 0}р\n"
         
         else:
-            # Нет статистики
             message_text = (
                 f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
                 f"У тебя ещё не было радёмок!\n"
@@ -792,7 +715,6 @@ async def rademka_stats(callback: types.CallbackQuery):
         await conn.close()
         
     except Exception as e:
-        # Если таблицы rademka_fights не существует
         message_text = (
             f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\n"
             f"База данных статистики готовится...\n"
@@ -809,11 +731,9 @@ async def rademka_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "rademka_top")
 async def rademka_top(callback: types.CallbackQuery):
-    """Топ радёмщиков (ОБНОВЛЁННЫЙ)"""
     try:
         conn = await get_connection()
         
-        # Получаем топ из базы
         cursor = await conn.execute('''
             SELECT 
                 u.nickname,
@@ -852,11 +772,9 @@ async def rademka_top(callback: types.CallbackQuery):
                 avtoritet = player["avtoritet"]
                 level = player["level"] or 1
                 
-                # Получаем звание
                 from database.db_manager import get_rank
                 rank_name, rank_emoji = get_rank(avtoritet)
                 
-                # Обрезаем длинные ники
                 if len(nickname) > 15:
                     nickname = nickname[:12] + "..."
                 
@@ -879,7 +797,6 @@ async def rademka_top(callback: types.CallbackQuery):
         await conn.close()
         
     except Exception as e:
-        # Если таблицы нет или ошибка
         message_text = (
             f"👑 <b>ТОП РАДЁМЩИКОВ</b>\n\n"
             f"Рейтинг формируется...\n\n"
@@ -900,10 +817,8 @@ async def rademka_top(callback: types.CallbackQuery):
 @ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
 async def back_to_main(callback: types.CallbackQuery):
-    """Возврат в главное меню"""
     patsan = await get_patsan_cached(callback.from_user.id)
     
-    # Прогресс-бар атмосфер
     atm_count = patsan['atm_count']
     max_atm = patsan.get('max_atm', 12)
     progress = int((atm_count / max_atm) * 10)
