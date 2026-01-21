@@ -1,8 +1,8 @@
 from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
-from database.db_manager import get_patsan, buy_upgrade
-from keyboards.keyboards import shop_keyboard, main_keyboard
-from keyboards.keyboards import shop_categories_keyboard
+from db_manager import get_patsan, buy_upgrade
+from keyboards import shop_keyboard, main_keyboard
+from keyboards import shop_categories_keyboard
 
 router = Router()
 
