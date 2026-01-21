@@ -70,48 +70,6 @@ class DatabaseManager:
             );
         ''')
 
-async def create_rademka_tables():
-    conn = await aiosqlite.connect("bot_database.db")
-    try:
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS rademka_fights (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                winner_id INTEGER NOT NULL,
-                loser_id INTEGER NOT NULL,
-                money_taken INTEGER DEFAULT 0,
-                item_stolen TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_winner ON rademka_fights(winner_id)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_loser ON rademka_fights(loser_id)')
-        await conn.commit()
-        print("✅ Таблицы для статистики радёмок созданы")
-    except Exception as e:
-        print(f"⚠️ Ошибка при создании таблиц: {e}")
-    finally:
-        await conn.close()
-
-async def update_init_db():
-    conn = await aiosqlite.connect("bot_database.db")
-    try:
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS rademka_fights (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                winner_id INTEGER NOT NULL,
-                loser_id INTEGER NOT NULL,
-                money_taken INTEGER DEFAULT 0,
-                item_stolen TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_winner ON rademka_fights(winner_id)')
-        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_loser ON rademka_fights(loser_id)')
-        await conn.commit()
-        print("✅ Таблица rademka_fights добавлена в базу данных")
-    finally:
-        await conn.close()
-
 class UserCache:
     def __init__(self, data, timestamp):
         self.data, self.timestamp, self.dirty = data, timestamp, False
@@ -214,20 +172,70 @@ class UserDataManager:
     
     def _clean_cache(self):
         now = time.time()
-        del_ids = [uid for uid, ce in self._cache.items() if now - ce.timestamp > CACHE_TTL*2]
-        for uid in del_ids: del self._cache[uid]
+        
+        # Увеличиваем TTL для активных пользователей
+        extended_ttl = CACHE_TTL * 2  # В 2 раза дольше
+        
+        # Удаляем только очень старые записи
+        del_ids = []
+        for uid, cache_entry in self._cache.items():
+            # Проверяем, был ли пользователь активен недавно
+            last_update = cache_entry.data.get("last_update", 0)
+            is_active = (now - last_update) < 3600  # Активен в последний час
+            
+            # Разный TTL для активных и неактивных
+            user_ttl = extended_ttl if is_active else CACHE_TTL
+            
+            if now - cache_entry.timestamp > user_ttl:
+                del_ids.append(uid)
+        
+        for uid in del_ids: 
+            del self._cache[uid]
+        
+        # Если все еще много, удаляем наименее используемые
         if len(self._cache) > MAX_CACHE:
-            sorted_c = sorted(self._cache.items(), key=lambda x: x[1].timestamp)
-            for uid, _ in sorted_c[:MAX_CACHE//2]: del self._cache[uid]
+            # Сортируем по времени последнего доступа
+            sorted_cache = sorted(self._cache.items(), 
+                                key=lambda x: x[1].timestamp)
+            
+            # Удаляем только 20% старейших
+            to_remove = max(10, len(self._cache) // 5)
+            for uid, _ in sorted_cache[:to_remove]: 
+                del self._cache[uid]
     
     async def get_top_fast(self, limit=10, sort="avtoritet"):
         pool = await DatabaseManager.get_pool()
-        async with pool.execute(f'SELECT * FROM users ORDER BY {sort} DESC LIMIT ?', (limit,)) as c:
+        
+        # Безопасный список полей для сортировки
+        safe_sort_fields = ["avtoritet", "dengi", "zmiy", "level", "experience"]
+        if sort not in safe_sort_fields:
+            sort = "avtoritet"
+        
+        # Для total_skill нужен специальный запрос
+        if sort == "total_skill":
+            query = '''
+                SELECT user_id, nickname, avtoritet, dengi, zmiy, level, experience,
+                       (skill_davka + skill_zashita + skill_nahodka) as total_skill
+                FROM users 
+                ORDER BY total_skill DESC 
+                LIMIT ?
+            '''
+        else:
+            query = f'''
+                SELECT user_id, nickname, avtoritet, dengi, zmiy, level, experience
+                FROM users 
+                ORDER BY {sort} DESC 
+                LIMIT ?
+            '''
+        
+        async with pool.execute(query, (limit,)) as c:
             rows = await c.fetchall()
             result = []
             for row in rows:
                 user = dict(row)
-                await self._process_user(user)
+                # Только базовая обработка без полной загрузки из кэша
+                if sort == "total_skill":
+                    user["total_skill"] = row["total_skill"]
                 result.append(user)
             return result
 
@@ -239,8 +247,9 @@ def get_rank(av):
             return name, emoji
     return "Пацанчик", "👶"
 
-async def get_patsan(uid): return await user_manager.get_user(uid)
-async def get_patsan_cached(uid): return await user_manager.get_user(uid)
+async def get_patsan(uid, force=False): 
+    return await user_manager.get_user(uid, force)
+
 async def save_patsan(d): 
     uid = d.get("user_id")
     if uid: 
