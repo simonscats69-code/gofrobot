@@ -5,10 +5,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
 import time
 import random
-from database.db_manager import (get_patsan_cached, change_nickname, get_connection, 
+from db_manager import (get_patsan_cached, change_nickname, get_connection, 
                                 get_patsan, save_patsan, save_rademka_fight, 
                                 get_top_players, check_level_up, get_rank)
-from keyboards.keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
+from keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
                                 rademka_fight_keyboard, back_to_rademka_keyboard, 
                                 daily_keyboard)
 
