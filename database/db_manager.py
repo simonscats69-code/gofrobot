@@ -7,15 +7,6 @@ CACHE_TTL, MAX_CACHE, BATCH_INT = 30, 500, 5
 RANKS = {1:("👶","Пацанчик"), 11:("👊","Браток"), 51:("👑","Авторитет"), 
          201:("🐉","Царь гофры"), 501:("🏛️","Император"), 1001:("💩","БОГ ГОВНА")}
 
-SPECS = {
-    "davila": {"name":"Давила", "description":"Мастер давления", "req":{"skill_davka":5,"zmiy":50.0},
-               "price":1500, "bon":{"davka_mul":1.5, "atm_red":1}},
-    "ohotnik": {"name":"Охотник", "description":"Находит двенашки", "req":{"skill_nahodka":5,"inv_contains":"двенашка"},
-                "price":1200, "bon":{"find_chance":0.15, "rare_chance":0.05}},
-    "neprobivaemy": {"name":"Непробиваемый", "description":"Железные кишки", "req":{"skill_zashita":5,"avtoritet":20},
-                      "price":2000, "bon":{"atm_regen":0.9, "rad_def":0.15}}
-}
-
 CRAFT = {
     "супер_двенашка": {"name":"Супер-двенашка", "description":"Удача +1ч", "ing":{"двенашка":3,"деньги":500},
                        "res":{"item":"супер_двенашка","dur":3600}, "chance":1.0},
@@ -46,7 +37,7 @@ class DatabaseManager:
                 zmiy REAL DEFAULT 0.0, dengi INTEGER DEFAULT 150, last_update INTEGER DEFAULT 0,
                 last_daily INTEGER DEFAULT 0, atm_count INTEGER DEFAULT 12, max_atm INTEGER DEFAULT 12,
                 skill_davka INTEGER DEFAULT 1, skill_zashita INTEGER DEFAULT 1, skill_nahodka INTEGER DEFAULT 1,
-                specialization TEXT DEFAULT '', experience INTEGER DEFAULT 0, level INTEGER DEFAULT 1,
+                experience INTEGER DEFAULT 0, level INTEGER DEFAULT 1,
                 inventory TEXT DEFAULT '[]', upgrades TEXT DEFAULT '{}', active_boosts TEXT DEFAULT '{}',
                 crafted_items TEXT DEFAULT '[]', rademka_scouts INTEGER DEFAULT 0,
                 nickname_changed BOOLEAN DEFAULT FALSE
@@ -101,13 +92,13 @@ class UserDataManager:
             vals.append((d.get("nickname",""), d.get("avtoritet",1), d.get("zmiy",0.0), d.get("dengi",150),
                         int(time.time()), d.get("last_daily",0), d.get("atm_count",12), d.get("max_atm",12),
                         d.get("skill_davka",1), d.get("skill_zashita",1), d.get("skill_nahodka",1),
-                        d.get("specialization",""), d.get("experience",0), d.get("level",1),
+                        d.get("experience",0), d.get("level",1),
                         json.dumps(d.get("inventory",[])), json.dumps(d.get("upgrades",{})),
                         json.dumps(d.get("active_boosts",{})), json.dumps(d.get("crafted_items",[])),
                         d.get("rademka_scouts",0), d.get("nickname_changed", False), uid))
         await pool.executemany('''
             UPDATE users SET nickname=?, avtoritet=?, zmiy=?, dengi=?, last_update=?, last_daily=?,
-            atm_count=?, max_atm=?, skill_davka=?, skill_zashita=?, skill_nahodka=?, specialization=?,
+            atm_count=?, max_atm=?, skill_davka=?, skill_zashita=?, skill_nahodka=?,
             experience=?, level=?, inventory=?, upgrades=?, active_boosts=?, crafted_items=?,
             rademka_scouts=?, nickname_changed=? WHERE user_id=?
         ''', vals)
@@ -132,7 +123,7 @@ class UserDataManager:
         user = {
             "user_id": uid, "nickname": f"Пацанчик_{uid}", "avtoritet": 1, "zmiy": 0.0, "dengi": 150,
             "last_update": now, "last_daily": 0, "atm_count": 12, "max_atm": 12, "skill_davka": 1,
-            "skill_zashita": 1, "skill_nahodka": 1, "specialization": "", "experience": 0, "level": 1,
+            "skill_zashita": 1, "skill_nahodka": 1, "experience": 0, "level": 1,
             "inventory": ["двенашка", "энергетик"], "upgrades": {}, "active_boosts": {},
             "crafted_items": [], "rademka_scouts": 0, "nickname_changed": False
         }
@@ -209,8 +200,6 @@ async def davka_zmiy(uid):
     p = await user_manager.get_user(uid)
     cost = 2
     if p.get("upgrades",{}).get("tea_slivoviy"): cost = max(1, cost-1)
-    bon = SPECS.get(p.get("specialization",""),{}).get("bon",{})
-    if bon.get("atm_red"): cost = max(1, cost-bon["atm_red"])
     
     if p.get("atm_count",0) < cost: return False, None, "Не хватает атмосфер!"
     p["atm_count"] = p.get("atm_count",0) - cost
@@ -218,7 +207,6 @@ async def davka_zmiy(uid):
     base = random.randint(200,1500) + p.get("skill_davka",1)*100
     mul = 1.0
     if p.get("upgrades",{}).get("ryazhenka"): mul = 1.75
-    if bon.get("davka_mul"): mul *= bon["davka_mul"]
     total = int(base * mul)
     
     exp = min(10, total//100)
@@ -228,51 +216,19 @@ async def davka_zmiy(uid):
     
     chance = p.get("skill_nahodka",1)*0.05
     if p.get("upgrades",{}).get("bubbleki"): chance += 0.35
-    if bon.get("find_chance"): chance += bon["find_chance"]
     
     found, rare = False, None
     if random.random() < chance:
         if "inventory" not in p: p["inventory"] = []
         p["inventory"].append("двенашка")
         found = True
-        if bon.get("rare_chance") and random.random() < bon["rare_chance"]:
-            rare = random.choice(["золотая_двенашка","кристалл_атмосферы","секретная_схема"])
-            p["inventory"].append(rare)
     
     user_manager.mark_dirty(uid)
     
     kg, g = total//1000, total%1000
     w = f"{kg}кг {g}г" if g else f"{kg}кг"
-    res = {"cost":cost, "weight":w, "wm":w, "total_grams":total, "dvenashka_found":found, "rare_item_found":rare, "exp_gained":exp}
+    res = {"cost":cost, "weight":w, "wm":w, "total_grams":total, "dvenashka_found":found, "exp_gained":exp}
     return True, p, res
-
-async def buy_spec(uid, spec):
-    p = await user_manager.get_user(uid)
-    if spec not in SPECS: return False, "Нет такой спецы"
-    s = SPECS[spec]
-    for k,v in s.get("req",{}).items():
-        if k == "inv_contains":
-            if v not in p.get("inventory",[]): return False, f"Нужен: {v}"
-        elif p.get(k,0) < v: return False, f"Недостаточно {k}: {v}"
-    if p.get("dengi",0) < s.get("price",0): return False, f"Не хватает {s['price']-p['dengi']}р"
-    if p.get("specialization"): return False, "Уже есть спеца"
-    p["dengi"] = p.get("dengi",0) - s["price"]
-    p["specialization"] = spec
-    user_manager.mark_dirty(uid)
-    return True, f"✅ Куплена '{s['name']}' за {s['price']}р!"
-
-async def get_available_specs(uid):
-    p = await user_manager.get_user(uid)
-    avail = []
-    for sid, s in SPECS.items():
-        ok, miss = True, []
-        for k,v in s.get("req",{}).items():
-            if k == "inv_contains":
-                if v not in p.get("inventory",[]): ok=False; miss.append(f"Предмет: {v}")
-            elif p.get(k,0) < v: ok=False; miss.append(f"{k}: {p.get(k,0)}/{v}")
-        avail.append({"id":sid, "name":s.get("name",""), "description":s.get("description",""), "price":s.get("price",0),
-                      "available":ok, "missing":miss, "bon":s.get("bon",{})})
-    return avail
 
 async def craft_item(uid, rid):
     p = await user_manager.get_user(uid)
@@ -458,8 +414,6 @@ async def shutdown():
         DatabaseManager._pool = None
 
 async def get_craftable_items(uid): return await get_craftable(uid)
-async def get_available_specializations(uid): return await get_available_specs(uid)
-async def buy_specialization(uid, spec): return await buy_spec(uid, spec)
 async def get_daily_reward(uid): return await get_daily(uid)
 async def change_nickname(uid, nick): return await change_nick(uid, nick)
 async def get_top(limit=10, sort="avtoritet"): return await get_top_players(limit, sort)
@@ -470,13 +424,10 @@ async def check_level_up(user): return await check_lvl(user)
 def calculate_atm_regen_time(user):
     base_time = 600
     if user.get("skill_zashita", 1) >= 10: base_time *= 0.9
-    if user.get("specialization") == "neprobivaemy": base_time *= 0.9
     boosts = user.get("active_boosts", {})
     if isinstance(boosts, dict) and "вечный_двигатель" in boosts: base_time *= 0.7
     elif isinstance(boosts, str) and "вечный_двигатель" in boosts: base_time *= 0.7
     return int(max(60, base_time))
-
-def get_specialization_bonuses(spec): return SPECS.get(spec, {}).get("bon", {})
 
 if __name__ == "__main__":
     async def test():
