@@ -1,8 +1,17 @@
 import asyncio, time, random, json, aiosqlite
+import os
 from typing import Optional, List, Dict, Any
+from dotenv import load_dotenv
 
-ATM_MAX, ATM_TIME, DB_NAME = 12, 600, "bot_database.db"
-CACHE_TTL, MAX_CACHE, BATCH_INT = 30, 500, 5
+load_dotenv()
+
+DB_NAME = os.getenv("DB_NAME", "bot_database.db")
+DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))
+CACHE_TTL = int(os.getenv("CACHE_TTL", "30"))
+MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "500"))
+ATM_MAX = int(os.getenv("ATM_MAX_COUNT", "12"))
+ATM_TIME = int(os.getenv("ATM_REGEN_TIME", "600"))
+BATCH_INT = 5
 
 RANKS = {1:("👶","Пацанчик"), 11:("👊","Браток"), 51:("👑","Авторитет"), 
          201:("🐉","Царь гофры"), 501:("🏛️","Император"), 1001:("💩","БОГ ГОВНА")}
@@ -60,6 +69,48 @@ class DatabaseManager:
                 created_at INTEGER DEFAULT (strftime('%s','now'))
             );
         ''')
+
+async def create_rademka_tables():
+    conn = await aiosqlite.connect("bot_database.db")
+    try:
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS rademka_fights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                winner_id INTEGER NOT NULL,
+                loser_id INTEGER NOT NULL,
+                money_taken INTEGER DEFAULT 0,
+                item_stolen TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_winner ON rademka_fights(winner_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_loser ON rademka_fights(loser_id)')
+        await conn.commit()
+        print("✅ Таблицы для статистики радёмок созданы")
+    except Exception as e:
+        print(f"⚠️ Ошибка при создании таблиц: {e}")
+    finally:
+        await conn.close()
+
+async def update_init_db():
+    conn = await aiosqlite.connect("bot_database.db")
+    try:
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS rademka_fights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                winner_id INTEGER NOT NULL,
+                loser_id INTEGER NOT NULL,
+                money_taken INTEGER DEFAULT 0,
+                item_stolen TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_winner ON rademka_fights(winner_id)')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_rademka_loser ON rademka_fights(loser_id)')
+        await conn.commit()
+        print("✅ Таблица rademka_fights добавлена в базу данных")
+    finally:
+        await conn.close()
 
 class UserCache:
     def __init__(self, data, timestamp):
@@ -438,3 +489,5 @@ if __name__ == "__main__":
         print(f"100 юзеров за {time.time()-start:.2f}с")
         await shutdown()
     asyncio.run(test())
+
+init_db = init_bot
