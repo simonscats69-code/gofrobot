@@ -277,7 +277,6 @@ TO = {"avtoritet":("авторитету","⭐","avtoritet"),"dengi":("день�
 async def ctm(c):
     try:
         await c.answer()
-        # Вместо импорта из commands.py показываем меню выбора топа
         await eoa(c, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>", top_sort_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка топа: {str(e)[:50]}", show_alert=True)
@@ -330,6 +329,44 @@ async def cst(c):
         await eoa(c, tt, top_sort_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка загрузки топа: {str(e)[:50]}", show_alert=True)
+
+# НОВЫЙ ОБРАБОТЧИК ДЛЯ top_level
+@router.callback_query(F.data == "top_level")
+async def top_level_handler(c):
+    try:
+        await c.answer()
+        # Показываем топ по уровням
+        st = "level"
+        if st not in TO:
+            return await c.answer("Ошибка: неизвестный тип топа", show_alert=True)
+            
+        sn, em, dk = TO[st]
+        tp = await get_top_players(limit=10, sort_by=dk)
+        
+        if not tp: 
+            return await eoa(c, "😕 <b>Топ пуст!</b>\n\nЕщё никто не заслужил места в рейтинге.\nБудь первым!", level_stats_keyboard())
+        
+        mds, tt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], f"{em} <b>Топ пацанов по {sn}:</b>\n\n"
+        for i, pl in enumerate(tp[:10]):
+            nn = pl.get('nickname', f'Пацан_{pl.get("user_id", "?")}')[:20] + ("..." if len(pl.get('nickname', '')) > 20 else "")
+            v = f"📈 {pl.get('level', 1)} ур."
+            # Получаем ранг пользователя
+            rank_emoji, rank_name = gr(pl)
+            ri = f" ({rank_name})"
+            tt += f"{mds[i] if i < 10 else f'{i + 1}.'} <code>{nn}</code>{ri} — {v}\n"
+        
+        tt += f"\n📊 <i>Всего пацанов в системе: {len(tp)}</i>"
+        
+        # Показываем позицию текущего пользователя
+        uid = c.from_user.id
+        for i, pl in enumerate(tp):
+            if pl.get('user_id') == uid:
+                tt += f"\n\n🎯 <b>Твоя позиция:</b> {mds[i] if i < 10 else str(i + 1)}"
+                break
+        
+        await eoa(c, tt, level_stats_keyboard())
+    except Exception as e:
+        await c.answer(f"Ошибка загрузки топа по уровням: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("inventory_"))
 async def cia(c):
@@ -384,8 +421,10 @@ async def cb(c):
 async def handle_progress(c):
     try:
         await c.answer()
-        if c.data in ["level_progress", "level_next"]: await cls(c)
-        elif c.data in ["atm_regen_time", "atm_max_info", "atm_boosters"]: await cas(c)
+        if c.data in ["level_progress", "level_next"]: 
+            await cls(c)  # Показываем статистику уровня
+        elif c.data in ["atm_regen_time", "atm_max_info", "atm_boosters"]: 
+            await cas(c)  # Показываем статус атмосфер
     except Exception:
         await c.answer("Ошибка загрузки", show_alert=True)
 
@@ -432,7 +471,7 @@ async def ccn(c, state: FSMContext):
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
 
-# ДОБАВЛЕНЫ НОВЫЕ ОБРАБОТЧИКИ ДЛЯ КНОПОК "НАЗАД"
+# ОБРАБОТЧИКИ ДЛЯ КНОПОК "НАЗАД"
 @router.callback_query(F.data == "back_rademka")
 async def back_rademka_handler(c):
     try:
