@@ -146,10 +146,24 @@ async def cba(c):
 @router.callback_query(F.data == "back_main")
 async def bm(c):
     try:
-        await c.answer()
+        print(f"DEBUG: Нажата кнопка back_main")
+        await c.answer("Возвращаемся в главное меню...")
         p = await get_patsan_cached(c.from_user.id)
-        await eoa(c, await mmt(p), main_keyboard())
+        print(f"DEBUG: Получили пользователя: {p.get('nickname')}")
+        
+        menu_text = await mmt(p)
+        print(f"DEBUG: Текст меню: {menu_text[:50]}...")
+        
+        keyboard = main_keyboard()
+        print(f"DEBUG: Клавиатура создана")
+        
+        await eoa(c, menu_text, keyboard)
+        print(f"DEBUG: Сообщение обновлено")
+        
     except Exception as e:
+        print(f"DEBUG: Ошибка в bm: {e}")
+        import traceback
+        traceback.print_exc()
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "nickname_menu")
@@ -263,8 +277,8 @@ TO = {"avtoritet":("авторитету","⭐","avtoritet"),"dengi":("день�
 async def ctm(c):
     try:
         await c.answer()
-        from handlers.commands import cmd_top
-        await cmd_top(c.message)
+        # Вместо импорта из commands.py показываем меню выбора топа
+        await eoa(c, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>", top_sort_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка топа: {str(e)[:50]}", show_alert=True)
 
@@ -417,6 +431,32 @@ async def ccn(c, state: FSMContext):
         await process_nickname(c.message, state)
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
+
+# ДОБАВЛЕНЫ НОВЫЕ ОБРАБОТЧИКИ ДЛЯ КНОПОК "НАЗАД"
+@router.callback_query(F.data == "back_rademka")
+async def back_rademka_handler(c):
+    try:
+        await c.answer()
+        from handlers.nickname_and_rademka import callback_rademka
+        await callback_rademka(c)
+    except Exception as e:
+        await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
+
+@router.callback_query(F.data == "back_profile")
+async def back_profile_handler(c):
+    try:
+        await c.answer()
+        await cpr(c)  # Вызываем обработчик профиля
+    except Exception as e:
+        await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
+
+@router.callback_query(F.data == "back_inventory")
+async def back_inventory_handler(c):
+    try:
+        await c.answer()
+        await ci(c)  # Вызываем обработчик инвентаря
+    except Exception as e:
+        await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query()
 async def uc(c):
