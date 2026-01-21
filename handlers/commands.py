@@ -1,7 +1,7 @@
 from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from database.db_manager import get_patsan, get_patsan_cached, get_top_players, get_user_achievements, RANKS
+from database.db_manager import get_patsan, get_patsan_cached, get_top_players, RANKS
 from database.db_manager import get_specialization_bonuses, get_daily_reward
 from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
 from keyboards.keyboards import daily_keyboard, rademka_keyboard, top_sort_keyboard
@@ -86,21 +86,6 @@ async def cmd_daily(message: types.Message):
             parse_mode="HTML"
         )
 
-@router.message(Command("achievements"))
-async def cmd_achievements(message: types.Message):
-    await message.answer(
-        "📜 <b>СИСТЕМА ДОСТИЖЕНИЙ УДАЛЕНА</b>\n\n"
-        "Система достижений была удалена из бота.\n"
-        "Вместо этого сосредоточься на:\n"
-        "• Прокачке уровня и скиллов\n"
-        "• Сборе змия и денег\n"
-        "• Победах в радёмках\n"
-        "• Развитии специализаций\n\n"
-        "<i>Больше достижений не будет.</i>",
-        reply_markup=main_keyboard(),
-        parse_mode="HTML"
-    )
-
 @router.message(Command("rademka"))
 async def cmd_rademka(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
@@ -108,7 +93,7 @@ async def cmd_rademka(message: types.Message):
     free_scouts_left = max(0, 5 - scouts_used)
     
     await message.answer(
-        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКА БАЛЯ!</i>\n\n"
+        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\n"
         f"Выбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +1 авторитет\n• 10% его денег\n• Шанс забрать двенашку\n\n"
         f"<b>Риски:</b>\n• Можешь потерять 5% своих денег\n• -1 авторитет при неудаче\n• Отжатый пацан может отомстить\n\n"
         f"🎯 <b>НОВОЕ: Разведка!</b>\n• Узнай точный шанс победы\n• {free_scouts_left}/5 бесплатных разведок\n• Потом 50р за разведку\n\n"
@@ -127,7 +112,7 @@ async def cmd_specializations(message: types.Message):
         await message.answer(
             f"<b>🌳 ТВОЯ СПЕЦИАЛИЗАЦИЯ</b>\n\n<b>{patsan.get('specialization', '').upper()}</b>\n\n"
             f"<b>🎁 Бонусы:</b>\n{bonuses_text}\n\n"
-            f"<i>Сейчас у тебя может быть только одна специализация.</i>\n"
+            f"<i>Сейчас у тебя может быть только одна специализации.</i>\n"
             f"<i>Чтобы сменить, нужно сначала сбросить текущую (стоимость: 2000р).</i>",
             reply_markup=main_keyboard(),
             parse_mode="HTML"
