@@ -233,7 +233,7 @@ async def davka_zmiy(uid):
     bon = SPECS.get(p.get("specialization",""),{}).get("bon",{})
     if bon.get("atm_red"): cost = max(1, cost-bon["atm_red"])
     
-    if p.get("atm_count",0) < cost: return None, "Не хватает атмосфер!"
+    if p.get("atm_count",0) < cost: return False, None, "Не хватает атмосфер!"
     p["atm_count"] = p.get("atm_count",0) - cost
     
     base = random.randint(200,1500) + p.get("skill_davka",1)*100
@@ -266,7 +266,7 @@ async def davka_zmiy(uid):
     kg, g = total//1000, total%1000
     w = f"{kg}кг {g}г" if g else f"{kg}кг"
     res = {"cost":cost, "weight":w, "wm":w, "total_grams":total, "dvenashka_found":found, "rare_item_found":rare, "exp_gained":exp}
-    return p, res
+    return True, p, res
 
 async def buy_spec(uid, spec):
     p = await user_manager.get_user(uid)
@@ -357,7 +357,7 @@ async def get_craftable(uid):
 
 async def sdat_zmiy(uid):
     p = await user_manager.get_user(uid)
-    if p.get("zmiy",0) <= 0: return None, "Нечего сдавать!"
+    if p.get("zmiy",0) <= 0: return False, None, "Нечего сдавать!"
     money = int(p["zmiy"] * 62.5) + p.get("avtoritet",1)*8
     old = p["zmiy"]
     p["dengi"] = p.get("dengi",0) + money
@@ -368,7 +368,7 @@ async def sdat_zmiy(uid):
     user_manager.mark_dirty(uid)
     await upd_ach(uid, "money_maker", money)
     res = {"old":old, "oz":old, "tm":money, "money":money, "avtoritet_bonus":p.get("avtoritet",1)*8, "exp_gained":exp}
-    return p, res
+    return True, p, res
 
 async def buy_upgrade(uid, upg):
     p = await user_manager.get_user(uid)
