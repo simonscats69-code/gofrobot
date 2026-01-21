@@ -4,7 +4,6 @@ from aiogram.exceptions import TelegramBadRequest
 import time, random, asyncio
 from database.db_manager import *
 from keyboards.keyboards import *
-from handlers.commands import cmd_daily, cmd_achievements, cmd_rademka, cmd_top, cmd_nickname
 
 r = Router()
 
@@ -146,24 +145,41 @@ async def bm(c):
     except Exception as e:
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.in_(["daily", "achievements", "rademka", "top"]))
-async def handle_redirects(c):
-    try:
-        await c.answer()
-        if c.data == "daily": await cmd_daily(c.message)
-        elif c.data == "achievements": await cmd_achievements(c.message)
-        elif c.data == "rademka": await cmd_rademka(c.message)
-        elif c.data == "top": await cmd_top(c.message)
-    except Exception as e:
-        await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
-
 @r.callback_query(F.data == "nickname_menu")
 async def nm(c):
     try:
         await c.answer()
+        from handlers.commands import cmd_nickname
         await cmd_nickname(c.message)
     except Exception:
         await c.answer("Ошибка загрузки меню ника", show_alert=True)
+
+@r.callback_query(F.data == "daily")
+async def cd(c):
+    try:
+        await c.answer()
+        from handlers.commands import cmd_daily
+        await cmd_daily(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки ежедневной награды", show_alert=True)
+
+@r.callback_query(F.data == "achievements")
+async def ca(c):
+    try:
+        await c.answer()
+        from handlers.commands import cmd_achievements
+        await cmd_achievements(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки достижений", show_alert=True)
+
+@r.callback_query(F.data == "rademka")
+async def cr(c):
+    try:
+        await c.answer()
+        from handlers.commands import cmd_rademka
+        await cmd_rademka(c.message)
+    except Exception:
+        await c.answer("Ошибка загрузки радёмки", show_alert=True)
 
 @r.callback_query(F.data == "pump")
 async def cp(c):
@@ -467,7 +483,8 @@ TO = {"avtoritet":("авторитету","⭐","avtoritet"),"dengi":("день�
 async def ctm(c):
     try:
         await c.answer()
-        await eoa(c, "🏆 <b>ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА</b>\n\nВыбери, по какому показателю сортировать рейтинг:\n\n<i>Новые варианты:</i>\n• 📈 По уровню - кто больше прокачался\n• 👊 По победам в радёмках - кто самый дерзкий</i>", top_sort_keyboard())
+        from handlers.commands import cmd_top
+        await cmd_top(c.message)
     except Exception as e:
         await c.answer(f"Ошибка топа: {str(e)[:50]}", show_alert=True)
 
@@ -600,6 +617,7 @@ async def cmr(c):
 async def ctr(c):
     try:
         await c.answer()
+        from handlers.commands import cmd_top
         await cmd_top(c.message)
     except Exception:
         await c.answer("Ошибка топа репутации", show_alert=True)
