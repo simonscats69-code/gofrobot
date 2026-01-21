@@ -4,6 +4,7 @@ from aiogram.exceptions import TelegramBadRequest
 import time, random, asyncio
 from database.db_manager import *
 from keyboards.keyboards import *
+from handlers.commands import cmd_daily, cmd_achievements, cmd_rademka, cmd_top, cmd_nickname
 
 r = Router()
 
@@ -145,25 +146,14 @@ async def bm(c):
     except Exception as e:
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.in_(["daily", "achievements", "rademka", "craft", "inventory", "profile", "specializations", "level_stats", "atm_status"]))
+@r.callback_query(F.data.in_(["daily", "achievements", "rademka", "top"]))
 async def handle_redirects(c):
     try:
         await c.answer()
-        if c.data == "daily":
-            from handlers.commands import cmd_daily
-            await cmd_daily(c.message)
-        elif c.data == "achievements":
-            from handlers.commands import cmd_achievements
-            await cmd_achievements(c.message)
-        elif c.data == "rademka":
-            from handlers.commands import cmd_rademka
-            await cmd_rademka(c.message)
-        elif c.data == "craft": await cc(c)
-        elif c.data == "inventory": await ci(c)
-        elif c.data == "profile": await cpr(c)
-        elif c.data == "specializations": await csp(c)
-        elif c.data == "level_stats": await cls(c)
-        elif c.data == "atm_status": await cas(c)
+        if c.data == "daily": await cmd_daily(c.message)
+        elif c.data == "achievements": await cmd_achievements(c.message)
+        elif c.data == "rademka": await cmd_rademka(c.message)
+        elif c.data == "top": await cmd_top(c.message)
     except Exception as e:
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
@@ -171,7 +161,6 @@ async def handle_redirects(c):
 async def nm(c):
     try:
         await c.answer()
-        from handlers.commands import cmd_nickname
         await cmd_nickname(c.message)
     except Exception:
         await c.answer("Ошибка загрузки меню ника", show_alert=True)
@@ -562,19 +551,23 @@ async def cct(c):
     except Exception as e:
         await c.answer(f"Ошибка удаления мусора: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.in_(["shop", "buy_"]))
-async def handle_shop(c):
+@r.callback_query(F.data == "shop")
+async def cs(c):
     try:
-        if c.data == "shop":
-            await c.answer()
-            from handlers.shop import callback_shop as sh
-            await sh(c)
-        else:
-            await c.answer("💰 Покупка...")
-            from handlers.shop import callback_buy as sb
-            await sb(c)
+        await c.answer()
+        from handlers.shop import callback_shop as sh
+        await sh(c)
     except Exception as e:
         await c.answer(f"Ошибка магазина: {str(e)[:50]}", show_alert=True)
+
+@r.callback_query(F.data.startswith("buy_"))
+async def cb(c):
+    try:
+        await c.answer("💰 Покупка...")
+        from handlers.shop import callback_buy as sb
+        await sb(c)
+    except Exception as e:
+        await c.answer(f"Ошибка покупки: {str(e)[:50]}", show_alert=True)
 
 @r.callback_query(F.data.in_(["achievements_progress_all", "level_progress", "level_next", "atm_regen_time", "atm_max_info", "atm_boosters"]))
 async def handle_progress(c):
@@ -586,25 +579,30 @@ async def handle_progress(c):
     except Exception:
         await c.answer("Ошибка загрузки", show_alert=True)
 
-@r.callback_query(F.data.in_(["craft_history", "rademka_stats", "rademka_top", "rademka_random", "my_reputation", "top_reputation", "specialization_info", "craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]))
+@r.callback_query(F.data.in_(["craft_history", "rademka_stats", "rademka_top", "rademka_random"]))
 async def handle_placeholders(c):
     try:
         await c.answer()
-        if c.data == "my_reputation":
-            p = await get_patsan_cached(c.from_user.id)
-            await c.answer(f"Твоя репутация (авторитет): {p.get('avtoritet', 1)}", show_alert=True)
-        elif c.data == "top_reputation":
-            from handlers.commands import cmd_top
-            await cmd_top(c.message)
-        elif c.data == "specialization_info":
-            await csd(c)
-        elif c.data.startswith("craft_"):
-            item_id = c.data.replace("craft_", "")
-            await c.answer(f"Крафт {item_id} начат", show_alert=True)
-        else:
-            await c.answer("Функция пока недоступна", show_alert=True)
+        await c.answer("Функция пока недоступна", show_alert=True)
     except Exception:
         await c.answer("Ошибка", show_alert=True)
+
+@r.callback_query(F.data == "my_reputation")
+async def cmr(c):
+    try:
+        await c.answer()
+        p = await get_patsan_cached(c.from_user.id)
+        await c.answer(f"Твоя репутация (авторитет): {p.get('avtoritet', 1)}", show_alert=True)
+    except Exception:
+        await c.answer("Ошибка репутации", show_alert=True)
+
+@r.callback_query(F.data == "top_reputation")
+async def ctr(c):
+    try:
+        await c.answer()
+        await cmd_top(c.message)
+    except Exception:
+        await c.answer("Ошибка топа репутации", show_alert=True)
 
 @r.callback_query(F.data == "change_nickname")
 async def ccn(c, state: FSMContext):
@@ -614,6 +612,23 @@ async def ccn(c, state: FSMContext):
         await process_nickname(c.message, state)
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
+
+@r.callback_query(F.data == "specialization_info")
+async def csi2(c):
+    try:
+        await c.answer()
+        await csd(c)
+    except Exception:
+        await c.answer("Ошибка информации о специализации", show_alert=True)
+
+@r.callback_query(F.data.in_(["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]))
+async def ccs(c):
+    try:
+        await c.answer()
+        item_id = c.data.replace("craft_", "")
+        await c.answer(f"Крафт {item_id} начат", show_alert=True)
+    except:
+        pass
 
 @r.callback_query(F.data.startswith("spec_info_"))
 async def csi(c):
