@@ -3,8 +3,9 @@ import logging
 import os
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from db_manager import init_bot, shutdown  # Изменено: database. удалено
+from db_manager import init_bot, shutdown
 from dotenv import load_dotenv
+from handlers import router  # Импортируем только один роутер
 
 load_dotenv()
 
@@ -26,21 +27,7 @@ async def main():
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
         
-        from handlers.commands import router as commands_router
-        from handlers.callbacks import router as callbacks_router
-        from handlers.daily import router as daily_router
-        from handlers.nickname_and_rademka import router as nickname_router
-        from handlers.shop import router as shop_router
-        from handlers.top import router as top_router
-        from handlers.atm_handlers import router as atm_router
-        
-        dp.include_router(commands_router)
-        dp.include_router(callbacks_router)
-        dp.include_router(daily_router)
-        dp.include_router(nickname_router)
-        dp.include_router(shop_router)
-        dp.include_router(top_router)
-        dp.include_router(atm_router)
+        dp.include_router(router)  # Подключаем один общий роутер
         
         logger.info("Бот запускается...")
         await dp.start_polling(bot)
