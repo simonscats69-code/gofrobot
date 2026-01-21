@@ -2,8 +2,8 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database.db_manager import get_patsan, get_patsan_cached, get_top_players, RANKS
-from database.db_manager import get_specialization_bonuses, get_daily_reward
-from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
+from database.db_manager import get_daily_reward
+from keyboards.keyboards import main_keyboard, craft_keyboard, profile_extended_keyboard
 from keyboards.keyboards import daily_keyboard, rademka_keyboard, top_sort_keyboard
 from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
 from handlers.callbacks import get_user_rank, pb, ft, get_emoji
@@ -23,7 +23,7 @@ async def cmd_start(message: types.Message):
         f"🌀 <b>Атмосферы:</b> [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
         f"💰 <b>Деньги:</b> {patsan.get('dengi', 0)}р | 🐍 <b>Змий:</b> {patsan.get('zmiy', 0.0):.1f}кг\n\n"
         f"<i>Иди заварваривай коричневага, а то старшие придут и спросят.</i>\n"
-        f"<i>🔥 Новое в обновлении: специализации, крафт, уровни!</i>",
+        f"<i>🔥 Новое в обновлении: крафт, уровни!</i>",
         reply_markup=main_keyboard(),
         parse_mode="HTML"
     )
@@ -35,8 +35,6 @@ async def cmd_profile(message: types.Message):
     atm_count, max_atm = patsan.get('atm_count', 0), patsan.get('max_atm', 12)
     upgrades = patsan.get("upgrades", {})
     bought = [k for k, v in upgrades.items() if v] if upgrades else []
-    spec = patsan.get("specialization", "")
-    spec_text = f"\n<b>🌳 Специализация:</b> {spec}" if spec else ""
     upgrade_text = "\n<b>🛒 Нагнетатели:</b>\n" + "\n".join(f"• {upg}" for upg in bought) if bought else ""
     
     await message.answer(
@@ -47,7 +45,7 @@ async def cmd_profile(message: types.Message):
         f"🐍 Коричневаг: {patsan.get('zmiy', 0.0):.3f} кг\n💰 Деньги: {patsan.get('dengi', 0)} руб.\n\n"
         f"<b>Скиллы:</b>\n💪 Давка: {patsan.get('skill_davka', 1)}\n"
         f"🛡️ Защита: {patsan.get('skill_zashita', 1)}\n🔍 Находка: {patsan.get('skill_nahodka', 1)}"
-        f"{upgrade_text}{spec_text}",
+        f"{upgrade_text}",
         reply_markup=profile_extended_keyboard(),
         parse_mode="HTML"
     )
@@ -91,39 +89,11 @@ async def cmd_rademka(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
     
     await message.answer(
-        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\n"
+        f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</I>\n\n"
         f"Выбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +1 авторитет\n• 10% его денег\n• Шанс забрать двенашку\n\n"
         f"<b>Риски:</b>\n• Можешь потерять 5% своих денег\n• -1 авторитет при неудаче\n• Отжатый пацан может отомстить\n\n"
         f"<b>Твои статы:</b>\n⭐ Авторитет: {patsan.get('avtoritet', 1)}\n💰 Деньги: {patsan.get('dengi', 0)}р\n📈 Уровень: {patsan.get('level', 1)}",
         reply_markup=rademka_keyboard(),
-        parse_mode="HTML"
-    )
-
-@router.message(Command("specializations"))
-async def cmd_specializations(message: types.Message):
-    patsan = await get_patsan_cached(message.from_user.id)
-    
-    if patsan.get("specialization"):
-        spec_bonuses = get_specialization_bonuses(patsan.get('specialization', ''))
-        bonuses_text = "\n".join([f"• {k}: {v}" for k, v in spec_bonuses.items()]) if spec_bonuses else "• Нет бонусов"
-        await message.answer(
-            f"<b>🌳 ТВОЯ СПЕЦИАЛИЗАЦИЯ</b>\n\n<b>{patsan.get('specialization', '').upper()}</b>\n\n"
-            f"<b>🎁 Бонусы:</b>\n{bonuses_text}\n\n"
-            f"<i>Сейчас у тебя может быть только одна специализации.</i>\n"
-            f"<i>Чтобы сменить, нужно сначала сбросить текущую (стоимость: 2000р).</i>",
-            reply_markup=main_keyboard(),
-            parse_mode="HTML"
-        )
-        return
-    
-    await message.answer(
-        "<b>🌳 ВЫБОР СПЕЦИАЛИЗАЦИИ</b>\n\n<i>Специализация даёт уникальные бонусы и открывает новые возможности.</i>\n"
-        "<i>Можно выбрать только одну. Выбор бесплатен при выполнении требований.</i>\n\n"
-        "<b>Доступные специализации:</b>\n• 💪 <b>Давила</b> - мастер давления коричневага\n"
-        "• 🔍 <b>Охотник за двенашками</b> - находит то, что другие не видят\n"
-        "• 🛡️ <b>Непробиваемый</b> - железные кишки и стальные нервы\n\n"
-        "<i>Выбери специализацию для подробной информации:</i>",
-        reply_markup=specializations_keyboard(),
         parse_mode="HTML"
     )
 
@@ -191,7 +161,7 @@ async def cmd_help(message: types.Message):
     help_text = ("<b>🆘 ПОМОЩЬ ПО БОТУ</b>\n\n<b>📋 Основные команды:</b>\n/start - Запуск бота\n/profile - Профиль игрока\n"
                 "/inventory - Инвентарь\n/daily - Ежедневная награда\n/top - Топ игроков\n/nickname - Никнейм и репутация\n\n"
                 "<b>🎮 Игровые действия:</b>\n• Давка коричневага (кнопка в меню)\n• Сдача змия на металл\n• Прокачка скиллов\n• Радёмка (PvP)\n\n"
-                "<b>🛠️ Новые системы:</b>\n/specializations - Специализации\n/craft - Крафт предметов\n/level - Информация об уровне\n\n"
+                "<b>🛠️ Новые системы:</b>\n/craft - Крафт предметов\n/level - Информация об уровне\n\n"
                 "<b>🏪 Магазин:</b>\n• Ряженка (300р) - +75% к давке\n• Чай сливовый (500р) - -2 атмосферы\n• Бублэки (800р) - +35% к находкам\n"
                 "• Курвасаны (1500р) - +2 авторитета\n\n<b>👤 Никнейм и репутация:</b>\n• Первая смена ника бесплатно\n"
                 "• Репутация = авторитет\n• Повышай авторитет через радёмки\n\n<b>🎯 Советы:</b>\n• Атмосферы восстанавливаются каждые 10 минут\n"
@@ -214,8 +184,6 @@ async def cmd_stats(message: types.Message):
            f"🌀 Атмосферы: {patsan.get('atm_count', 0)}/{patsan.get('max_atm', 12)}\n"
            f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n"
            f"🛒 Улучшений: {sum(1 for v in patsan.get('upgrades', {}).values() if v)}/4\n")
-    
-    if patsan.get("specialization"): text += f"🌳 Специализация: {patsan['specialization']}\n"
     
     await message.answer(text, reply_markup=main_keyboard(), parse_mode="HTML")
 
@@ -262,7 +230,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
 @router.message(Command("version"))
 async def cmd_version(message: types.Message):
     version_text = ("<b>🔄 ВЕРСИЯ БОТА: 2.1</b>\n\n<b>🎉 НОВОЕ В ОБНОВЛЕНИИ 2.1:</b>\n• ❌ <b>Удалена система достижений</b> - упрощена игра\n"
-                   "• 🌳 <b>Система специализаций</b> - уникальные бонусы\n• 🔨 <b>Крафт предметов</b> - создавай мощные вещи\n"
+                   "• 🔨 <b>Крафт предметов</b> - создавай мощные вещи\n"
                    "• 📈 <b>Уровни и опыт</b> - прогрессируй и получай награды\n• 🕵️ <b>Разведка радёмки</b> - узнавай шансы перед боем\n"
                    "• ⭐ <b>Система званий</b> - от Пацанчика до Царя гофры\n• 👤 <b>Никнейм и репутация</b> - система авторитета\n\n"
                    "<b>⚖️ Балансные изменения:</b>\n• Упрощена игровая механика\n• Улучшена производительность\n"
