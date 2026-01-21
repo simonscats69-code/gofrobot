@@ -161,19 +161,7 @@ async def cd(c):
     except Exception:
         await c.answer("Ошибка загрузки ежедневной награды", show_alert=True)
 
-@r.callback_query(F.data == "achievements")
-async def ca(c):
-    try:
-        await c.answer("Система достижений удалена", show_alert=True)
-        await c.message.answer(
-            "📜 <b>СИСТЕМА ДОСТИЖЕНИЙ УДАЛЕНА</b>\n\n"
-            "Система достижений была удалена из бота.\n"
-            "Вместо этого сосредоточься на прокачке уровня и скиллов!",
-            reply_markup=main_keyboard(),
-            parse_mode="HTML"
-        )
-    except Exception:
-        await c.answer("Ошибка загрузки достижений", show_alert=True)
+# УДАЛЕНО: achievements колбэк
 
 @r.callback_query(F.data == "rademka")
 async def cr(c):
@@ -211,17 +199,14 @@ async def ci(c):
     try:
         await c.answer()
         p = await get_patsan_cached(c.from_user.id)
-        i, ab = p.get("inventory", []), p.get("active_boosts", {})
-        if not i: t = "Пусто... Только пыль и тоска"
+        i = p.get("inventory", [])
+        if not i: 
+            t = "Пусто... Только пыль и тоска"
         else:
             cnt = {x: i.count(x) for x in set(i)}
             t = "<b>Твои вещи:</b>\n" + "\n".join(f"{ge(x)} {x}: {c} шт." for x, c in cnt.items())
-        if ab:
-            t += "\n\n<b>🔮 Активные бусты:</b>\n"
-            for b, e in ab.items():
-                if isinstance(e, (int, float)) and (tl := int(e) - int(time.time())) > 0:
-                    t += f"• {b}: {tl // 3600}ч {(tl % 3600) // 60}м\n"
-        await eoa(c, f"{t}\n\n🐍 Коричневагый змий: {p.get('zmiy', 0):.3f} кг\n🔨 Скрафчено предметов: {len(p.get('crafted_items', []))}", inventory_management_keyboard())
+        
+        await eoa(c, f"{t}\n\n🐍 Коричневагый змий: {p.get('zmiy', 0):.3f} кг", inventory_management_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка инвентаря: {str(e)[:50]}", show_alert=True)
 
@@ -239,59 +224,7 @@ async def cpr(c):
     except Exception as e:
         await c.answer(f"Ошибка профиля: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "craft")
-async def cc(c):
-    try:
-        await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
-        await eoa(c, f"<b>🔨 КРАФТ ПРЕДМЕТОВ</b>\n\n<i>Создавай мощные предметы из ингредиентов!</i>\n\n📦 Инвентарь: {len(p.get('inventory', []))} предметов\n🔨 Скрафчено: {len(p.get('crafted_items', []))} предметов\n💰 Деньги: {p.get('dengi', 0)}р\n\n<b>Выбери действие:</b>", craft_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка крафта: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data == "craft_items")
-async def cci(c):
-    try:
-        await c.answer()
-        ci = await get_craftable_items(c.from_user.id)
-        if not ci:
-            await eoa(c, "😕 <b>НЕТ ДОСТУПНЫХ РЕЦЕПТОВ</b>\n\nУ тебя пока нет нужных ингредиентов для крафта.\nСобирай двенашки, атмосферы и другие предметы!", back_to_craft_keyboard())
-            return
-        t = "<b>🔨 ДОСТУПНЫЕ ДЛЯ КРАФТА:</b>\n\n"
-        for i in ci:
-            if not isinstance(i, dict): continue
-            name, description = i.get('name', 'Неизвестно'), i.get('description', '')
-            can_craft, success_chance = i.get('can_craft', False), i.get('success_chance', 0)
-            t += f"<b>{name}</b> {'✅ МОЖНО' if can_craft else '❌ НЕЛЬЗЯ'}\n<i>{description}</i>\n🎲 Шанс успеха: {int(success_chance * 100)}%\n"
-            if not can_craft and i.get("missing"):
-                missing_items = i['missing'][:2]
-                t += f"<code>Не хватает: {', '.join(missing_items)}</code>\n"
-            t += "\n"
-        await eoa(c, t + "<i>Выбери предмет для крафта:</i>", craft_items_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка списка крафта: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data.startswith("craft_execute_"))
-async def cce(c):
-    try:
-        await c.answer("🔨 Крафт...")
-        rid, uid = c.data.replace("craft_execute_", ""), c.from_user.id
-        ok, msg, res = await craft_item(uid, rid)
-        if ok:
-            nm, dur = res.get("item", "предмет"), res.get("duration")
-            dt = f"\n⏱️ Действует: {dur // 3600} часов" if dur else ""
-            await eoa(c, f"✨ <b>КРАФТ УСПЕШЕН!</b>\n\n{msg}{dt}\n\n🎉 Ты создал новый предмет!\nПроверь инвентарь, чтобы использовать его.", main_keyboard())
-        else:
-            await eoa(c, f"💥 <b>КРАФТ ПРОВАЛЕН</b>\n\n{msg}\n\nИнгредиенты потеряны...\nПроверь снова, когда соберёшь больше!", back_to_craft_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка выполнения крафта: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data == "craft_recipes")
-async def ccr(c):
-    try:
-        await c.answer()
-        await eoa(c, "<b>📜 ВСЕ РЕЦЕПТЫ КРАФТА</b>\n\n<b>✨ Супер-двенашка</b>\nИнгредиенты: 3× двенашка, 500р\nШанс: 100% | Эффект: Повышает удачу на 1 час\n\n<b>⚡ Вечный двигатель</b>\nИнгредиенты: 5× атмосфера, 1× энергетик\nШанс: 80% | Эффект: Ускоряет восстановление атмосфер на 24ч\n\n<b>👑 Царский обед</b>\nИнгредиенты: 1× курвасаны, 1× ряженка, 300р\nШанс: 100% | Эффект: Максимальный буст на 30 минут\n\n<b>🌀 Бустер атмосфер</b>\nИнгредиенты: 2× энергетик, 1× двенашка, 2000р\nШанс: 70% | Эффект: +3 к максимальному запасу атмосфер\n\n<i>Собирай ингредиенты и создавай мощные предметы!</i>", craft_recipes_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка рецептов: {str(e)[:50]}", show_alert=True)
+# УДАЛЕНО: все колбэки крафта (craft, craft_items, craft_execute_, craft_recipes)
 
 @r.callback_query(F.data == "level_stats")
 async def cls(c):
@@ -437,7 +370,7 @@ async def handle_progress(c):
     except Exception:
         await c.answer("Ошибка загрузки", show_alert=True)
 
-@r.callback_query(F.data.in_(["craft_history", "rademka_stats", "rademka_top", "rademka_random"]))
+@r.callback_query(F.data.in_(["rademka_stats", "rademka_top", "rademka_random"]))
 async def handle_placeholders(c):
     try:
         await c.answer()
@@ -450,8 +383,6 @@ async def handle_placeholders(c):
         elif c.data == "rademka_top":
             from handlers.nickname_and_rademka import rademka_top
             await rademka_top(c)
-        else:
-            await c.answer("Функция пока недоступна", show_alert=True)
     except Exception:
         await c.answer("Ошибка", show_alert=True)
 
@@ -482,15 +413,7 @@ async def ccn(c, state: FSMContext):
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
 
-@r.callback_query(F.data == "specialization_info")
-async def csi2(c):
-    try:
-        await c.answer()
-        await c.answer("❌ Система специализаций отключена", show_alert=True)
-        p = await get_patsan_cached(c.from_user.id)
-        await eoa(c, await mmt(p), main_keyboard())
-    except Exception:
-        await c.answer("Ошибка информации о специализации", show_alert=True)
+# УДАЛЕНО: specialization_info колбэк
 
 @r.callback_query()
 async def uc(c):
