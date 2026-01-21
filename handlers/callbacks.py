@@ -357,56 +357,6 @@ async def ccr(c):
     except Exception as e:
         await c.answer(f"Ошибка рецептов: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "rademka_scout_menu")
-async def csm(c):
-    try:
-        await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
-        su, fl = p.get("rademka_scouts", 0), max(0, 5 - p.get("rademka_scouts", 0))
-        await eoa(c, f"<b>🕵️ РАЗВЕДКА РАДЁМКИ</b>\n\n<i>Узнай точный шанс успеха перед атакой!</i>\n\n🎯 <b>Преимущества разведки:</b>\n• Точно знаешь шанс победы\n• Учитываются все факторы\n• Можно выбрать другую цель\n\n📊 <b>Твоя статистика:</b>\n• Использовано разведок: {su}\n• Бесплатных осталось: {fl}/5\n• Стоимость разведки: {0 if fl > 0 else 50}р\n\n<i>Выбери действие:</i>", rademka_scout_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка разведки: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data == "rademka_scout_random")
-async def csr(c):
-    try:
-        await c.answer("🕵️ Разведка...")
-        uid, tp = c.from_user.id, await get_top_players(limit=50, sort_by="avtoritet")
-        tg = [p for p in tp if p.get("user_id") != uid]
-        if not tg:
-            await eoa(c, "😕 <b>НЕКОГО РАЗВЕДЫВАТЬ!</b>\n\nНа гофроцентрале кроме тебя никого нет...\nПриведи друзей, чтобы было кого разведывать!", back_to_rademka_keyboard())
-            return
-        t = random.choice(tg)
-        ok, msg, sd = await rademka_scout(uid, t.get("user_id"))
-        if not ok: return await c.answer(msg, show_alert=True)
-        ch, tn, f = sd.get("chance", 50), t.get("nickname", "Неизвестно"), sd.get("factors", [])
-        as_, ts = sd.get('attacker_stats', {}), sd.get('target_stats', {})
-        ar, tr = as_.get('rank', ('👶', 'Пацанчик'))[1], ts.get('rank', ('👶', 'Пацанчик'))[1]
-        txt = f"🎯 <b>РАЗВЕДКА ЗАВЕРШЕНА!</b>\n\n<b>Цель:</b> {tn}\n🎲 <b>Точный шанс победы:</b> {ch}%\n\n<b>📊 Факторы:</b>\n" + ("\n".join(f"• {x}" for x in f) if f else "• Неизвестные факторы") + f"\n\n<b>📈 Статистика:</b>\n• Твой авторитет: {as_.get('avtoritet', 0)} ({ar})\n• Его авторитет: {ts.get('avtoritet', 0)} ({tr})\n• Последняя активность: {ts.get('last_active_hours', 0)}ч назад\n\n💸 Стоимость разведки: {'Бесплатно' if sd.get('cost', 0) == 0 else '50р'}\n🕵️ Бесплатных разведок осталось: {sd.get('free_scouts_left', 0)}\n\n<i>Атаковать эту цель?</i>"
-        await eoa(c, txt, rademka_fight_keyboard(t.get("user_id"), scouted=True))
-    except Exception as e:
-        await c.answer(f"Ошибка случайной разведки: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data.startswith("rademka_scout_"))
-async def cst(c):
-    try:
-        await c.answer()
-        d = c.data.replace("rademka_scout_", "")
-        if d == "choose":
-            await eoa(c, "🎯 <b>ВЫБОР ЦЕЛИ ДЛЯ РАЗВЕДКИ</b>\n\nДля этой функции нужен список игроков.\nПока используй случайную цель или выбери из топа.", rademka_scout_keyboard())
-        elif d == "stats":
-            p = await get_patsan_cached(c.from_user.id)
-            su, fu = p.get("rademka_scouts", 0), min(5, p.get("rademka_scouts", 0))
-            await eoa(c, f"📊 <b>СТАТИСТИКА РАЗВЕДОК</b>\n\n🕵️ Всего разведок: {su}\n🎯 Бесплатных: {fu}/5\n💰 Платных: {max(0, su - 5)}\n💸 Потрачено на разведки: {max(0, su - 5) * 50}р\n\n", rademka_scout_keyboard())
-        else:
-            try:
-                result = await rademka_scout(c.from_user.id, int(d))
-                await c.answer("Разведка выполнена!" if result[0] else "Ошибка разведки", show_alert=True)
-            except ValueError:
-                await c.answer("Ошибка: неверный ID цели", show_alert=True)
-    except Exception as e:
-        await c.answer(f"Ошибка разведки: {str(e)[:50]}", show_alert=True)
-
 ACH = {
     "zmiy_collector": {"n":"Коллекционер змия","d":"Собери определённое количество змия","l":[(10,50,"Новичок",10),(100,300,"Любитель",50),(1000,1500,"Профессионал",200),(10000,5000,"КОРОЛЬ",1000)]},
     "money_maker": {"n":"Денежный мешок","d":"Заработай много денег","l":[(1000,100,"Бедолага",10),(10000,1000,"Состоятельный",100),(100000,5000,"Олигарх",500),(1000000,25000,"РОТШИЛЬД",2500)]},
@@ -600,7 +550,17 @@ async def handle_progress(c):
 async def handle_placeholders(c):
     try:
         await c.answer()
-        await c.answer("Функция пока недоступна", show_alert=True)
+        if c.data == "rademka_random":
+            from handlers.nickname_and_rademka import rademka_random
+            await rademka_random(c)
+        elif c.data == "rademka_stats":
+            from handlers.nickname_and_rademka import rademka_stats
+            await rademka_stats(c)
+        elif c.data == "rademka_top":
+            from handlers.nickname_and_rademka import rademka_top
+            await rademka_top(c)
+        else:
+            await c.answer("Функция пока недоступна", show_alert=True)
     except Exception:
         await c.answer("Ошибка", show_alert=True)
 
