@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from database.db_manager import get_patsan, get_patsan_cached, get_top_players, get_user_achievements, RANKS
 from database.db_manager import get_specialization_bonuses, get_daily_reward
 from keyboards.keyboards import main_keyboard, specializations_keyboard, craft_keyboard, profile_extended_keyboard
-from keyboards.keyboards import daily_keyboard, achievements_keyboard, rademka_keyboard, top_sort_keyboard
+from keyboards.keyboards import daily_keyboard, rademka_keyboard, top_sort_keyboard
 from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
 from handlers.callbacks import get_user_rank, pb, ft, get_emoji
 
@@ -88,27 +88,18 @@ async def cmd_daily(message: types.Message):
 
 @router.message(Command("achievements"))
 async def cmd_achievements(message: types.Message):
-    achievements = await get_user_achievements(message.from_user.id)
-    
-    if not achievements:
-        await message.answer(
-            "📜 <b>Твои достижения:</b>\n\nПока пусто... Действуй, пацан!\nЗаработай первое достижение!\n\n<i>Есть уровневие достижения с прогрессом!</i>",
-            reply_markup=achievements_keyboard(),
-            parse_mode="HTML"
-        )
-        return
-    
-    achievements_text = "📜 <b>ТВОИ ДОСТИЖЕНИЯ:</b>\n\n"
-    for i, ach in enumerate(achievements[:15], 1):
-        name, reward = ach.get("name", "Неизвестное"), ach.get("reward", 0)
-        reward_text = f" (+{reward}р)" if reward > 0 else ""
-        achievements_text += f"{i}. <b>{name}</b>{reward_text}\n"
-    
-    total_rewards = sum(ach.get("reward", 0) for ach in achievements)
-    achievements_text += f"\n💰 <i>Всего получено с достижений: {total_rewards}р</i>\n"
-    achievements_text += f"🔢 <i>Всего достижений: {len(achievements)}</i>"
-    
-    await message.answer(achievements_text, reply_markup=achievements_keyboard(), parse_mode="HTML")
+    await message.answer(
+        "📜 <b>СИСТЕМА ДОСТИЖЕНИЙ УДАЛЕНА</b>\n\n"
+        "Система достижений была удалена из бота.\n"
+        "Вместо этого сосредоточься на:\n"
+        "• Прокачке уровня и скиллов\n"
+        "• Сборе змия и денег\n"
+        "• Победах в радёмках\n"
+        "• Развитии специализаций\n\n"
+        "<i>Больше достижений не будет.</i>",
+        reply_markup=main_keyboard(),
+        parse_mode="HTML"
+    )
 
 @router.message(Command("rademka"))
 async def cmd_rademka(message: types.Message):
@@ -209,7 +200,7 @@ async def cmd_level(message: types.Message):
            f"🎁 <b>Награда за {cl + 1} уровень:</b>\n• +{next_level_reward}р\n")
     if max_atm_increase: text += "• +1 к максимальным атмосферам\n"
     text += (f"\n<b>ℹ️ Как получить опыт?</b>\n• Давка коричневага: 1-10 опыта\n• Сдача змия: 5-20 опыта\n"
-            f"• Прокачка скиллов: 15-30 опыта\n• Достижения: 10-1000 опыта\n• Ежедневные награды: переменный\n")
+            f"• Прокачка скиллов: 15-30 опыта\n• Ежедневные награды: переменный\n")
     
     await message.answer(text, reply_markup=level_stats_keyboard(), parse_mode="HTML")
 
@@ -233,14 +224,13 @@ async def cmd_stats(message: types.Message):
     rank_emoji, rank_name = get_user_rank(patsan)
     scouts_used = patsan.get("rademka_scouts", 0)
     crafted_count = len(patsan.get("crafted_items", []))
-    achievements_count = len(patsan.get("achievements", []))
     
     text = (f"<b>📊 ТВОЯ СТАТИСТИКА</b>\n\n<b>🎮 Общая:</b>\n{rank_emoji} <b>{rank_name}</b>\n"
            f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n"
            f"💰 Деньги: {patsan.get('dengi', 0)}р\n🐍 Всего собрано змия: {patsan.get('zmiy', 0.0):.1f}кг\n\n"
            f"<b>🔧 Прокачка:</b>\n💪 Давка: {patsan.get('skill_davka', 1)} ур.\n🛡️ Защита: {patsan.get('skill_zashita', 1)} ур.\n"
            f"🔍 Находка: {patsan.get('skill_nahodka', 1)} ур.\n\n<b>🎯 Активность:</b>\n🕵️ Разведок: {scouts_used}\n"
-           f"🔨 Скрафчено: {crafted_count}\n🏆 Достижений: {achievements_count}\n\n<b>📦 Ресурсы:</b>\n"
+           f"🔨 Скрафчено: {crafted_count}\n\n<b>📦 Ресурсы:</b>\n"
            f"🌀 Атмосферы: {patsan.get('atm_count', 0)}/{patsan.get('max_atm', 12)}\n"
            f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n"
            f"🛒 Улучшений: {sum(1 for v in patsan.get('upgrades', {}).values() if v)}/4\n")
@@ -275,7 +265,7 @@ async def cmd_shop(message: types.Message):
            f"<b>🥐 Курвасаны с телотинкой</b> - 1500р\n<i>Заряд энергии (+2 авторитета)</i>\n"
            f"Статус: {'✅ Куплено' if upgrades.get('kuryasany') else '❌ Нет в наличии'}\n\n"
            f"💰 <b>Твои деньги:</b> {patsan.get('dengi', 0)} руб.\n\n"
-           "<i>💡 Совет: Купи все улучшения для достижения 'Все нагнетатели' (+1500р)!</i>")
+           "<i>💡 Совет: Купи все улучшения для максимальной эффективности!</i>")
     
     await message.answer(text, reply_markup=shop_keyboard(), parse_mode="HTML")
 
@@ -291,12 +281,12 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
 
 @router.message(Command("version"))
 async def cmd_version(message: types.Message):
-    version_text = ("<b>🔄 ВЕРСИЯ БОТА: 2.0</b>\n\n<b>🎉 НОВОЕ В ОБНОВЛЕНИИ 2.0:</b>\n• 🌳 <b>Система специализаций</b> - уникальные бонусы\n"
-                   "• 🔨 <b>Крафт предметов</b> - создавай мощные вещи\n• 📈 <b>Уровни и опыт</b> - прогрессируй и получай награды\n"
-                   "• 🏆 <b>Уровневые достижения</b> - долгосрочные цели\n• 🕵️ <b>Разведка радёмки</b> - узнавай шансы перед боем\n"
+    version_text = ("<b>🔄 ВЕРСИЯ БОТА: 2.1</b>\n\n<b>🎉 НОВОЕ В ОБНОВЛЕНИИ 2.1:</b>\n• ❌ <b>Удалена система достижений</b> - упрощена игра\n"
+                   "• 🌳 <b>Система специализаций</b> - уникальные бонусы\n• 🔨 <b>Крафт предметов</b> - создавай мощные вещи\n"
+                   "• 📈 <b>Уровни и опыт</b> - прогрессируй и получай награды\n• 🕵️ <b>Разведка радёмки</b> - узнавай шансы перед боем\n"
                    "• ⭐ <b>Система званий</b> - от Пацанчика до Царя гофры\n• 👤 <b>Никнейм и репутация</b> - система авторитета\n\n"
-                   "<b>⚖️ Балансные изменения:</b>\n• Цены в магазине пересмотрены\n• Заработок с дачки увеличен\n"
-                   "• Стоимость прокачки снижена\n• Ежедневные награды зависят от уровня\n\n<b>📅 Следующее обновление:</b>\n"
+                   "<b>⚖️ Балансные изменения:</b>\n• Упрощена игровая механика\n• Улучшена производительность\n"
+                   "• Снижена сложность для новых игроков\n\n<b>📅 Следующее обновление:</b>\n"
                    "• 🤝 Банды и союзы\n• 🎪 Ивенты и турниры\n• 🏛️ Территории и влияние\n• 📊 Расширенная статистика\n\n"
                    "<i>Следи за новостями в @channel_name</i>")
     
