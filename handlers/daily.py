@@ -1,9 +1,9 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramBadRequest
-from database.db_manager import get_patsan_cached, get_daily
-from keyboards.keyboards import main_keyboard
-from keyboards.keyboards import daily_keyboard
+from db_manager import get_patsan_cached, get_daily
+from keyboards import main_keyboard
+from keyboards import daily_keyboard
 
 router = Router()
 
