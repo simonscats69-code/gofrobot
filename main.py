@@ -14,7 +14,6 @@ from handlers.daily import router as daily_router
 from handlers.nickname_and_rademka import router as nickname_rademka_router
 from handlers.specializations import router as specializations_router
 from handlers.craft import router as craft_router
-from handlers.achievements_progress import router as achievements_progress_router
 from handlers.atm_handlers import router as atm_handlers_router
 
 from database.db_manager import init_bot
@@ -30,7 +29,7 @@ async def main():
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
     
-    # Все роутеры
+    # Все роутеры (без achievements_progress.py)
     dp.include_router(commands_router)
     dp.include_router(callbacks_router)
     dp.include_router(shop_router)
@@ -38,7 +37,6 @@ async def main():
     dp.include_router(nickname_rademka_router)
     dp.include_router(specializations_router)
     dp.include_router(craft_router)
-    dp.include_router(achievements_progress_router)
     dp.include_router(atm_handlers_router)
     
     print("🤖 Бот запущен")
