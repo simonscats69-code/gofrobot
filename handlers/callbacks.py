@@ -2,10 +2,19 @@ from aiogram import Router, types, F, BaseMiddleware
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 import time, random, asyncio
-from db_manager import *
-from keyboards import *
+from db_manager import (
+    get_patsan, get_patsan_cached, save_patsan, get_top_players,
+    save_rademka_fight, calculate_atm_regen_time, get_connection,
+    davka_zmiy, sdat_zmiy, pump_skill, get_rank
+)
+from keyboards import (
+    main_keyboard, pump_keyboard, inventory_management_keyboard,
+    profile_extended_keyboard, level_stats_keyboard, atm_status_keyboard,
+    top_sort_keyboard, confirmation_keyboard, shop_keyboard,
+    daily_keyboard, rademka_keyboard, nickname_keyboard
+)
 
-r = Router()
+router = Router()
 
 def gr(p):
     if 'rank_emoji' in p and 'rank_name' in p:
@@ -50,7 +59,7 @@ class IgnoreNotModifiedMiddleware(BaseMiddleware):
                 return
             raise
 
-r.callback_query.middleware(IgnoreNotModifiedMiddleware())
+router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
 async def mmt(p):
     a, m = p.get('atm_count', 0), p.get('max_atm', 12)
@@ -128,13 +137,13 @@ async def ha(c, act):
         try: await eoa(c, f"❌ Ошибка: {str(e)[:100]}", main_keyboard())
         except: await c.message.answer(f"❌ Ошибка: {str(e)[:100]}")
 
-@r.callback_query(F.data.in_(["davka", "sdat"]))
+@router.callback_query(F.data.in_(["davka", "sdat"]))
 async def cba(c):
     try: await c.answer("🔄 Обработка...")
     except: pass
     await ha(c, c.data)
 
-@r.callback_query(F.data == "back_main")
+@router.callback_query(F.data == "back_main")
 async def bm(c):
     try:
         await c.answer()
@@ -143,7 +152,7 @@ async def bm(c):
     except Exception as e:
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "nickname_menu")
+@router.callback_query(F.data == "nickname_menu")
 async def nm(c):
     try:
         await c.answer()
@@ -152,7 +161,7 @@ async def nm(c):
     except Exception:
         await c.answer("Ошибка загрузки меню ника", show_alert=True)
 
-@r.callback_query(F.data == "daily")
+@router.callback_query(F.data == "daily")
 async def cd(c):
     try:
         await c.answer()
@@ -161,9 +170,7 @@ async def cd(c):
     except Exception:
         await c.answer("Ошибка загрузки ежедневной награды", show_alert=True)
 
-# УДАЛЕНО: achievements колбэк
-
-@r.callback_query(F.data == "rademka")
+@router.callback_query(F.data == "rademka")
 async def cr(c):
     try:
         await c.answer()
@@ -172,7 +179,7 @@ async def cr(c):
     except Exception:
         await c.answer("Ошибка загрузки радёмки", show_alert=True)
 
-@r.callback_query(F.data == "pump")
+@router.callback_query(F.data == "pump")
 async def cp(c):
     try:
         await c.answer()
@@ -183,7 +190,7 @@ async def cp(c):
     except Exception as e:
         await c.answer(f"Ошибка прокачки: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.startswith("pump_"))
+@router.callback_query(F.data.startswith("pump_"))
 async def cps(c):
     try:
         await c.answer("⚙️ Прокачка...")
@@ -194,7 +201,7 @@ async def cps(c):
     except Exception as e:
         await c.answer(f"Ошибка прокачки: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "inventory")
+@router.callback_query(F.data == "inventory")
 async def ci(c):
     try:
         await c.answer()
@@ -210,7 +217,7 @@ async def ci(c):
     except Exception as e:
         await c.answer(f"Ошибка инвентаря: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "profile")
+@router.callback_query(F.data == "profile")
 async def cpr(c):
     try:
         await c.answer()
@@ -224,9 +231,7 @@ async def cpr(c):
     except Exception as e:
         await c.answer(f"Ошибка профиля: {str(e)[:50]}", show_alert=True)
 
-# УДАЛЕНО: все колбэки крафта (craft, craft_items, craft_execute_, craft_recipes)
-
-@r.callback_query(F.data == "level_stats")
+@router.callback_query(F.data == "level_stats")
 async def cls(c):
     try:
         await c.answer()
@@ -238,7 +243,7 @@ async def cls(c):
     except Exception as e:
         await c.answer(f"Ошибка статистики уровней: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "atm_status")
+@router.callback_query(F.data == "atm_status")
 async def cas(c):
     try:
         await c.answer()
@@ -254,7 +259,7 @@ async def cas(c):
 
 TO = {"avtoritet":("авторитету","⭐","avtoritet"),"dengi":("деньгам","💰","dengi"),"zmiy":("змию","🐍","zmiy"),"total_skill":("сумме скиллов","💪","total_skill"),"level":("уровню","📈","level"),"rademka_wins":("победам в радёмках","👊","rademka_wins")}
 
-@r.callback_query(F.data == "top")
+@router.callback_query(F.data == "top")
 async def ctm(c):
     try:
         await c.answer()
@@ -273,7 +278,7 @@ async def grwt():
     except Exception:
         return []
 
-@r.callback_query(F.data.startswith("top_"))
+@router.callback_query(F.data.startswith("top_"))
 async def cst(c):
     try:
         await c.answer()
@@ -312,7 +317,7 @@ async def cst(c):
     except Exception as e:
         await c.answer(f"Ошибка загрузки топа: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.startswith("inventory_"))
+@router.callback_query(F.data.startswith("inventory_"))
 async def cia(c):
     try:
         await c.answer()
@@ -327,7 +332,7 @@ async def cia(c):
     except Exception as e:
         await c.answer(f"Ошибка инвентаря: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "confirm_trash_inventory")
+@router.callback_query(F.data == "confirm_trash_inventory")
 async def cct(c):
     try:
         await c.answer("🗑️ Удаление...")
@@ -343,7 +348,7 @@ async def cct(c):
     except Exception as e:
         await c.answer(f"Ошибка удаления мусора: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data == "shop")
+@router.callback_query(F.data == "shop")
 async def cs(c):
     try:
         await c.answer()
@@ -352,7 +357,7 @@ async def cs(c):
     except Exception as e:
         await c.answer(f"Ошибка магазина: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.startswith("buy_"))
+@router.callback_query(F.data.startswith("buy_"))
 async def cb(c):
     try:
         await c.answer("💰 Покупка...")
@@ -361,7 +366,7 @@ async def cb(c):
     except Exception as e:
         await c.answer(f"Ошибка покупки: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.in_(["level_progress", "level_next", "atm_regen_time", "atm_max_info", "atm_boosters"]))
+@router.callback_query(F.data.in_(["level_progress", "level_next", "atm_regen_time", "atm_max_info", "atm_boosters"]))
 async def handle_progress(c):
     try:
         await c.answer()
@@ -370,7 +375,7 @@ async def handle_progress(c):
     except Exception:
         await c.answer("Ошибка загрузки", show_alert=True)
 
-@r.callback_query(F.data.in_(["rademka_stats", "rademka_top", "rademka_random"]))
+@router.callback_query(F.data.in_(["rademka_stats", "rademka_top", "rademka_random"]))
 async def handle_placeholders(c):
     try:
         await c.answer()
@@ -386,7 +391,7 @@ async def handle_placeholders(c):
     except Exception:
         await c.answer("Ошибка", show_alert=True)
 
-@r.callback_query(F.data == "my_reputation")
+@router.callback_query(F.data == "my_reputation")
 async def cmr(c):
     try:
         await c.answer()
@@ -395,7 +400,7 @@ async def cmr(c):
     except Exception:
         await c.answer("Ошибка репутации", show_alert=True)
 
-@r.callback_query(F.data == "top_reputation")
+@router.callback_query(F.data == "top_reputation")
 async def ctr(c):
     try:
         await c.answer()
@@ -404,7 +409,7 @@ async def ctr(c):
     except Exception:
         await c.answer("Ошибка топа репутации", show_alert=True)
 
-@r.callback_query(F.data == "change_nickname")
+@router.callback_query(F.data == "change_nickname")
 async def ccn(c, state: FSMContext):
     try:
         await c.answer()
@@ -413,9 +418,7 @@ async def ccn(c, state: FSMContext):
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
 
-# УДАЛЕНО: specialization_info колбэк
-
-@r.callback_query()
+@router.callback_query()
 async def uc(c):
     try:
         await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
@@ -423,4 +426,3 @@ async def uc(c):
 
 get_user_rank = gr
 get_emoji = ge
-router = r
