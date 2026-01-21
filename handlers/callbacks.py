@@ -2,8 +2,8 @@ from aiogram import Router, types, F, BaseMiddleware
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 import time, random, asyncio
-from database.db_manager import *
-from keyboards.keyboards import *
+from db_manager import *
+from keyboards import *
 
 r = Router()
 
