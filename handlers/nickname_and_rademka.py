@@ -1,3 +1,4 @@
+# nickname_and_rademka.py (упрощенная версия)
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -5,6 +6,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
 import time
 import random
+from database.db_manager import (get_patsan_cached, change_nickname, get_connection, 
+                                get_patsan, save_patsan, save_rademka_fight, 
+                                get_top_players, get_specialization_bonuses, 
+                                check_level_up, get_rank)
+from keyboards.keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
+                                rademka_fight_keyboard, back_to_rademka_keyboard, 
+                                achievements_keyboard, daily_keyboard)
 
 router = Router()
 
@@ -23,74 +31,30 @@ def ignore_not_modified_error(func):
             raise
     return wrapper
 
-try:
-    from database.db_manager import (get_patsan_cached, change_nickname, get_connection, 
-                                    get_patsan, save_patsan, save_rademka_fight, 
-                                    get_top_players, get_specialization_bonuses, 
-                                    check_level_up, get_rank)
-    DB_IMPORTS_OK = True
-except ImportError as e:
-    print(f"Import error: {e}")
-    DB_IMPORTS_OK = False
-    async def get_patsan_cached(*a,**k):return{}
-    async def change_nickname(*a,**k):return False,"DB недоступна"
-    async def get_connection(*a,**k):return None
-    async def get_patsan(*a,**k):return{}
-    async def save_patsan(*a,**k):pass
-    async def save_rademka_fight(*a,**k):pass
-    async def get_top_players(*a,**k):return[]
-    def get_specialization_bonuses(*a,**k):return{}
-    async def check_level_up(*a,**k):return False,{}
-    def get_rank(*a,**k):return"Пацанчик","👶"
-
-try:
-    from keyboards.keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
-                                    rademka_fight_keyboard, back_to_rademka_keyboard, 
-                                    achievements_keyboard, daily_keyboard)
-    KEYBOARDS_OK = True
-except ImportError as e:
-    print(f"Keyboard import error: {e}")
-    KEYBOARDS_OK = False
-    def main_keyboard():return None
-    def nickname_keyboard():return None
-    def rademka_keyboard():return None
-    def rademka_fight_keyboard(*a,**k):return None
-    def back_to_rademka_keyboard():return None
-    def achievements_keyboard():return None
-    def daily_keyboard():return None
-
 @router.message(Command("nickname"))
 async def cmd_nickname(m: types.Message, state: FSMContext):
-    if not DB_IMPORTS_OK: 
-        return await m.answer("🏷️ <b>НИКНЕЙМ</b>\n\nБаза недоступна.", parse_mode="HTML")
     p = await get_patsan_cached(m.from_user.id)
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else '5000 руб.'
-    await m.answer(f"🏷️ <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n🔤 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💸 <b>Стоимость смены ника:</b> {c}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await m.answer(f"🏷️ <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n🔤 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💸 <b>Стоимость смены ника:</b> {c}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "nickname_menu")
 async def nickname_menu(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     p = await get_patsan_cached(c.from_user.id)
     cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else '5000 руб.'
-    await c.message.edit_text(f"🏷️ <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n🔤 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💸 <b>Стоимость смены ника:</b> {cst}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(f"🏷️ <b>НИКНЕЙМ И РЕПУТАЦИЯ</b>\n\n🔤 <b>Твой ник:</b> <code>{p.get('nickname','Неизвестно')}</code>\n⭐ <b>Авторитет:</b> {p.get('avtoritet',1)}\n💸 <b>Стоимость смены ника:</b> {cst}\n\n<i>Выбери действие:</i>", reply_markup=nickname_keyboard(), parse_mode="HTML")
     await c.answer()
 
 @router.callback_query(F.data == "my_reputation")
 async def my_reputation(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     p = await get_patsan_cached(c.from_user.id)
     rn, re = get_rank(p.get('avtoritet',1))
-    await c.message.edit_text(f"⭐ <b>МОЯ РЕПУТАЦИЯ</b>\n\n{re} <b>Звание:</b> {rn}\n🏆 <b>Авторитет:</b> {p.get('avtoritet',1)}\n\n<b>Как повысить?</b>\n• Побеждай в радёмках (+1)\n• Покупай курвасаны (+2)\n• Выполняй достижения\n\n<i>Чем выше авторитет, тем больше уважения!</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(f"⭐ <b>МОЯ РЕПУТАЦИЯ</b>\n\n{re} <b>Звание:</b> {rn}\n🏆 <b>Авторитет:</b> {p.get('avtoritet',1)}\n\n<b>Как повысить?</b>\n• Побеждай в радёмках (+1)\n• Покупай курвасаны (+2)\n• Выполняй достижения\n\n<i>Чем выше авторитет, тем больше уважения!</i>", reply_markup=nickname_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "top_reputation")
 async def top_reputation(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     tp = await get_top_players(limit=10, sort_by="avtoritet")
     if not tp: 
-        await c.message.edit_text("🥇 <b>ТОП АВТОРИТЕТА</b>\n\nПока никого нет в топе!\nБудь первым!\n\n<i>Слава ждёт!</i>", reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+        await c.message.edit_text("🥇 <b>ТОП АВТОРИТЕТА</b>\n\nПока никого нет в топе!\nБудь первым!\n\n<i>Слава ждёт!</i>", reply_markup=nickname_keyboard(), parse_mode="HTML")
     else:
         mds, txt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], "🥇 <b>ТОП АВТОРИТЕТА</b>\n\n"
         for i, p in enumerate(tp):
@@ -103,13 +67,11 @@ async def top_reputation(c: types.CallbackQuery):
                 txt+=f"\n🎯 <b>Твоя позиция:</b> {mds[i] if i<len(mds) else str(i+1)}"
                 break
         txt+=f"\n👥 <i>Всего пацанов: {len(tp)}</i>"
-        await c.message.edit_text(txt, reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+        await c.message.edit_text(txt, reply_markup=nickname_keyboard(), parse_mode="HTML")
     await c.answer()
 
 @router.callback_query(F.data == "change_nickname")
 async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     p = await get_patsan_cached(c.from_user.id)
     if await state.get_state() == NicknameChange.waiting_for_nickname.state:
         return await c.answer("Ты уже в процессе смены ника!", show_alert=True)
@@ -117,7 +79,7 @@ async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     txt = (f"✏️ <b>СМЕНА НИКА</b>\n\nТвой текущий ник: <code>{p.get('nickname','Неизвестно')}</code>\n" +
            (f"Ты уже менял ник.\nСтоимость: <b>{cost} руб.</b>\n" if nc else f"🎁 <b>Первая смена - БЕСПЛАТНО!</b>\nПотом 5000 руб.\n") +
            f"\nНапиши новый ник (3-20 символов, буквы и цифры):")
-    await c.message.answer(txt, reply_markup=nickname_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.answer(txt, reply_markup=nickname_keyboard(), parse_mode="HTML")
     await state.set_state(NicknameChange.waiting_for_nickname)
     await c.answer("Введи новый ник")
 
@@ -130,14 +92,11 @@ async def process_nickname(m: types.Message, state: FSMContext):
         return await m.answer("❌ Слишком длинный! Максимум 20 символов.\nПопробуй:")
     if not all(c.isalnum() or c in "_- " for c in nn): 
         return await m.answer("❌ Только буквы, цифры, пробелы, дефисы, подчёркивания!\nПопробуй:")
-    if not DB_IMPORTS_OK: 
-        return await m.answer("❌ База недоступна.\nПопробуйте позже.")
     ok, msg = await change_nickname(m.from_user.id, nn)
-    kb = main_keyboard() if KEYBOARDS_OK else None
     if ok:
-        await m.answer(f"✅ {msg}\nТеперь ты: <code>{nn}</code>", reply_markup=kb, parse_mode="HTML")
+        await m.answer(f"✅ {msg}\nТеперь ты: <code>{nn}</code>", reply_markup=main_keyboard(), parse_mode="HTML")
     else:
-        await m.answer(f"❌ {msg}\nПопробуй:", reply_markup=kb, parse_mode="HTML")
+        await m.answer(f"❌ {msg}\nПопробуй:", reply_markup=main_keyboard(), parse_mode="HTML")
     await state.clear()
 
 @router.message(Command("cancel"))
@@ -145,32 +104,26 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
     if await state.get_state() is None: 
         return await m.answer("Нечего отменять.")
     await state.clear()
-    await m.answer("Смена ника отменена.", reply_markup=main_keyboard() if KEYBOARDS_OK else None)
+    await m.answer("Смена ника отменена.", reply_markup=main_keyboard())
 
 @router.message(Command("rademka"))
 async def cmd_rademka(m: types.Message):
-    if not DB_IMPORTS_OK: 
-        return await m.answer("👊 <b>РАДЁМКА</b>\n\nБаза недоступна.", parse_mode="HTML")
     p = await get_patsan_cached(m.from_user.id)
     txt = (f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\nВыбери пацана!\nЗа успех:\n• +1 авторитет\n• 10% его денег\n• Шанс на двенашку\n\n<b>Риски:</b>\n• -5% своих денег\n• -1 авторитет при неудаче\n\n<b>Твои статы:</b>\n⭐ {p.get('avtoritet',1)}\n💰 {p.get('dengi',0)}р\n📈 {p.get('level',1)}")
-    await m.answer(txt, reply_markup=rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await m.answer(txt, reply_markup=rademka_keyboard(), parse_mode="HTML")
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
 async def callback_rademka(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     p = await get_patsan_cached(c.from_user.id)
-    await c.message.edit_text(f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\nВыбери пацана!\nЗа успех: +1 авторитет, 10% его денег, шанс на двенашку\n\nРиски: -5% денег, -1 авторитет\n\n<b>Твои статы:</b>\n⭐ {p.get('avtoritet',1)} | 💰 {p.get('dengi',0)}р | 📈 {p.get('level',1)}", reply_markup=rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(f"👊 <b>ПРОТАЩИТЬ КАК РАДЁМКУ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\nВыбери пацана!\nЗа успех: +1 авторитет, 10% его денег, шанс на двенашку\n\nРиски: -5% денег, -1 авторитет\n\n<b>Твои статы:</b>\n⭐ {p.get('avtoritet',1)} | 💰 {p.get('dengi',0)}р | 📈 {p.get('level',1)}", reply_markup=rademka_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "rademka_random")
 async def rademka_random(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     tp = await get_top_players(limit=50, sort_by="avtoritet")
     tg = [p for p in tp if p.get("user_id")!=c.from_user.id]
     if not tg: 
-        return await c.message.edit_text("😕 <b>НЕКОГО ПРОТАЩИВАТЬ!</b>\n\nПриведи друзей!", reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+        return await c.message.edit_text("😕 <b>НЕКОГО ПРОТАЩИВАТЬ!</b>\n\nПриведи друзей!", reply_markup=back_to_rademka_keyboard(), parse_mode="HTML")
     t = random.choice(tg)
     pid, tn, tav = t.get("user_id"), t.get("nickname","Неизвестно"), t.get("avtoritet",1)
     p = await get_patsan_cached(c.from_user.id)
@@ -187,12 +140,10 @@ async def rademka_random(c: types.CallbackQuery):
     ch = max(10, min(95, ch))
     ar, ae = get_rank(av); tr, te = get_rank(tav)
     tm = t.get('dengi_formatted', t.get('dengi',0))
-    await c.message.edit_text(f"🎯 <b>НАШЁЛ ЦЕЛЬ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\n👤 <b>Цель:</b> {tn}\n{te} <b>Звание:</b> {tr}\n⭐ {tav} | 💰 {tm}р | 📈 {t.get('level',1)}\n\n👤 <b>Ты:</b> {ae} {ar}\n⭐ {av}\n🎯 <b>Шанс:</b> {ch}%\n\n<b>Награда:</b> +1 авторитет, 10% его денег\n<b>Риск:</b> -1 авторитет, -5% денег\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid) if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(f"🎯 <b>НАШЁЛ ЦЕЛЬ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ!</i>\n\n👤 <b>Цель:</b> {tn}\n{te} <b>Звание:</b> {tr}\n⭐ {tav} | 💰 {tm}р | 📈 {t.get('level',1)}\n\n👤 <b>Ты:</b> {ae} {ar}\n⭐ {av}\n🎯 <b>Шанс:</b> {ch}%\n\n<b>Награда:</b> +1 авторитет, 10% его денег\n<b>Риск:</b> -1 авторитет, -5% денег\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid), parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("rademka_confirm_"))
 async def rademka_confirm(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     uid, tid = c.from_user.id, int(c.data.replace("rademka_confirm_", ""))
     a, t = await get_patsan(uid), await get_patsan(tid)
     if not a or not t: 
@@ -251,13 +202,11 @@ async def rademka_confirm(c: types.CallbackQuery):
         ltxt = f"\n\n🎉 <b>ПОВЫШЕНИЕ УРОВНЯ!</b> Теперь ты {a.get('level',1)} уровня!"
         await save_patsan(a)
     
-    await c.message.edit_text(txt + ltxt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(txt + ltxt, reply_markup=back_to_rademka_keyboard(), parse_mode="HTML")
     await c.answer()
 
 @router.callback_query(F.data == "rademka_stats")
 async def rademka_stats(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     try:
         cn = await get_connection()
         cur = await cn.execute('SELECT COUNT(*) as tf, SUM(CASE WHEN winner_id=? THEN 1 ELSE 0 END) as w, SUM(CASE WHEN loser_id=? THEN 1 ELSE 0 END) as l, SUM(CASE WHEN winner_id=? THEN money_taken ELSE 0 END) as mt, SUM(CASE WHEN loser_id=? THEN money_taken ELSE 0 END) as ml FROM rademka_fights WHERE winner_id=? OR loser_id=?', (c.from_user.id,)*6)
@@ -292,13 +241,11 @@ async def rademka_stats(c: types.CallbackQuery):
     except Exception as e:
         print(f"Ошибка статистики: {e}")
         txt = f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\nБаза готовится...\n\n<i>Система учится считать!</i>"
-    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard(), parse_mode="HTML")
     await c.answer()
 
 @router.callback_query(F.data == "rademka_top")
 async def rademka_top(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK: 
-        return await c.answer("База недоступна", show_alert=True)
     try:
         cn = await get_connection()
         cur = await cn.execute('SELECT u.nickname, u.user_id, u.avtoritet, u.level, COUNT(CASE WHEN rf.winner_id=u.user_id THEN 1 END) as w, COUNT(CASE WHEN rf.loser_id=u.user_id THEN 1 END) as l, SUM(CASE WHEN rf.winner_id=u.user_id THEN rf.money_taken ELSE 0 END) as tm FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id OR u.user_id=rf.loser_id GROUP BY u.user_id, u.nickname, u.avtoritet, u.level HAVING w>0 ORDER BY w DESC, tm DESC LIMIT 10')
@@ -321,14 +268,12 @@ async def rademka_top(c: types.CallbackQuery):
     except Exception as e:
         print(f"Ошибка топа: {e}")
         txt = f"🥇 <b>ТОП РАДЁМЩИКОВ</b>\n\nРейтинг формируется...\n\n<i>Места скоро будут!</i>"
-    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard() if KEYBOARDS_OK else None, parse_mode="HTML")
+    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard(), parse_mode="HTML")
     await c.answer()
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
 async def back_to_main(c: types.CallbackQuery):
-    if not DB_IMPORTS_OK or not KEYBOARDS_OK: 
-        return await c.message.edit_text("<b>Главное меню</b>\n\nБот работает!", parse_mode="HTML")
     try:
         p = await get_patsan_cached(c.from_user.id)
         a, m = p.get('atm_count',0), p.get('max_atm',12)
