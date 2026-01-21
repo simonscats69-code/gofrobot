@@ -10,7 +10,6 @@ MENUS = {
         ("🛒 Магазин", "shop"), 
         ("🔨 Крафт", "craft"),
         ("🎁 Ежедневная", "daily"), 
-        ("📜 Достижения", "achievements"),
         ("👊 Радёмка", "rademka"), 
         ("🎒 Инвентарь", "inventory"),
         ("👤 Никнейм", "nickname_menu"),
@@ -64,20 +63,11 @@ MENUS = {
         ("👑 Топ", "rademka_top")
     ],
     
-    "ach": [
-        ("🔄 Обновить", "achievements"), 
-        ("📊 Прогресс", "achievements_progress"),
-        ("🎁 Ежедневная", "daily")
-    ],
-    
     "daily": [
-        ("🔄 Проверить", "daily"), 
-        ("📜 Достижения", "achievements"),
-        ("📈 Прогресс", "achievements_progress")
+        ("🔄 Проверить", "daily")
     ],
     
     "profile_ext": [
-        ("⭐ Прогресс", "achievements_progress"), 
         ("📈 Уровни", "level_stats"),
         ("🌡️ Атмосферы", "atm_status")
     ],
@@ -150,20 +140,10 @@ def specs_kb(): return mk("specs", "back_main")
 def craft_kb(): return mk("craft", "back_main")
 def rad_kb(): return mk("rad", "back_main")
 def daily_kb(): return mk("daily", "back_main")
-def ach_kb(): return mk("ach", "back_main")
 def profile_ext_kb(): return mk("profile_ext", "profile", 1)
 def top_kb(): return mk("top", "back_main", 2)
 def inv_kb(): return mk("inv", "inventory")
 def craft_items_kb(): return mk("craft_items", "craft", 1)
-
-def ach_progress_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="🐍 Коллекционер", callback_data="achievement_zmiy_collector")],
-        [Btn(text="💰 Денежный мешок", callback_data="achievement_money_maker")],
-        [Btn(text="👊 Король радёмок", callback_data="achievement_rademka_king")],
-        [Btn(text="📊 Все", callback_data="achievements_progress_all")],
-        [Btn(text="⬅️ Назад", callback_data="achievements")]
-    ])
 
 def level_stats_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -217,8 +197,6 @@ specializations_keyboard = specs_kb
 craft_keyboard = craft_kb
 rademka_keyboard = rad_kb
 daily_keyboard = daily_kb
-achievements_keyboard = ach_kb
-achievements_progress_keyboard = ach_progress_kb
 level_stats_keyboard = level_stats_kb
 atm_status_keyboard = atm_status_kb
 profile_extended_keyboard = profile_ext_kb
