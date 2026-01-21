@@ -1,11 +1,11 @@
 from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from database.db_manager import get_patsan, get_patsan_cached, get_top_players, RANKS
-from database.db_manager import get_daily_reward
-from keyboards.keyboards import main_keyboard, profile_extended_keyboard
-from keyboards.keyboards import daily_keyboard, rademka_keyboard, top_sort_keyboard
-from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
+from db_manager import get_patsan, get_patsan_cached, get_top_players, RANKS
+from db_manager import get_daily_reward
+from keyboards import main_keyboard, profile_extended_keyboard
+from keyboards import daily_keyboard, rademka_keyboard, top_sort_keyboard
+from keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
 from handlers.callbacks import get_user_rank, pb, ft, get_emoji
 
 router = Router()
