@@ -8,10 +8,5 @@ from .atm_handlers import router as atm_router
 from aiogram import Router
 
 router = Router()
-router.include_router(commands_router)
-router.include_router(callbacks_router)
-router.include_router(daily_router)
-router.include_router(nickname_router)
-router.include_router(shop_router)
-router.include_router(top_router)
-router.include_router(atm_router)
+
+__all__ = ['router']
