@@ -265,7 +265,7 @@ async def davka_zmiy(uid):
     
     kg, g = total//1000, total%1000
     w = f"{kg}кг {g}г" if g else f"{kg}кг"
-    res = {"cost":cost, "weight":w, "total_grams":total, "dvenashka_found":found, "rare_item_found":rare, "exp_gained":exp}
+    res = {"cost":cost, "weight":w, "wm":w, "total_grams":total, "dvenashka_found":found, "rare_item_found":rare, "exp_gained":exp}
     return p, res
 
 async def buy_spec(uid, spec):
@@ -367,7 +367,8 @@ async def sdat_zmiy(uid):
     await check_lvl(p)
     user_manager.mark_dirty(uid)
     await upd_ach(uid, "money_maker", money)
-    return p, {"old":old, "money":money, "avtoritet_bonus":p.get("avtoritet",1)*8, "exp_gained":exp}
+    res = {"old":old, "oz":old, "tm":money, "money":money, "avtoritet_bonus":p.get("avtoritet",1)*8, "exp_gained":exp}
+    return p, res
 
 async def buy_upgrade(uid, upg):
     p = await user_manager.get_user(uid)
