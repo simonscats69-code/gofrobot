@@ -25,7 +25,7 @@ def ignore_not_modified_error(func):
 
 try:
     from database.db_manager import (get_patsan_cached, change_nickname, get_connection, 
-                                    get_patsan, save_patsan, unlock_achievement, save_rademka_fight, 
+                                    get_patsan, save_patsan, save_rademka_fight, 
                                     get_top_players, get_specialization_bonuses, 
                                     check_level_up, get_rank)
     DB_IMPORTS_OK = True
@@ -37,7 +37,6 @@ except ImportError as e:
     async def get_connection(*a,**k):return None
     async def get_patsan(*a,**k):return{}
     async def save_patsan(*a,**k):pass
-    async def unlock_achievement(*a,**k):pass
     async def save_rademka_fight(*a,**k):pass
     async def get_top_players(*a,**k):return[]
     def get_specialization_bonuses(*a,**k):return{}
@@ -229,10 +228,6 @@ async def rademka_confirm(c: types.CallbackQuery):
         
         item_text = '\n🎁 <b>Забрал двенашку!</b>' if it else ''
         txt = f"✅ <b>УСПЕХ!</b>\n\n<i>ИДИ СЮДА РАДЁМКУ БАЛЯ! ТЫ ПРОТАЩИЛ!</i>\n\nТы унизил {t.get('nickname','Неизвестно')}!\n⭐ <b>+1 авторитет</b> (теперь {a.get('avtoritet',1)})\n💰 <b>+{mt}р</b>\n📚 <b>+{eg} опыта</b>{item_text}\n🎯 <b>Шанс:</b> {ch}%\n<i>Он теперь боится!</i>"
-        
-        await unlock_achievement(uid, "first_rademka", "Первая радёмка", 200)
-        if t.get("avtoritet",1) > a.get("avtoritet",1) + 20: 
-            await unlock_achievement(uid, "rademka_underdog", "Победа над сильнейшим", 500)
     else:
         mp = int(a.get("dengi",0)*0.05)
         a["dengi"] = a.get("dengi",0) - mp
