@@ -1,11 +1,24 @@
 import asyncio
 import logging
 import os
+import sys
+
+# Добавляем пути для корректного импорта
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from database.db_manager import init_bot, shutdown
 from dotenv import load_dotenv
-import handlers
+
+# Импортируем роутеры напрямую
+from handlers.commands import router as commands_router
+from handlers.callbacks import router as callbacks_router
+from handlers.daily import router as daily_router
+from handlers.nickname_and_rademka import router as nickname_router
+from handlers.shop import router as shop_router
+from handlers.top import router as top_router
+from handlers.atm_handlers import router as atm_router
 
 load_dotenv()
 
@@ -27,7 +40,13 @@ async def main():
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
         
-        dp.include_router(handlers.router)
+        dp.include_router(commands_router)
+        dp.include_router(callbacks_router)
+        dp.include_router(daily_router)
+        dp.include_router(nickname_router)
+        dp.include_router(shop_router)
+        dp.include_router(top_router)
+        dp.include_router(atm_router)
         
         logger.info("Бот запускается...")
         await dp.start_polling(bot)
