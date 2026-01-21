@@ -7,8 +7,7 @@ import time
 import random
 from database.db_manager import (get_patsan_cached, change_nickname, get_connection, 
                                 get_patsan, save_patsan, save_rademka_fight, 
-                                get_top_players, get_specialization_bonuses, 
-                                check_level_up, get_rank)
+                                get_top_players, check_level_up, get_rank)
 from keyboards.keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
                                 rademka_fight_keyboard, back_to_rademka_keyboard, 
                                 daily_keyboard)
@@ -131,8 +130,6 @@ async def rademka_random(c: types.CallbackQuery):
         ch += min(30, (av-tav)*5)
     elif tav > av: 
         ch += 20-min(30, (tav-av)*5)
-    if p.get("specialization")=="neprobivaemy": 
-        ch += 5
     td = await get_patsan(pid)
     if td and time.time()-td.get("last_update", time.time())>86400: 
         ch += 15
@@ -150,8 +147,6 @@ async def rademka_confirm(c: types.CallbackQuery):
     ch = 50 + (a.get("avtoritet",1)-t.get("avtoritet",1))*5
     if a.get("avtoritet",1)<t.get("avtoritet",1): 
         ch+=20
-    if a.get("specialization")=="neprobivaemy": 
-        ch+=5
     if t.get("level",1)>a.get("level",1): 
         ch-=min(15, (t.get("level",1)-a.get("level",1))*3)
     if time.time()-t.get("last_update", time.time())>86400: 
