@@ -6,7 +6,6 @@ MENUS = {
         ("🐍 Давить коричневага", "davka"), 
         ("💰 Сдать змия", "sdat"),
         ("📈 Прокачать", "pump"), 
-        ("🌳 Специализации", "specializations"),
         ("🛒 Магазин", "shop"), 
         ("🔨 Крафт", "craft"),
         ("🎁 Ежедневная", "daily"), 
@@ -42,13 +41,6 @@ MENUS = {
         ("⚡ Бустеры", "shop_boosters"),
         ("🔧 Инструменты", "shop_tools"), 
         ("🎁 Наборы", "shop_random")
-    ],
-    
-    "specs": [
-        ("💪 Давила", "spec_info_davila"), 
-        ("🔍 Охотник", "spec_info_ohotnik"),
-        ("🛡️ Непробиваемый", "spec_info_neprobivaemy"), 
-        ("❓ Инфо", "specialization_info")
     ],
     
     "craft": [
@@ -136,13 +128,12 @@ def nickname_kb(): return mk("nickname", "back_main", 2)
 def pump_kb(): return mk("pump", "back_main", 1)
 def shop_kb(): return mk("shop", "back_main", 1)
 def shop_cat_kb(): return mk("shop_cat", "shop", 1)
-def specs_kb(): return mk("specs", "back_main")
 def craft_kb(): return mk("craft", "back_main")
 def rad_kb(): return mk("rad", "back_main")
 def daily_kb(): return mk("daily", "back_main")
 def profile_ext_kb(): return mk("profile_ext", "profile", 1)
 def top_kb(): return mk("top", "back_main", 2)
-def inv_kb(): return mk("inv", "inventory")
+def inv_kb(): return mk("inv", "back_main")
 def craft_items_kb(): return mk("craft_items", "craft", 1)
 
 def level_stats_kb():
@@ -171,19 +162,9 @@ def craft_recipes_kb():
         [Btn(text="⬅️ Назад", callback_data="craft")]
     ])
 
-def specs_info_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="💪 Давила - инфо", callback_data="spec_info_davila")],
-        [Btn(text="🔍 Охотник - инфо", callback_data="spec_info_ohotnik")],
-        [Btn(text="🛡️ Непробиваемый - инфо", callback_data="spec_info_neprobivaemy")],
-        [Btn(text="💰 Купить", callback_data="specializations")],
-        [Btn(text="⬅️ Назад", callback_data="back_main")]
-    ])
-
 def back_kb(to="back_main"): return InlineKeyboardMarkup(inline_keyboard=[[Btn(text="⬅️ Назад", callback_data=to)]])
 def back_main(): return back_kb()
 def back_craft(): return back_kb("craft")
-def back_specs(): return back_kb("specializations")
 def back_profile(): return back_kb("profile")
 def back_rad(): return back_kb("rademka")
 def back_inv(): return back_kb("inventory")
@@ -193,7 +174,6 @@ nickname_keyboard = nickname_kb
 pump_keyboard = pump_kb
 shop_keyboard = shop_kb
 shop_categories_keyboard = shop_cat_kb
-specializations_keyboard = specs_kb
 craft_keyboard = craft_kb
 rademka_keyboard = rad_kb
 daily_keyboard = daily_kb
@@ -205,14 +185,11 @@ top_menu_keyboard = top_kb
 inventory_management_keyboard = inv_kb
 craft_items_keyboard = craft_items_kb
 craft_recipes_keyboard = craft_recipes_kb
-specializations_info_keyboard = specs_info_kb
 back_keyboard = back_main
 back_to_main_keyboard = back_main
 back_to_craft_keyboard = back_craft
-back_to_specializations_keyboard = back_specs
 back_to_profile_keyboard = back_profile
 back_to_rademka_keyboard = back_rad
 back_to_inventory_keyboard = back_inv
 craft_confirmation_keyboard = lambda r_id: conf_kb(f"craft_execute_{r_id}", info=f"recipe_info_{r_id}")
-specialization_confirmation_keyboard = lambda s_id: conf_kb(f"specialization_buy_{s_id}", info=f"specialization_info_{s_id}")
 confirmation_keyboard = conf_kb
