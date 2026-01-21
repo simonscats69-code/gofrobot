@@ -166,9 +166,14 @@ async def cd(c):
 @r.callback_query(F.data == "achievements")
 async def ca(c):
     try:
-        await c.answer()
-        from handlers.commands import cmd_achievements
-        await cmd_achievements(c.message)
+        await c.answer("Система достижений удалена", show_alert=True)
+        await c.message.answer(
+            "📜 <b>СИСТЕМА ДОСТИЖЕНИЙ УДАЛЕНА</b>\n\n"
+            "Система достижений была удалена из бота.\n"
+            "Вместо этого сосредоточься на прокачке уровня и скиллов!",
+            reply_markup=main_keyboard(),
+            parse_mode="HTML"
+        )
     except Exception:
         await c.answer("Ошибка загрузки достижений", show_alert=True)
 
@@ -343,7 +348,6 @@ async def cce(c):
             nm, dur = res.get("item", "предмет"), res.get("duration")
             dt = f"\n⏱️ Действует: {dur // 3600} часов" if dur else ""
             await eoa(c, f"✨ <b>КРАФТ УСПЕШЕН!</b>\n\n{msg}{dt}\n\n🎉 Ты создал новый предмет!\nПроверь инвентарь, чтобы использовать его.", main_keyboard())
-            await unlock_achievement(uid, "successful_craft", f"Успешный крафт: {nm}", 100)
         else:
             await eoa(c, f"💥 <b>КРАФТ ПРОВАЛЕН</b>\n\n{msg}\n\nИнгредиенты потеряны...\nПроверь снова, когда соберёшь больше!", back_to_craft_keyboard())
     except Exception as e:
@@ -356,49 +360,6 @@ async def ccr(c):
         await eoa(c, "<b>📜 ВСЕ РЕЦЕПТЫ КРАФТА</b>\n\n<b>✨ Супер-двенашка</b>\nИнгредиенты: 3× двенашка, 500р\nШанс: 100% | Эффект: Повышает удачу на 1 час\n\n<b>⚡ Вечный двигатель</b>\nИнгредиенты: 5× атмосфера, 1× энергетик\nШанс: 80% | Эффект: Ускоряет восстановление атмосфер на 24ч\n\n<b>👑 Царский обед</b>\nИнгредиенты: 1× курвасаны, 1× ряженка, 300р\nШанс: 100% | Эффект: Максимальный буст на 30 минут\n\n<b>🌀 Бустер атмосфер</b>\nИнгредиенты: 2× энергетик, 1× двенашка, 2000р\nШанс: 70% | Эффект: +3 к максимальному запасу атмосфер\n\n<i>Собирай ингредиенты и создавай мощные предметы!</i>", craft_recipes_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка рецептов: {str(e)[:50]}", show_alert=True)
-
-ACH = {
-    "zmiy_collector": {"n":"Коллекционер змия","d":"Собери определённое количество змия","l":[(10,50,"Новичок",10),(100,300,"Любитель",50),(1000,1500,"Профессионал",200),(10000,5000,"КОРОЛЬ",1000)]},
-    "money_maker": {"n":"Денежный мешок","d":"Заработай много денег","l":[(1000,100,"Бедолага",10),(10000,1000,"Состоятельный",100),(100000,5000,"Олигарх",500),(1000000,25000,"РОТШИЛЬД",2500)]},
-    "rademka_king": {"n":"Король радёмок","d":"Победи в множестве радёмок","l":[(5,200,"Задира",20),(25,1000,"Гроза района",100),(100,5000,"Неприкасаемый",500),(500,25000,"ЛЕГЕНДА",2500)]}
-}
-
-@r.callback_query(F.data == "achievements_progress")
-async def cap(c):
-    try:
-        await c.answer()
-        pd = await get_achievement_progress(c.from_user.id)
-        if not pd:
-            await eoa(c, "📊 <b>ПРОГРЕСС ДОСТИЖЕНИЙ</b>\n\nПока нет прогресса по уровневым достижениям.\nИграй активно, и прогресс появится!", achievements_progress_keyboard())
-            return
-        t = "<b>📊 ПРОГРЕСС ПО УРОВНЕВЫМ ДОСТИЖЕНИЯМ</b>\n\n"
-        for aid, d in pd.items():
-            t += f"<b>{d.get('name', 'Неизвестно')}</b>\n"
-            if d.get('next_level'):
-                t += f"Уровень: {d.get('current_level', 0)}/{len(d.get('all_levels', []))}\n"
-                t += f"Прогресс: {d.get('current_progress', 0):.1f}/{d['next_level'].get('goal', 0)} ({d.get('progress_percent', 0):.1f}%)\n"
-                t += f"Следующий уровень: {d['next_level'].get('title', '')} (+{d['next_level'].get('reward', 0)}р, +{d['next_level'].get('exp', 0)} опыта)\n"
-            else: t += f"✅ Все уровни пройдены! (Максимум)\n"
-            t += "\n"
-        await eoa(c, t + "<i>Выбери достижение для подробной информации:</i>", achievements_progress_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка прогресса: {str(e)[:50]}", show_alert=True)
-
-@r.callback_query(F.data.startswith("achievement_"))
-async def cad(c):
-    try:
-        await c.answer()
-        if (at := c.data.replace("achievement_", "")) not in ACH:
-            return await c.answer("Неизвестное достижение", show_alert=True)
-        a = ACH[at]
-        t = f"<b>🏆 {a.get('n', 'Неизвестно').upper()}</b>\n\n<i>{a.get('d', '')}</i>\n\n<b>📊 Уровни:</b>\n"
-        levels = a.get('l', [])
-        for i, l in enumerate(levels, 1):
-            t += f"{i}. <b>{l.get('t', '')}</b>: {l.get('g', 0)} → +{l.get('r', 0)}р (+{l.get('e', 0)} опыта)\n"
-        t += "\n\n<i>Прогресс автоматически отслеживается во время игры.</i>"
-        await eoa(c, t, back_to_profile_keyboard())
-    except Exception as e:
-        await c.answer(f"Ошибка достижения: {str(e)[:50]}", show_alert=True)
 
 @r.callback_query(F.data == "level_stats")
 async def cls(c):
@@ -536,12 +497,11 @@ async def cb(c):
     except Exception as e:
         await c.answer(f"Ошибка покупки: {str(e)[:50]}", show_alert=True)
 
-@r.callback_query(F.data.in_(["achievements_progress_all", "level_progress", "level_next", "atm_regen_time", "atm_max_info", "atm_boosters"]))
+@r.callback_query(F.data.in_(["level_progress", "level_next", "atm_regen_time", "atm_max_info", "atm_boosters"]))
 async def handle_progress(c):
     try:
         await c.answer()
-        if c.data == "achievements_progress_all": await cap(c)
-        elif c.data in ["level_progress", "level_next"]: await cls(c)
+        if c.data in ["level_progress", "level_next"]: await cls(c)
         elif c.data in ["atm_regen_time", "atm_max_info", "atm_boosters"]: await cas(c)
     except Exception:
         await c.answer("Ошибка загрузки", show_alert=True)
