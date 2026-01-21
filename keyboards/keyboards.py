@@ -12,9 +12,8 @@ MENUS = {
         ("🎁 Ежедневная", "daily"), 
         ("📜 Достижения", "achievements"),
         ("👊 Радёмка", "rademka"), 
-        ("🕵️ Разведка", "rademka_scout_menu"),
         ("🎒 Инвентарь", "inventory"),
-        ("👤 Никнейм", "nickname_menu"),  # <-- ДОБАВЛЕНА ЭТА СТРОКА
+        ("👤 Никнейм", "nickname_menu"),
         ("🏆 Топ", "top"), 
         ("📊 Профиль", "profile")
     ],
@@ -61,15 +60,8 @@ MENUS = {
     
     "rad": [
         ("🎯 Случайная цель", "rademka_random"), 
-        ("🕵️ Разведка", "rademka_scout_menu"),
         ("📊 Статистика", "rademka_stats"), 
         ("👑 Топ", "rademka_top")
-    ],
-    
-    "scout": [
-        ("🎯 Разведать", "rademka_scout_random"), 
-        ("🔍 Выбрать", "rademka_scout_choose"),
-        ("📊 Мои разведки", "rademka_scout_stats")
     ],
     
     "ach": [
@@ -114,9 +106,7 @@ MENUS = {
     ]
 }
 
-# ========== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ==========
 def mk(menu: str, back: str = None, cols: int = 2) -> InlineKeyboardMarkup:
-    """Создает клавиатуру из меню"""
     if menu not in MENUS: return main_kb()
     
     items = MENUS[menu]
@@ -133,41 +123,32 @@ def mk(menu: str, back: str = None, cols: int = 2) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=btns)
 
 def conf_kb(action: str, target: int = None, info: str = None) -> InlineKeyboardMarkup:
-    """Клавиатура подтверждения"""
     btns = [[Btn(text="✅ ДА", callback_data=f"confirm_{action}_{target}" if target else f"confirm_{action}"),
              Btn(text="❌ НЕТ", callback_data=f"cancel_{action}")]]
     
     if info: btns.append([Btn(text="📋 Подробнее", callback_data=info)])
     return InlineKeyboardMarkup(inline_keyboard=btns)
 
-def rad_fight_kb(target: int = None, scouted: bool = False) -> InlineKeyboardMarkup:
-    """Клавиатура для радёмки"""
+def rademka_fight_keyboard(target: int = None):
     if not target:
         return InlineKeyboardMarkup(inline_keyboard=[
             [Btn(text="🎯 Случайная цель", callback_data="rademka_random")],
-            [Btn(text="🕵️ Разведка", callback_data="rademka_scout_choose")],
             [Btn(text="⬅️ Назад", callback_data="rademka")]
         ])
     
-    btns = []
-    if scouted: btns.append([Btn(text="🎯 Шанс известен", callback_data="no_action")])
-    btns.extend([
+    return InlineKeyboardMarkup(inline_keyboard=[
         [Btn(text="✅ ДА, ПРОТАЩИТЬ!", callback_data=f"rademka_confirm_{target}")],
-        [Btn(text="🕵️ Сначала разведка", callback_data=f"rademka_scout_{target}")],
         [Btn(text="❌ Передумал", callback_data="rademka")]
     ])
-    return InlineKeyboardMarkup(inline_keyboard=btns)
 
-# ========== ГОТОВЫЕ КЛАВИАТУРЫ ==========
 def main_kb(): return mk("main")
-def nickname_kb(): return mk("nickname", "back_main", 2)  # <-- ДОБАВЛЕНА
+def nickname_kb(): return mk("nickname", "back_main", 2)
 def pump_kb(): return mk("pump", "back_main", 1)
 def shop_kb(): return mk("shop", "back_main", 1)
 def shop_cat_kb(): return mk("shop_cat", "shop", 1)
 def specs_kb(): return mk("specs", "back_main")
 def craft_kb(): return mk("craft", "back_main")
 def rad_kb(): return mk("rad", "back_main")
-def scout_kb(): return mk("scout", "rademka", 1)
 def daily_kb(): return mk("daily", "back_main")
 def ach_kb(): return mk("ach", "back_main")
 def profile_ext_kb(): return mk("profile_ext", "profile", 1)
@@ -175,7 +156,6 @@ def top_kb(): return mk("top", "back_main", 2)
 def inv_kb(): return mk("inv", "inventory")
 def craft_items_kb(): return mk("craft_items", "craft", 1)
 
-# Специальные клавиатуры
 def ach_progress_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [Btn(text="🐍 Коллекционер", callback_data="achievement_zmiy_collector")],
@@ -220,7 +200,6 @@ def specs_info_kb():
         [Btn(text="⬅️ Назад", callback_data="back_main")]
     ])
 
-# Простые кнопки "Назад"
 def back_kb(to="back_main"): return InlineKeyboardMarkup(inline_keyboard=[[Btn(text="⬅️ Назад", callback_data=to)]])
 def back_main(): return back_kb()
 def back_craft(): return back_kb("craft")
@@ -229,16 +208,14 @@ def back_profile(): return back_kb("profile")
 def back_rad(): return back_kb("rademka")
 def back_inv(): return back_kb("inventory")
 
-# Алиасы для обратной совместимости
 main_keyboard = main_kb
-nickname_keyboard = nickname_kb  # <-- ДОБАВЛЕНА
+nickname_keyboard = nickname_kb
 pump_keyboard = pump_kb
 shop_keyboard = shop_kb
 shop_categories_keyboard = shop_cat_kb
 specializations_keyboard = specs_kb
 craft_keyboard = craft_kb
 rademka_keyboard = rad_kb
-rademka_scout_keyboard = scout_kb
 daily_keyboard = daily_kb
 achievements_keyboard = ach_kb
 achievements_progress_keyboard = ach_progress_kb
@@ -261,4 +238,3 @@ back_to_inventory_keyboard = back_inv
 craft_confirmation_keyboard = lambda r_id: conf_kb(f"craft_execute_{r_id}", info=f"recipe_info_{r_id}")
 specialization_confirmation_keyboard = lambda s_id: conf_kb(f"specialization_buy_{s_id}", info=f"specialization_info_{s_id}")
 confirmation_keyboard = conf_kb
-rademka_fight_keyboard = rad_fight_kb
