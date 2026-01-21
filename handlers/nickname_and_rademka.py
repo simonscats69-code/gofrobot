@@ -11,7 +11,7 @@ from database.db_manager import (get_patsan_cached, change_nickname, get_connect
                                 check_level_up, get_rank)
 from keyboards.keyboards import (main_keyboard, nickname_keyboard, rademka_keyboard, 
                                 rademka_fight_keyboard, back_to_rademka_keyboard, 
-                                achievements_keyboard, daily_keyboard)
+                                daily_keyboard)
 
 router = Router()
 
@@ -235,7 +235,7 @@ async def rademka_stats(c: types.CallbackQuery):
                         nn = (ou.get("nickname") if ou else f"Пацан_{op.get('winner_id')}")[:17]+("..." if len(ou.get('nickname',''))>20 else "")
                         txt+=f"{i}. {nn} - {op.get('f',0)} раз, -{op.get('tm',0) or 0}р\n"
         else: 
-            txt = f"📊 <b>СТАТИСТИКА РАДЁМОК</b>\n\nНет радёмок!\nВыбери цель!\n\n<i>Пока мирный пацан...</i>"
+            txt = f"📊 <b>СТАТИСТИКА РАДёМОК</b>\n\nНет радёмок!\nВыбери цель!\n\n<i>Пока мирный пацан...</i>"
         await cn.close()
     except Exception as e:
         print(f"Ошибка статистики: {e}")
