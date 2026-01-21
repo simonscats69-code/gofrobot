@@ -559,30 +559,6 @@ async def csi2(c):
     except Exception:
         await c.answer("Ошибка информации о специализации", show_alert=True)
 
-@r.callback_query(F.data.in_(["craft_super_dvenashka", "craft_vechnyy_dvigatel", "craft_tarskiy_obed", "craft_booster_atm"]))
-async def ccs(c):
-    try:
-        await c.answer()
-        item_id = c.data.replace("craft_", "")
-        await c.answer(f"Крафт {item_id} начат", show_alert=True)
-    except:
-        pass
-
-@r.callback_query(F.data.startswith("spec_info_"))
-async def csi(c):
-    try:
-        await c.answer()
-        spec_id = c.data.replace("spec_info_", "")
-        await c.answer(f"Информация о специализации {spec_id}", show_alert=True)
-    except: pass
-
-@r.callback_query(F.data.startswith("recipe_"))
-async def cri(c):
-    try:
-        await c.answer()
-        await c.answer("Информация о рецепте", show_alert=True)
-    except: pass
-
 @r.callback_query()
 async def uc(c):
     try:
