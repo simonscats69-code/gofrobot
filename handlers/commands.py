@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from database.db_manager import get_patsan, get_patsan_cached, get_top_players, RANKS
 from database.db_manager import get_daily_reward
-from keyboards.keyboards import main_keyboard, craft_keyboard, profile_extended_keyboard
+from keyboards.keyboards import main_keyboard, profile_extended_keyboard
 from keyboards.keyboards import daily_keyboard, rademka_keyboard, top_sort_keyboard
 from keyboards.keyboards import nickname_keyboard, inventory_management_keyboard, level_stats_keyboard, shop_keyboard
 from handlers.callbacks import get_user_rank, pb, ft, get_emoji
@@ -22,8 +22,7 @@ async def cmd_start(message: types.Message):
         f"{rank_emoji} <b>{rank_name}</b> | ⭐ {patsan.get('avtoritet', 1)} | 📈 Ур. {patsan.get('level', 1)}\n\n"
         f"🌀 <b>Атмосферы:</b> [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
         f"💰 <b>Деньги:</b> {patsan.get('dengi', 0)}р | 🐍 <b>Змий:</b> {patsan.get('zmiy', 0.0):.1f}кг\n\n"
-        f"<i>Иди заварваривай коричневага, а то старшие придут и спросят.</i>\n"
-        f"<i>🔥 Новое в обновлении: крафт, уровни!</i>",
+        f"<i>Иди заварваривай коричневага, а то старшие придут и спросят.</i>",
         reply_markup=main_keyboard(),
         parse_mode="HTML"
     )
@@ -97,21 +96,6 @@ async def cmd_rademka(message: types.Message):
         parse_mode="HTML"
     )
 
-@router.message(Command("craft"))
-async def cmd_craft(message: types.Message):
-    patsan = await get_patsan_cached(message.from_user.id)
-    crafted_count = len(patsan.get("crafted_items", []))
-    
-    await message.answer(
-        f"<b>🔨 КРАФТ ПРЕДМЕТОВ</b>\n\n<i>Создавай мощные предметы из ингредиентов!</i>\n\n"
-        f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n🔨 Скрафчено: {crafted_count} предметов\n"
-        f"💰 Деньги: {patsan.get('dengi', 0)}р\n\n<b>Доступные рецепты:</b>\n• ✨ Супер-двенашка (3× двенашка + 500р)\n"
-        f"• ⚡ Вечный двигатель (5× атмосфера + 1× энергетик)\n• 👑 Царский обед (курвасаны + ряженка + 300р)\n"
-        f"• 🌀 Бустер атмосфер (2× энергетик + двенашка + 2000р)\n\n<i>Выбери действие:</i>",
-        reply_markup=craft_keyboard(),
-        parse_mode="HTML"
-    )
-
 @router.message(Command("inventory"))
 async def cmd_inventory(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
@@ -124,19 +108,7 @@ async def cmd_inventory(message: types.Message):
         for item in inv: item_count[item] = item_count.get(item, 0) + 1
         inv_text = "<b>Твои вещи:</b>\n" + "\n".join(f"{get_emoji(item)} {item}: {c} шт." for item,c in item_count.items())
     
-    boosts_text = ""
-    active_boosts = patsan.get("active_boosts", {})
-    if active_boosts:
-        import time
-        boosts_text = "\n\n<b>🔮 Активные бусты:</b>\n"
-        for boost, end_time in active_boosts.items():
-            if isinstance(end_time, (int, float)):
-                time_left = int(end_time) - int(time.time())
-                if time_left > 0:
-                    boosts_text += f"• {boost}: {time_left//3600}ч {(time_left%3600)//60}м\n"
-    
-    text = f"{inv_text}{boosts_text}\n\n🐍 Коричневагый змий: {patsan.get('zmiy', 0.0):.3f} кг\n"
-    text += f"🔨 Скрафчено предметов: {len(patsan.get('crafted_items', []))}"
+    text = f"{inv_text}\n\n🐍 Коричневагый змий: {patsan.get('zmiy', 0.0):.3f} кг"
     
     await message.answer(text, reply_markup=inventory_management_keyboard(), parse_mode="HTML")
 
@@ -161,11 +133,10 @@ async def cmd_help(message: types.Message):
     help_text = ("<b>🆘 ПОМОЩЬ ПО БОТУ</b>\n\n<b>📋 Основные команды:</b>\n/start - Запуск бота\n/profile - Профиль игрока\n"
                 "/inventory - Инвентарь\n/daily - Ежедневная награда\n/top - Топ игроков\n/nickname - Никнейм и репутация\n\n"
                 "<b>🎮 Игровые действия:</b>\n• Давка коричневага (кнопка в меню)\n• Сдача змия на металл\n• Прокачка скиллов\n• Радёмка (PvP)\n\n"
-                "<b>🛠️ Новые системы:</b>\n/craft - Крафт предметов\n/level - Информация об уровне\n\n"
                 "<b>🏪 Магазин:</b>\n• Ряженка (300р) - +75% к давке\n• Чай сливовый (500р) - -2 атмосферы\n• Бублэки (800р) - +35% к находкам\n"
                 "• Курвасаны (1500р) - +2 авторитета\n\n<b>👤 Никнейм и репутация:</b>\n• Первая смена ника бесплатно\n"
                 "• Репутация = авторитет\n• Повышай авторитет через радёмки\n\n<b>🎯 Советы:</b>\n• Атмосферы восстанавливаются каждые 10 минут\n"
-                "• Чем выше авторитет - тем больше бонус\n• Используй разведку перед радёмкой\n• Собирай предметы для крафта\n\n"
+                "• Чем выше авторитет - тем больше бонус\n• Используй разведку перед радёмкой\n\n"
                 "<i>Вопросы и предложения: @username</i>")
     
     await message.answer(help_text, reply_markup=main_keyboard(), parse_mode="HTML")
@@ -174,13 +145,12 @@ async def cmd_help(message: types.Message):
 async def cmd_stats(message: types.Message):
     patsan = await get_patsan_cached(message.from_user.id)
     rank_emoji, rank_name = get_user_rank(patsan)
-    crafted_count = len(patsan.get("crafted_items", []))
     
     text = (f"<b>📊 ТВОЯ СТАТИСТИКА</b>\n\n<b>🎮 Общая:</b>\n{rank_emoji} <b>{rank_name}</b>\n"
            f"📈 Уровень: {patsan.get('level', 1)} | 📚 Опыт: {patsan.get('experience', 0)}\n"
            f"💰 Деньги: {patsan.get('dengi', 0)}р\n🐍 Всего собрано змия: {patsan.get('zmiy', 0.0):.1f}кг\n\n"
            f"<b>🔧 Прокачка:</b>\n💪 Давка: {patsan.get('skill_davka', 1)} ур.\n🛡️ Защита: {patsan.get('skill_zashita', 1)} ур.\n"
-           f"🔍 Находка: {patsan.get('skill_nahodka', 1)} ур.\n\n<b>🎯 Активность:</b>\n🔨 Скрафчено: {crafted_count}\n\n<b>📦 Ресурсы:</b>\n"
+           f"🔍 Находка: {patsan.get('skill_nahodka', 1)} ур.\n\n<b>📦 Ресурсы:</b>\n"
            f"🌀 Атмосферы: {patsan.get('atm_count', 0)}/{patsan.get('max_atm', 12)}\n"
            f"📦 Инвентарь: {len(patsan.get('inventory', []))} предметов\n"
            f"🛒 Улучшений: {sum(1 for v in patsan.get('upgrades', {}).values() if v)}/4\n")
@@ -229,9 +199,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
 
 @router.message(Command("version"))
 async def cmd_version(message: types.Message):
-    version_text = ("<b>🔄 ВЕРСИЯ БОТА: 2.1</b>\n\n<b>🎉 НОВОЕ В ОБНОВЛЕНИИ 2.1:</b>\n• ❌ <b>Удалена система достижений</b> - упрощена игра\n"
-                   "• 🔨 <b>Крафт предметов</b> - создавай мощные вещи\n"
-                   "• 📈 <b>Уровни и опыт</b> - прогрессируй и получай награды\n• 🕵️ <b>Разведка радёмки</b> - узнавай шансы перед боем\n"
+    version_text = ("<b>🔄 ВЕРСИЯ БОТА: 2.1</b>\n\n<b>🎉 НОВОЕ В ОБНОВЛЕНИИ 2.1:</b>\n"
                    "• ⭐ <b>Система званий</b> - от Пацанчика до Царя гофры\n• 👤 <b>Никнейм и репутация</b> - система авторитета\n\n"
                    "<b>⚖️ Балансные изменения:</b>\n• Упрощена игровая механика\n• Улучшена производительность\n"
                    "• Снижена сложность для новых игроков\n\n<b>📅 Следующее обновление:</b>\n"
