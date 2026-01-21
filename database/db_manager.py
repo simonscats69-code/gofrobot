@@ -390,46 +390,6 @@ async def check_lvl(u):
         return True, {"old":old, "new":u["level"], "rew":rew, "atm_inc":u["level"]%5==0}
     return False, None
 
-async def rademka_scout(uid, tid):
-    p = await user_manager.get_user(uid)
-    t = await user_manager.get_user(tid)
-    if not t: return False, "Нет цели", {}
-    cost = 0 if p.get("rademka_scouts",0) < 5 else 50
-    if p.get("dengi",0) < cost: return False, f"Не хватает {cost-p['dengi']}р", {}
-    
-    base = 50
-    diff = p.get("avtoritet",1) - t.get("avtoritet",1)
-    chance = base + (diff*5)
-    if p.get("specialization") == "neprobivaemy": chance += 5
-    if p.get("avtoritet",1) < t.get("avtoritet",1): chance += 20
-    chance = max(10, min(95, chance))
-    
-    now = time.time()
-    last = t.get("last_update",now)
-    if now - last > 86400: chance += 15
-    
-    if cost > 0: 
-        p["dengi"] = p.get("dengi",0) - cost
-    p["rademka_scouts"] = p.get("rademka_scouts",0) + 1
-    user_manager.mark_dirty(uid)
-    
-    pool = await DatabaseManager.get_pool()
-    await pool.execute('UPDATE rademka_fights SET scouted=1 WHERE (winner_id=? AND loser_id=?) OR (winner_id=? AND loser_id=?)', 
-                      (uid,tid,tid,uid))
-    
-    factors = [f"Разница авторитета: {'+' if diff>0 else ''}{diff*5}%"]
-    if p.get("avtoritet",1) < t.get("avtoritet",1): factors.append("Гандикап слабого: +20%")
-    if now - last > 86400: factors.append("Цель неактивна: +15%")
-    if p.get("specialization") == "neprobivaemy": factors.append("Специализация: +5%")
-    
-    return True, f"Разведка {'бесплатная' if cost==0 else 'за 50р'} успешна!", {
-        "chance":int(chance), "cost":cost, "free_scouts_left":max(0,5-p.get("rademka_scouts",0)),
-        "attacker_stats":{"avtoritet":p.get("avtoritet",1),"rank":get_rank(p.get("avtoritet",1))},
-        "target_stats":{"avtoritet":t.get("avtoritet",1),"rank":get_rank(t.get("avtoritet",1)),
-                       "last_active_hours":int((now-last)/3600) if last else 0},
-        "factors":factors
-    }
-
 async def get_daily(uid):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT last_daily,level,dengi,nickname FROM users WHERE user_id=?', (uid,)) as c:
@@ -487,9 +447,6 @@ async def save_rademka(win, lose, money=0, item=None, scout=False):
 async def get_top_players(limit=10, sort="avtoritet"):
     return await user_manager.get_top_fast(limit, sort)
 
-async def get_user_achievements(uid):
-    return []  # Пустой список, так как достижения удалены
-
 async def init_bot(): 
     await DatabaseManager.get_pool()
     await user_manager.start_batch_saver()
@@ -503,7 +460,6 @@ async def shutdown():
 async def get_craftable_items(uid): return await get_craftable(uid)
 async def get_available_specializations(uid): return await get_available_specs(uid)
 async def buy_specialization(uid, spec): return await buy_spec(uid, spec)
-async def get_achievement_progress(uid): return {}  # Пустой словарь
 async def get_daily_reward(uid): return await get_daily(uid)
 async def change_nickname(uid, nick): return await change_nick(uid, nick)
 async def get_top(limit=10, sort="avtoritet"): return await get_top_players(limit, sort)
