@@ -7,7 +7,7 @@ import asyncio
 import logging
 from db_manager import (
     get_patsan, save_patsan, get_top_players,
-    save_rademka_fight, calculate_atm_regen_time, get_connection,
+    save_rademka_fight, calculate_atm_regen_time,
     davka_zmiy, uletet_zmiy, get_gofra_info, calculate_pvp_chance
 )
 from keyboards import (
@@ -430,17 +430,6 @@ async def ctm(c):
     except Exception as e:
         logger.error(f"Error in top menu: {e}", exc_info=True)
         await c.answer(f"Ошибка топа: {str(e)[:50]}", show_alert=True)
-
-async def grwt():
-    try:
-        cn = await get_connection()
-        cur = await cn.execute('SELECT u.user_id,u.nickname,u.gofra,u.cable_power,COUNT(rf.id) as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.gofra,u.cable_power ORDER BY wins DESC LIMIT 10')
-        r = await cur.fetchall()
-        await cn.close()
-        return [dict(x) | {"wins": x["wins"] or 0, "zmiy_grams": 0, "atm_count": 0} for x in r]
-    except Exception as e:
-        logger.error(f"Error getting rademka wins: {e}")
-        return []
 
 @router.callback_query(F.data.startswith("top_"))
 @handle_callback_errors
