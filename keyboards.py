@@ -6,6 +6,7 @@ MENUS = {
         ("🐍 Давить коричневага", "davka"), 
         ("💰 Сдать змия", "sdat"),
         ("🏗️ Моя гофра", "gofra_info"), 
+        ("🔌 Мой кабель", "cable_info"),
         ("🌡️ Атмосферы", "atm_status"),
         ("👊 Радёмка", "rademka"), 
         ("🏆 Топ", "top"), 
@@ -31,8 +32,16 @@ MENUS = {
         ("⬅️ Назад", "back_main")
     ],
     
+    "cable": [
+        ("💪 Сила кабеля", "cable_power_info"),
+        ("⚔️ Урон в PvP", "cable_pvp_info"),
+        ("📈 Прокачка", "cable_upgrade_info"),
+        ("⬅️ Назад", "back_main")
+    ],
+    
     "top": [
         ("🏗️ По гофре", "top_gofra"), 
+        ("🔌 По кабелю", "top_cable"),
         ("🐍 По змию", "top_zmiy"),
         ("💰 По деньгам", "top_dengi"),
         ("🌡️ По атмосферам", "top_atm")
@@ -59,6 +68,7 @@ def main_kb(): return mk("main")
 def nickname_kb(): return mk("nickname", "back_main", 2)
 def rad_kb(): return mk("rad", "back_main")
 def gofra_kb(): return mk("gofra", "profile", 1)
+def cable_kb(): return mk("cable", "profile", 1)
 def top_kb(): return mk("top", "back_main", 2)
 
 def back_kb(to="back_main"): 
@@ -88,8 +98,21 @@ def gofra_info_kb():
         [Btn(text="⬅️ В главное", callback_data="back_main")]
     ])
 
-level_stats_keyboard = gofra_info_kb
-atm_status_keyboard = atm_status_kb
+def cable_info_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="💪 Сила кабеля", callback_data="cable_power_info")],
+        [Btn(text="⚔️ Урон в PvP", callback_data="cable_pvp_info")],
+        [Btn(text="📈 Прокачка", callback_data="cable_upgrade_info")],
+        [Btn(text="⬅️ В главное", callback_data="back_main")]
+    ])
+
+def profile_extended_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="🏗️ Гофра", callback_data="gofra_info")],
+        [Btn(text="🔌 Кабель", callback_data="cable_info")],
+        [Btn(text="🌡️ Атмосферы", callback_data="atm_status")],
+        [Btn(text="⬅️ Главное меню", callback_data="back_main")]
+    ])
 
 def rademka_fight_keyboard(target_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -103,3 +126,7 @@ def back_to_rademka_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [Btn(text="⬅️ Назад к радёмке", callback_data="rademka")]
     ])
+
+level_stats_keyboard = gofra_info_kb
+atm_status_keyboard = atm_status_kb
+cable_stats_keyboard = cable_info_kb
