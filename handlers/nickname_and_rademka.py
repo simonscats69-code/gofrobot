@@ -6,10 +6,12 @@ from aiogram.exceptions import TelegramBadRequest
 import time
 import random
 import re
+import logging
 from db_manager import get_patsan, change_nickname, get_connection, save_patsan, save_rademka_fight, get_top_players, get_gofra_info, calculate_pvp_chance, can_fight_pvp
 from keyboards import main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_to_rademka_keyboard
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 class NicknameChange(StatesGroup):
     waiting_for_nickname = State()
@@ -252,8 +254,8 @@ async def rademka_stats(c: types.CallbackQuery):
             txt = f"📊 СТАТИСТИКА РАДЁМОК\n\nНет радёмок!\nВыбери цель!\n\nПока мирный пацан..."
         await cn.close()
     except Exception as e:
-        print(f"Ошибка статистики: {e}")
-        txt = f"📊 СТАТИСТИКА РАДЁМОК\n\nБаза готовится...\n\nСистема учится считать!"
+        logger.error(f"Ошибка статистики: {e}")
+        txt = f"📊 СТАТИСТИКА РАДёмОК\n\nБаза готовится...\n\nСистема учится считать!"
     await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard())
     await c.answer()
 
@@ -276,11 +278,11 @@ async def rademka_top(c: types.CallbackQuery):
                 txt+=f"{md} {nn} {gofra_info['emoji']}\n   🏗️ {gofra} | 🔌 {cable} | ✅ {w} ({win_rate:.0f}%)\n\n"
             txt+="Топ по победам"
         else: 
-            txt = f"🥇 ТОП РАДЁМЩИКОВ\n\nПока никого!\nБудь первым!\n\nСлава ждёт!"
+            txt = f"🥇 ТОП РАДёмЩИКОВ\n\nПока никого!\nБудь первым!\n\nСлава ждёт!"
         await cn.close()
     except Exception as e:
-        print(f"Ошибка топа: {e}")
-        txt = f"🥇 ТОП РАДЁМЩИКОВ\n\nРейтинг формируется...\n\nМеста скоро будут!"
+        logger.error(f"Ошибка топа: {e}")
+        txt = f"🥇 ТОП РАДёмЩИКОВ\n\nРейтинг формируется...\n\nМеста скоро будут!"
     await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard())
     await c.answer()
 
@@ -292,7 +294,7 @@ async def back_to_main(c: types.CallbackQuery):
         gofra_info = get_gofra_info(p.get('gofra',1))
         await c.message.edit_text(f"Главное меню\n{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra',1)} | 🔌 {p.get('cable_power',1)}\n\n🌀 Атмосферы: {p.get('atm_count',0)}/12\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nВыбери действие:", reply_markup=main_keyboard())
     except Exception as e: 
-        print(f"Ошибка главного: {e}")
+        logger.error(f"Ошибка главного: {e}")
         await c.message.edit_text("Главное меню\n\nБот работает!", reply_markup=main_keyboard())
 
 __all__ = ["router", "process_nickname"]
