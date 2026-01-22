@@ -1,12 +1,12 @@
-# main.py - исправленная версия
 import asyncio
 import logging
 import os
+import time
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from db_manager import init_bot, shutdown
 from dotenv import load_dotenv
-from handlers import router  # импортируем основной роутер из handlers
+from handlers import router
 
 load_dotenv()
 
@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 
 async def main():
     try:
+        print("🚀 Запуск бота на bothost.ru")
+        print(f"📁 Рабочая директория: {os.getcwd()}")
+        print(f"📂 Содержимое: {os.listdir('.')}")
+        
         await init_bot()
         
         BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -28,7 +32,6 @@ async def main():
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
         
-        # Включаем единый роутер из handlers
         dp.include_router(router)
         
         logger.info("Бот запускается...")
