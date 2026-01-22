@@ -5,7 +5,7 @@ import gc
 from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BotCommandScopeDefault
+from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
 from db_manager import init_bot, shutdown
 from dotenv import load_dotenv
 from handlers import router
@@ -68,7 +68,7 @@ def setup_logging():
 logger = setup_logging()
 
 async def set_bot_commands(bot: Bot):
-    commands = [
+    private_commands = [
         BotCommand(command="start", description="🚀 Начать игру"),
         BotCommand(command="davka", description="🐍 Давить коричневага"),
         BotCommand(command="uletet", description="✈️ Отправить змия"),
@@ -84,8 +84,23 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="menu", description="📱 Главное меню"),
     ]
     
-    await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
-    logger.info("✅ Команды бота установлены")
+    group_commands = [
+        BotCommand(command="start", description="🚀 Активировать в чате"),
+        BotCommand(command="gdavka", description="🐍 Давить змия в чате"),
+        BotCommand(command="gtop", description="🏆 Топ этого чата"),
+        BotCommand(command="gstats", description="📊 Статистика чата"),
+        BotCommand(command="gme", description="📈 Мой вклад в чат"),
+        BotCommand(command="ghelp", description="🆘 Помощь по чату"),
+        BotCommand(command="gmenu", description="📱 Меню для чата"),
+        BotCommand(command="davka", description="🐍 Давить (личное)"),
+        BotCommand(command="profile", description="📊 Профиль (личное)"),
+        BotCommand(command="top", description="🏆 Топ (личное)"),
+    ]
+    
+    await bot.set_my_commands(private_commands, scope=BotCommandScopeAllPrivateChats())
+    await bot.set_my_commands(group_commands, scope=BotCommandScopeAllGroupChats())
+    
+    logger.info("✅ Команды бота установлены (разные для лички и групп)")
 
 async def main():
     gc.collect()
