@@ -34,7 +34,6 @@ async def show_top(callback: types.CallbackQuery):
         "gofra": ("гофре", "🏗️", "gofra"),
         "cable": ("кабелю", "🔌", "cable_power"),
         "zmiy": ("змию", "🐍", "zmiy_grams"),
-        "dengi": ("деньгам", "💰", "dengi"),
         "atm": ("атмосферам", "🌀", "atm_count")
     }
     
@@ -71,8 +70,6 @@ async def show_top(callback: types.CallbackQuery):
             value = f"🏗️ {player['gofra']} {gofra_info['emoji']}"
         elif sort_type == "cable":
             value = f"🔌 {player['cable_power']}"
-        elif sort_type == "dengi":
-            value = f"💰 {player['dengi']}р"
         elif sort_type == "zmiy":
             value = f"🐍 {player['zmiy_grams']:.0f}г"
         else:
