@@ -9,7 +9,7 @@ import logging
 from db_manager import (
     get_patsan, davka_zmiy, uletet_zmiy, get_gofra_info, 
     format_length, ChatManager, calculate_atm_regen_time,
-    calculate_pvp_chance, can_fight_pvp
+    calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight
 )
 from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_keyboard, rademka_keyboard, nickname_keyboard
 
@@ -20,19 +20,19 @@ def get_chat_menu_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🐍 Давить в чате", callback_data="chat_davka"),
-            InlineKeyboardButton(text="🏆 Топ чата", callback_data="chat_top")
-        ],
-        [
-            InlineKeyboardButton(text="📊 Стата чата", callback_data="chat_stats"),
-            InlineKeyboardButton(text="👤 Мой вклад", callback_data="chat_me")
-        ],
-        [
-            InlineKeyboardButton(text="🏗️ Моя гофра", callback_data="chat_gofra"),
-            InlineKeyboardButton(text="🔌 Мой кабель", callback_data="chat_cable")
-        ],
-        [
-            InlineKeyboardButton(text="🌡️ Атмосферы", callback_data="chat_atm"),
             InlineKeyboardButton(text="👊 Радёмка", callback_data="chat_rademka")
+        ],
+        [
+            InlineKeyboardButton(text="🏆 Топ чата", callback_data="chat_top"),
+            InlineKeyboardButton(text="📊 Стата чата", callback_data="chat_stats")
+        ],
+        [
+            InlineKeyboardButton(text="👤 Мой вклад", callback_data="chat_me"),
+            InlineKeyboardButton(text="🏗️ Моя гофра", callback_data="chat_gofra")
+        ],
+        [
+            InlineKeyboardButton(text="🔌 Мой кабель", callback_data="chat_cable"),
+            InlineKeyboardButton(text="🌡️ Атмосферы", callback_data="chat_atm")
         ],
         [
             InlineKeyboardButton(text="🆘 Помощь", callback_data="chat_help"),
@@ -69,15 +69,19 @@ async def group_help(message: types.Message):
         "/start - Начать игру\n"
         "/davka - Давить коричневага\n"
         "/profile - Профиль\n"
-        "/top - Топ игроков\n\n"
+        "/top - Топ игроков\n"
+        "/rademka - Радёмка (PvP)\n\n"
         "👥 Команды чата:\n"
         "/gtop - Топ этого чата\n"
         "/gstats - Статистика чата\n"
         "/gme - Моя статистика в чате\n"
         "/gdavka - Давить змия в чате\n"
+        "/grademka - Радёмка в чате\n"
+        "/fight @игрок - Протащить игрока (ответом на сообщение)\n"
         "/gmenu - Меню для чата\n"
         "/ghelp - Эта справка\n\n"
-        "📊 В чате сохраняется общая статистика!",
+        "📊 В чате сохраняется общая статистика!\n"
+        "👊 Радёмки работают только между участниками чата!",
         reply_markup=get_chat_menu_keyboard()
     )
 
@@ -100,6 +104,108 @@ async def chat_stats_command(message: types.Message):
 @router.message(Command("gdavka", "g_davka", "chatdavka"))
 async def group_davka_command(message: types.Message):
     await process_chat_davka_message(message.from_user.id, message.chat.id, message)
+
+@router.message(Command("grademka", "g_rademka", "chatrademka"))
+async def group_rademka_command(message: types.Message):
+    chat = message.chat
+    
+    await ChatManager.register_chat(
+        chat_id=chat.id,
+        chat_title=chat.title if hasattr(chat, 'title') else "",
+        chat_type=chat.type
+    )
+    
+    p = await get_patsan(message.from_user.id)
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+    
+    can_fight, fight_msg = await can_fight_pvp(message.from_user.id)
+    fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
+    
+    text = f"👊 РАДЁМКА В ЧАТЕ\n\n"
+    text += f"{fight_status}\n\n"
+    text += f"Выбери пацана из участников чата!\n"
+    text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофре\n\n"
+    
+    try:
+        chat_stats = await ChatManager.get_chat_stats(message.chat.id)
+        if chat_stats['total_players'] > 1:
+            top_players = await ChatManager.get_chat_top(message.chat.id, limit=20)
+            opponents = [p for p in top_players if p['user_id'] != message.from_user.id]
+            
+            if opponents:
+                text += f"🎯 Доступные цели ({len(opponents)}):\n"
+                for i, opp in enumerate(opponents[:5], 1):
+                    nickname = opp.get('nickname', f'Игрок_{opp.get("user_id")}')
+                    if len(nickname) > 15:
+                        nickname = nickname[:12] + "..."
+                    text += f"{i}. {nickname}\n"
+                text += f"\nНажми на игрока в ответном сообщении с командой /fight"
+            else:
+                text += "😕 В чате нет других активных игроков!"
+        else:
+            text += "😕 В чате пока только ты один!\nПриведи друзей для радёмок!"
+    except Exception as e:
+        logger.error(f"Error getting chat players: {e}")
+        text += "\nОшибка загрузки списка игроков"
+    
+    await message.answer(text, reply_markup=get_chat_menu_keyboard())
+
+@router.message(Command("fight", "протащить", "радёмка"))
+async def fight_command(message: types.Message, command: CommandObject):
+    if not message.reply_to_message:
+        await message.answer("❌ Ответь на сообщение игрока, которого хочешь протащить!")
+        return
+    
+    target_user = message.reply_to_message.from_user
+    if target_user.id == message.from_user.id:
+        await message.answer("❌ Нельзя драться с самим собой!")
+        return
+    
+    target_data = await get_patsan(target_user.id)
+    attacker_data = await get_patsan(message.from_user.id)
+    
+    if not target_data:
+        await message.answer(f"❌ {target_user.first_name} ещё не зарегистрирован в боте!")
+        return
+    
+    can_fight, fight_msg = await can_fight_pvp(message.from_user.id)
+    if not can_fight:
+        await message.answer(f"❌ {fight_msg}")
+        return
+    
+    can_target_fight, target_fight_msg = await can_fight_pvp(target_user.id)
+    if not can_target_fight:
+        await message.answer(f"❌ {target_user.first_name} превысил лимит боёв на сегодня!")
+        return
+    
+    chance = calculate_pvp_chance(attacker_data, target_data)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Протащить!", callback_data=f"chat_fight_{target_user.id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="chat_menu")
+        ]
+    ])
+    
+    gofra_info_att = get_gofra_info(attacker_data.get('gofra_mm', 10.0))
+    gofra_info_tar = get_gofra_info(target_data.get('gofra_mm', 10.0))
+    
+    text = f"👊 ЗАПРОС НА РАДЁМКУ!\n\n"
+    text += f"🗡️ Атакующий: {message.from_user.first_name}\n"
+    text += f"{gofra_info_att['emoji']} {gofra_info_att['name']}\n"
+    text += f"🏗️ {format_length(attacker_data.get('gofra_mm', 10.0))} | 🔌 {format_length(attacker_data.get('cable_mm', 10.0))}\n\n"
+    
+    text += f"🛡️ Цель: {target_user.first_name}\n"
+    text += f"{gofra_info_tar['emoji']} {gofra_info_tar['name']}\n"
+    text += f"🏗️ {format_length(target_data.get('gofra_mm', 10.0))} | 🔌 {format_length(target_data.get('cable_mm', 10.0))}\n\n"
+    
+    text += f"🎯 Шанс успеха: {chance}%\n"
+    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофре\n"
+    text += f"💀 Риск: публичный позор при проигрыше\n\n"
+    
+    text += f"Подтверждаешь радёмку?"
+    
+    await message.answer(text, reply_markup=keyboard)
 
 @router.message(Command("gme", "g_me", "chatme"))
 async def my_chat_stats_command(message: types.Message):
@@ -299,17 +405,127 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
         elif action == "atm":
             await show_user_atm_callback(callback, user_id)
         elif action == "rademka":
-            await show_rademka_callback(callback, user_id)
+            await show_rademka_callback(callback, user_id, chat_id)
         elif action == "help":
             await show_chat_help_callback(callback)
         elif action == "menu":
             await show_chat_menu_callback(callback)
+        elif action == "fight":
+            await callback.answer("Используй команду /fight в ответ на сообщение игрока", show_alert=True)
         else:
             await callback.answer("❌ Неизвестное действие", show_alert=True)
     
     except Exception as e:
         logger.error(f"Error in chat callback {action}: {e}")
         await callback.answer("❌ Ошибка, попробуй позже", show_alert=True)
+
+@router.callback_query(F.data.startswith("chat_fight_"))
+async def handle_chat_fight(callback: types.CallbackQuery):
+    try:
+        target_id = int(callback.data.replace("chat_fight_", ""))
+        attacker_id = callback.from_user.id
+        
+        if attacker_id == target_id:
+            await callback.answer("❌ Нельзя драться с самим собой!", show_alert=True)
+            return
+        
+        can_fight, fight_msg = await can_fight_pvp(attacker_id)
+        if not can_fight:
+            await callback.answer(f"❌ {fight_msg}", show_alert=True)
+            return
+        
+        attacker = await get_patsan(attacker_id)
+        target = await get_patsan(target_id)
+        
+        if not attacker or not target:
+            await callback.answer("❌ Ошибка: игрок не найден!", show_alert=True)
+            return
+        
+        chance = calculate_pvp_chance(attacker, target)
+        success = random.random() < (chance / 100)
+        
+        winner_id = attacker_id if success else target_id
+        loser_id = target_id if success else attacker_id
+        
+        winner = await get_patsan(winner_id)
+        loser = await get_patsan(loser_id)
+        
+        if success:
+            cable_gain_mm = 0.2
+            attacker["cable_mm"] = attacker.get("cable_mm", 10.0) + cable_gain_mm
+            
+            level_diff = target.get("gofra_mm", 10.0) - attacker.get("gofra_mm", 10.0)
+            if level_diff > 0:
+                gofra_gain_mm = 12.0 + min(level_diff / 100, 8.0)
+            else:
+                gofra_gain_mm = max(5.0, 12.0 + level_diff / 200)
+            
+            gofra_gain_mm = round(gofra_gain_mm, 2)
+            attacker["gofra_mm"] = attacker.get("gofra_mm", 10.0) + gofra_gain_mm
+            
+            attacker["cable_power"] = int(attacker["cable_mm"] / 5)
+            attacker["gofra"] = int(attacker["gofra_mm"] / 10)
+            
+            await save_patsan(attacker)
+            winner_nick = attacker.get('nickname', callback.from_user.first_name)
+            loser_nick = target.get('nickname', 'Неизвестно')
+        else:
+            cable_gain_mm = 0.1
+            target["cable_mm"] = target.get("cable_mm", 10.0) + cable_gain_mm
+            
+            level_diff = attacker.get("gofra_mm", 10.0) - target.get("gofra_mm", 10.0)
+            if level_diff > 0:
+                gofra_gain_mm = 6.0 + min(level_diff / 200, 4.0)
+            else:
+                gofra_gain_mm = max(2.5, 6.0 + level_diff / 400)
+            
+            gofra_gain_mm = round(gofra_gain_mm, 2)
+            target["gofra_mm"] = target.get("gofra_mm", 10.0) + gofra_gain_mm
+            
+            target["cable_power"] = int(target["cable_mm"] / 5)
+            target["gofra"] = int(target["gofra_mm"] / 10)
+            
+            await save_patsan(target)
+            winner_nick = target.get('nickname', 'Неизвестно')
+            loser_nick = attacker.get('nickname', callback.from_user.first_name)
+        
+        await save_rademka_fight(winner_id=winner_id, loser_id=loser_id, money_taken=0)
+        
+        if success:
+            result_text = f"🎉 РАДЁМКА ЗАВЕРШЕНА!\n\n"
+            result_text += f"🏆 ПОБЕДИТЕЛЬ: {callback.from_user.first_name}\n"
+            result_text += f"💀 ПРОИГРАВШИЙ: {target.get('nickname', 'Неизвестно')}\n\n"
+            result_text += f"Награды победителю:\n"
+            result_text += f"🔌 Кабель: +{cable_gain_mm:.1f} мм\n"
+            result_text += f"🏗️ Гофра: +{gofra_gain_mm:.1f} мм\n"
+            result_text += f"🎯 Шанс был: {chance}%\n\n"
+            result_text += f"{target.get('nickname', 'Неизвестно')} теперь будет носить твои кроссовки!"
+        else:
+            result_text = f"💀 РАДЁМКА ЗАВЕРШЕНА!\n\n"
+            result_text += f"🏆 ПОБЕДИТЕЛЬ: {target.get('nickname', 'Неизвестно')}\n"
+            result_text += f"😭 ПРОИГРАВШИЙ: {callback.from_user.first_name}\n\n"
+            result_text += f"{callback.from_user.first_name} был унижен публично!\n"
+            result_text += f"🎯 Шанс был: {chance}%\n\n"
+            result_text += f"Теперь {callback.from_user.first_name} моет туалеты на гофроцентрале!"
+        
+        try:
+            await callback.message.edit_text(result_text, reply_markup=get_chat_menu_keyboard())
+        except TelegramBadRequest:
+            await callback.message.answer(result_text, reply_markup=get_chat_menu_keyboard())
+        
+        await callback.answer()
+        
+        try:
+            await callback.message.bot.send_message(
+                chat_id=callback.message.chat.id,
+                text=f"👊 Результат радёмки: {winner_nick} протащил {loser_nick}!"
+            )
+        except:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Error in chat fight: {e}", exc_info=True)
+        await callback.answer("❌ Ошибка в радёмке!", show_alert=True)
 
 async def process_chat_davka_callback(callback: types.CallbackQuery, user_id: int, chat_id: int):
     await ChatManager.register_chat(
@@ -343,7 +559,7 @@ async def process_chat_davka_callback(callback: types.CallbackQuery, user_id: in
     
     text = random.choice(davka_texts)
     text += f"💩 Выдавил: {res['zmiy_grams']}г коричневага!\n"
-    text += f"🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
+    text += f"🏗️ Гофra: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
     text += f"🔌 Кабель: {format_length(res['old_cable_mm'])} → {format_length(res['new_cable_mm'])}\n"
     text += f"📈 Опыта: +{res['exp_gained_mm']:.1f} мм\n\n"
     
@@ -587,7 +803,7 @@ async def show_user_atm_callback(callback: types.CallbackQuery, user_id: int):
         logger.error(f"Error in chat callback atm: {e}")
         await callback.answer("❌ Ошибка загрузки информации", show_alert=True)
 
-async def show_rademka_callback(callback: types.CallbackQuery, user_id: int):
+async def show_rademka_callback(callback: types.CallbackQuery, user_id: int, chat_id: int):
     try:
         p = await get_patsan(user_id)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
@@ -597,13 +813,34 @@ async def show_rademka_callback(callback: types.CallbackQuery, user_id: int):
         
         text = f"👊 РАДЁМКА (PvP)\n\n"
         text += f"{fight_status}\n\n"
-        text += f"Выбери пацана и протащи его!\n"
+        text += f"Выбери пацана из участников чата!\n"
         text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофре\n\n"
-        text += f"Твои статы:\n"
+        
+        try:
+            chat_stats = await ChatManager.get_chat_stats(chat_id)
+            if chat_stats['total_players'] > 1:
+                top_players = await ChatManager.get_chat_top(chat_id, limit=20)
+                opponents = [p for p in top_players if p['user_id'] != user_id]
+                
+                if opponents:
+                    text += f"🎯 Доступные цели ({len(opponents)}):\n"
+                    for i, opp in enumerate(opponents[:5], 1):
+                        nickname = opp.get('nickname', f'Игрок_{opp.get("user_id")}')
+                        if len(nickname) > 15:
+                            nickname = nickname[:12] + "..."
+                        text += f"{i}. {nickname}\n"
+                    text += f"\nНажми на игрока в ответном сообщении с командой /fight"
+                else:
+                    text += "😕 В чате нет других активных игроков!"
+            else:
+                text += "😕 В чате пока только ты один!\nПриведи друзей для радёмок!"
+        except Exception as e:
+            logger.error(f"Error getting chat players in callback: {e}")
+            text += "\nОшибка загрузки списка игроков"
+        
+        text += f"\n\nТвои статы:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
-        text += f"🏗️ {format_length(p.get('gofra_mm', 10.0))}\n"
-        text += f"🔌 {format_length(p.get('cable_mm', 10.0))}\n\n"
-        text += f"⚠️ Радёмка доступна только в личных сообщениях с ботом"
+        text += f"🏗️ {format_length(p.get('gofra_mm', 10.0))} | 🔌 {format_length(p.get('cable_mm', 10.0))}"
         
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
@@ -623,15 +860,19 @@ async def show_chat_help_callback(callback: types.CallbackQuery):
         "/start - Начать игру\n"
         "/davka - Давить коричневага\n"
         "/profile - Профиль\n"
-        "/top - Топ игроков\n\n"
+        "/top - Топ игроков\n"
+        "/rademka - Радёмка (PvP)\n\n"
         "👥 Команды чата:\n"
         "/gtop - Топ этого чата\n"
         "/gstats - Статистика чата\n"
         "/gme - Моя статистика в чате\n"
         "/gdavka - Давить змия в чате\n"
+        "/grademka - Радёмка в чате\n"
+        "/fight @игрок - Протащить игрока (ответом на сообщение)\n"
         "/gmenu - Меню для чата\n"
         "/ghelp - Эта справка\n\n"
-        "📊 В чате сохраняется общая статистика!"
+        "📊 В чате сохраняется общая статистика!\n"
+        "👊 Радёмки работают только между участниками чата!"
     )
     
     try:
