@@ -5,8 +5,6 @@ from .nickname_and_rademka import router as nickname_router
 from .top import router as top_router
 from .atm_handlers import router as atm_router
 
-# Убраны: daily, shop (в новой системе нет)
-
 router = Router()
 
 router.include_router(commands_router)
