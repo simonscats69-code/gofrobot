@@ -10,18 +10,18 @@ DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))
 CACHE_TTL = int(os.getenv("CACHE_TTL", "30"))
 MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "500"))
 ATM_MAX = 12
-ATM_BASE_TIME = 86400
+ATM_BASE_TIME = 7200
 BATCH_INT = 5
 
 GOFRY = {
-    1: {"name": "Новая гофра", "emoji": "🆕", "atm_speed": 1.0, "min_cm": 1.0, "max_cm": 2.0},
-    10: {"name": "Слегка разъезжена", "emoji": "🔄", "atm_speed": 0.9, "min_cm": 1.2, "max_cm": 2.3},
-    25: {"name": "Рабочая гофра", "emoji": "⚙️", "atm_speed": 0.8, "min_cm": 1.5, "max_cm": 2.7},
-    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "atm_speed": 0.7, "min_cm": 1.8, "max_cm": 3.2},
-    100: {"name": "Заезженная гофра", "emoji": "🏎️", "atm_speed": 0.6, "min_cm": 2.2, "max_cm": 3.8},
-    200: {"name": "Убитая гофра", "emoji": "💀", "atm_speed": 0.5, "min_cm": 2.7, "max_cm": 4.5},
-    500: {"name": "Легендарная гофра", "emoji": "👑", "atm_speed": 0.4, "min_cm": 3.3, "max_cm": 5.5},
-    1000: {"name": "Царь-гофра", "emoji": "🐉", "atm_speed": 0.3, "min_cm": 4.0, "max_cm": 7.0}
+    1: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 50, "max_grams": 200},
+    10: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 80, "max_grams": 300},
+    25: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 120, "max_grams": 450},
+    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 180, "max_grams": 650},
+    100: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 250, "max_grams": 900},
+    200: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 350, "max_grams": 1200},
+    500: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 500, "max_grams": 1600},
+    1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000}
 }
 
 class DatabaseManager:
@@ -42,7 +42,8 @@ class DatabaseManager:
                 user_id INTEGER PRIMARY KEY, 
                 nickname TEXT DEFAULT '', 
                 gofra INTEGER DEFAULT 1,
-                zmiy_cm REAL DEFAULT 0.0,
+                cable_power INTEGER DEFAULT 1,
+                zmiy_grams REAL DEFAULT 0.0,
                 dengi INTEGER DEFAULT 150,
                 last_update INTEGER DEFAULT 0,
                 last_davka INTEGER DEFAULT 0,
@@ -50,11 +51,11 @@ class DatabaseManager:
                 max_atm INTEGER DEFAULT 12,
                 experience INTEGER DEFAULT 0,
                 total_davki INTEGER DEFAULT 0,
-                total_zmiy_cm REAL DEFAULT 0.0,
+                total_zmiy_grams REAL DEFAULT 0.0,
                 nickname_changed BOOLEAN DEFAULT FALSE
             );
             CREATE INDEX IF NOT EXISTS idx_gofra ON users(gofra DESC);
-            CREATE INDEX IF NOT EXISTS idx_zmiy ON users(zmiy_cm DESC);
+            CREATE INDEX IF NOT EXISTS idx_zmiy ON users(zmiy_grams DESC);
             
             CREATE TABLE IF NOT EXISTS rademka_fights (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +99,8 @@ class UserDataManager:
             vals.append((
                 d.get("nickname", ""), 
                 d.get("gofra", 1),
-                d.get("zmiy_cm", 0.0),
+                d.get("cable_power", 1),
+                d.get("zmiy_grams", 0.0),
                 d.get("dengi", 150),
                 int(time.time()),
                 d.get("last_davka", 0),
@@ -106,15 +108,15 @@ class UserDataManager:
                 d.get("max_atm", 12),
                 d.get("experience", 0),
                 d.get("total_davki", 0),
-                d.get("total_zmiy_cm", 0.0),
+                d.get("total_zmiy_grams", 0.0),
                 d.get("nickname_changed", False),
                 uid
             ))
         await pool.executemany('''
             UPDATE users SET 
-                nickname=?, gofra=?, zmiy_cm=?, dengi=?, 
+                nickname=?, gofra=?, cable_power=?, zmiy_grams=?, dengi=?, 
                 last_update=?, last_davka=?, atm_count=?, max_atm=?,
-                experience=?, total_davki=?, total_zmiy_cm=?, nickname_changed=?
+                experience=?, total_davki=?, total_zmiy_grams=?, nickname_changed=?
             WHERE user_id=?
         ''', vals)
     
@@ -143,7 +145,8 @@ class UserDataManager:
             "user_id": uid, 
             "nickname": f"Пацанчик_{uid}", 
             "gofra": 1,
-            "zmiy_cm": 0.0,
+            "cable_power": 1,
+            "zmiy_grams": 0.0,
             "dengi": 150,
             "last_update": now,
             "last_davka": 0,
@@ -151,7 +154,7 @@ class UserDataManager:
             "max_atm": 12,
             "experience": 0,
             "total_davki": 0,
-            "total_zmiy_cm": 0.0,
+            "total_zmiy_grams": 0.0,
             "nickname_changed": False
         }
         pool = await DatabaseManager.get_pool()
@@ -202,7 +205,7 @@ class UserDataManager:
     async def get_top_fast(self, limit=10, sort="gofra"):
         pool = await DatabaseManager.get_pool()
         async with pool.execute(f'''
-            SELECT user_id, nickname, gofra, zmiy_cm, dengi, atm_count, total_davki, total_zmiy_cm
+            SELECT user_id, nickname, gofra, cable_power, zmiy_grams, dengi, atm_count, total_davki, total_zmiy_grams
             FROM users 
             ORDER BY {sort} DESC 
             LIMIT ?
@@ -213,6 +216,41 @@ class UserDataManager:
 user_manager = UserDataManager()
 
 def get_gofra_info(gofra_value):
+    if gofra_value >= 10000:
+        level = gofra_value // 1000
+        speed = max(0.05, 0.3 - (level * 0.01))
+        weight_bonus = 1 + ((level - 10) * 0.15)
+        min_grams = round(700 * weight_bonus)
+        max_grams = round(2000 * weight_bonus)
+        
+        return {
+            "name": f"БОГ ГОФРЫ {level-9}",
+            "emoji": "👁️‍🗨️",
+            "atm_speed": round(speed, 2),
+            "min_grams": min_grams,
+            "max_grams": max_grams,
+            "threshold": 10000,
+            "next_threshold": gofra_value + 1000,
+            "progress": (gofra_value % 1000) / 1000
+        }
+    elif gofra_value >= 1000:
+        sublevel = (gofra_value - 1000) // 100
+        speed = max(0.1, 0.3 - (sublevel * 0.01))
+        weight_bonus = 1 + (sublevel * 0.08)
+        min_grams = round(700 * weight_bonus)
+        max_grams = round(2000 * weight_bonus)
+        
+        return {
+            "name": f"Царь-гофра {sublevel+1}",
+            "emoji": "🐉" + "🔥" * min(sublevel//10, 3),
+            "atm_speed": round(speed, 2),
+            "min_grams": min_grams,
+            "max_grams": max_grams,
+            "threshold": 1000,
+            "next_threshold": 1000 + ((sublevel + 1) * 100),
+            "progress": ((gofra_value - 1000) % 100) / 100
+        }
+    
     sorted_thresholds = sorted(GOFRY.items())
     current_info = None
     
@@ -235,8 +273,8 @@ def get_gofra_info(gofra_value):
         current_info["next_threshold"] = next_threshold
         current_info["progress"] = (gofra_value - current_info["threshold"]) / (next_threshold - current_info["threshold"])
     else:
-        current_info["next_threshold"] = None
-        current_info["progress"] = 1.0
+        current_info["next_threshold"] = 1000
+        current_info["progress"] = (gofra_value - current_info["threshold"]) / (1000 - current_info["threshold"])
     
     return current_info
 
@@ -258,35 +296,42 @@ async def davka_zmiy(uid):
         return False, None, "Нужны все 12 атмосфер! Сейчас: {}/12".format(p.get("atm_count", 0))
     
     gofra_info = get_gofra_info(p.get("gofra", 1))
-    min_cm = gofra_info["min_cm"]
-    max_cm = gofra_info["max_cm"]
+    min_grams = gofra_info["min_grams"]
+    max_grams = gofra_info["max_grams"]
     
-    cable_cm = round(random.uniform(min_cm, max_cm), 1)
+    zmiy_grams = random.randint(min_grams, max_grams)
     
     p["atm_count"] = 0
     p["last_davka"] = int(time.time())
     p["last_update"] = int(time.time())
     
-    p["zmiy_cm"] = p.get("zmiy_cm", 0.0) + cable_cm
-    p["total_zmiy_cm"] = p.get("total_zmiy_cm", 0.0) + cable_cm
+    p["zmiy_grams"] = p.get("zmiy_grams", 0.0) + zmiy_grams
+    p["total_zmiy_grams"] = p.get("total_zmiy_grams", 0.0) + zmiy_grams
     p["total_davki"] = p.get("total_davki", 0) + 1
     
-    exp_gained = int(cable_cm * 10)
+    exp_gained = zmiy_grams // 10
     p["experience"] = p.get("experience", 0) + exp_gained
     
     old_gofra = p.get("gofra", 1)
     new_gofra = old_gofra + exp_gained
     p["gofra"] = new_gofra
     
+    cable_power_gain = zmiy_grams // 1000
+    old_cable_power = p.get("cable_power", 1)
+    p["cable_power"] = old_cable_power + cable_power_gain
+    
     gofra_up = new_gofra > old_gofra
     
     user_manager.mark_dirty(uid)
     
     res = {
-        "cable_cm": cable_cm,
+        "zmiy_grams": zmiy_grams,
         "exp_gained": exp_gained,
         "old_gofra": old_gofra,
         "new_gofra": new_gofra,
+        "old_cable_power": old_cable_power,
+        "new_cable_power": p["cable_power"],
+        "cable_power_gain": cable_power_gain,
         "gofra_up": gofra_up,
         "gofra_info": get_gofra_info(new_gofra),
         "atm_speed": gofra_info["atm_speed"]
@@ -296,27 +341,40 @@ async def davka_zmiy(uid):
 async def sdat_zmiy(uid):
     p = await user_manager.get_user(uid)
     
-    if p.get("zmiy_cm", 0) <= 0:
+    if p.get("zmiy_grams", 0) <= 0:
         return False, None, "Нечего сдавать!"
     
-    zmiy_cm = p.get("zmiy_cm", 0.0)
+    zmiy_grams = p.get("zmiy_grams", 0.0)
     
-    base_money = int(zmiy_cm * 100)
-    gofra_bonus = p.get("gofra", 1) * 5
-    total_money = base_money + gofra_bonus
+    base_money = int(zmiy_grams * 0.5)
+    gofra_bonus = p.get("gofra", 1) * 2
+    cable_bonus = p.get("cable_power", 1) * 10
+    total_money = base_money + gofra_bonus + cable_bonus
     
     p["dengi"] = p.get("dengi", 0) + total_money
-    p["zmiy_cm"] = 0.0
+    p["zmiy_grams"] = 0.0
     
     user_manager.mark_dirty(uid)
     
     res = {
-        "zmiy_cm": zmiy_cm,
+        "zmiy_grams": zmiy_grams,
         "money": total_money,
         "base_money": base_money,
-        "gofra_bonus": gofra_bonus
+        "gofra_bonus": gofra_bonus,
+        "cable_bonus": cable_bonus
     }
     return True, p, res
+
+def calculate_pvp_chance(attacker, defender):
+    chance = 50
+    
+    cable_diff = attacker.get("cable_power", 1) - defender.get("cable_power", 1)
+    chance += cable_diff * 1.0
+    
+    gofra_diff = attacker.get("gofra", 1) - defender.get("gofra", 1)
+    chance += (gofra_diff / 10) * 0.5
+    
+    return max(10, min(90, round(chance, 1)))
 
 async def change_nickname(uid, nick):
     pool = await DatabaseManager.get_pool()
