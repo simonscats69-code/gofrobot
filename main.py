@@ -1,3 +1,4 @@
+# main.py - исправленная версия
 import asyncio
 import logging
 import os
@@ -5,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from db_manager import init_bot, shutdown
 from dotenv import load_dotenv
-from handlers import router  # Импортируем только один роутер
+from handlers import router  # импортируем основной роутер из handlers
 
 load_dotenv()
 
@@ -27,6 +28,7 @@ async def main():
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
         
+        # Включаем единый роутер из handlers
         dp.include_router(router)
         
         logger.info("Бот запускается...")
