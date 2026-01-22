@@ -1,11 +1,31 @@
-import asyncio, time, random, json, aiosqlite
-import os
+import os, time, random, json, aiosqlite
+import asyncio
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_NAME = os.getenv("DB_NAME", "bot_database.db")
+def ensure_storage():
+    storage_path = "storage"
+    
+    if not os.path.exists(storage_path):
+        try:
+            os.makedirs(storage_path, exist_ok=True)
+            os.makedirs(os.path.join(storage_path, "backups"), exist_ok=True)
+            os.makedirs(os.path.join(storage_path, "logs"), exist_ok=True)
+            print(f"📁 Создана папка storage")
+            return storage_path
+        except Exception as e:
+            print(f"⚠️ Ошибка создания storage: {e}")
+            return "."
+    
+    print(f"✅ Папка storage уже существует")
+    return storage_path
+
+STORAGE_DIR = ensure_storage()
+DB_PATH = os.path.join(STORAGE_DIR, "bot_database.db")
+
+DB_NAME = os.getenv("DB_NAME", DB_PATH)
 DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))
 CACHE_TTL = int(os.getenv("CACHE_TTL", "30"))
 MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "500"))
@@ -29,7 +49,8 @@ class DatabaseManager:
     @classmethod
     async def get_pool(cls):
         if not cls._pool:
-            cls._pool = await aiosqlite.connect(DB_NAME, timeout=30)
+            print(f"🔌 Подключение к БД: {DB_PATH}")
+            cls._pool = await aiosqlite.connect(DB_PATH, timeout=30)
             cls._pool.row_factory = aiosqlite.Row
             await cls._create_tables()
         return cls._pool
@@ -66,6 +87,37 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
             CREATE INDEX IF NOT EXISTS idx_lose ON rademka_fights(loser_id);
         ''')
+
+    @staticmethod
+    async def create_backup():
+        try:
+            import shutil
+            from datetime import datetime
+            
+            if not os.path.exists(DB_PATH):
+                return
+            
+            backup_dir = os.path.join(STORAGE_DIR, "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_file = os.path.join(backup_dir, f"backup_{timestamp}.db")
+            
+            shutil.copy2(DB_PATH, backup_file)
+            print(f"✅ Бэкап: {os.path.basename(backup_file)}")
+            
+            backups = sorted([
+                os.path.join(backup_dir, f) 
+                for f in os.listdir(backup_dir) 
+                if f.startswith("backup_") and f.endswith(".db")
+            ])
+            
+            if len(backups) > 5:
+                for old_backup in backups[:-5]:
+                    os.remove(old_backup)
+                    
+        except Exception as e:
+            print(f"⚠️ Бэкап не удался: {e}")
 
 class UserCache:
     def __init__(self, data, timestamp):
@@ -392,8 +444,11 @@ async def get_connection():
     return await DatabaseManager.get_pool()
 
 async def init_bot(): 
+    print(f"🚀 Инициализация бота | Storage: {STORAGE_DIR}")
     await DatabaseManager.get_pool()
     await user_manager.start_batch_saver()
+    
+    await DatabaseManager.create_backup()
 
 async def shutdown(): 
     await user_manager._save_dirty()
