@@ -502,7 +502,7 @@ async def cst(c):
 async def nm(c):
     try:
         await c.answer()
-        from handlers.commands import cmd_nickname
+        from handlers.nickname_and_rademka import cmd_nickname
         await cmd_nickname(c.message)
     except Exception as e:
         logger.error(f"Error loading nickname menu: {e}")
@@ -513,7 +513,7 @@ async def nm(c):
 async def cr(c):
     try:
         await c.answer()
-        from handlers.commands import cmd_rademka
+        from handlers.nickname_and_rademka import cmd_rademka
         await cmd_rademka(c.message)
     except Exception as e:
         logger.error(f"Error loading rademka: {e}")
