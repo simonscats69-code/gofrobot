@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+import gc
 from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -11,20 +12,15 @@ from handlers import router
 load_dotenv()
 
 def setup_logging():
-    """Настройка цветного логирования в консоль и файл"""
-    
-    # Создаём папку для логов если её нет
     log_dir = "storage/logs"
     os.makedirs(log_dir, exist_ok=True)
     
     try:
         import colorlog
         
-        # Формат для файлов
         log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         date_format = '%Y-%m-%d %H:%M:%S'
         
-        # Консольный handler с цветами
         console_handler = colorlog.StreamHandler()
         console_handler.setFormatter(colorlog.ColoredFormatter(
             f'%(log_color)s{log_format}',
@@ -38,18 +34,15 @@ def setup_logging():
             }
         ))
         
-        # Файловый handler
         log_file = os.path.join(log_dir, f"bot_{datetime.now().strftime('%Y%m%d')}.log")
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
         
-        # Настройка основного логгера
         logger = colorlog.getLogger()
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
         
-        # Уровни для разных модулей
         logging.getLogger('aiogram').setLevel(logging.WARNING)
         logging.getLogger('asyncio').setLevel(logging.WARNING)
         logging.getLogger('httpx').setLevel(logging.WARNING)
@@ -59,7 +52,6 @@ def setup_logging():
         return logger
         
     except ImportError:
-        # Если colorlog не установлен, используем обычное логирование
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -72,10 +64,11 @@ def setup_logging():
         logger.info("📝 Обычное логирование (colorlog не установлен)")
         return logger
 
-# Инициализация логирования
 logger = setup_logging()
 
 async def main():
+    gc.collect()
+    
     try:
         logger.info("🚀 Запуск бота на bothost.ru")
         logger.info(f"📁 Рабочая директория: {os.getcwd()}")
@@ -101,6 +94,7 @@ async def main():
         
     finally:
         await shutdown()
+        gc.collect()
         logger.info("Бот остановлен")
 
 if __name__ == "__main__":
