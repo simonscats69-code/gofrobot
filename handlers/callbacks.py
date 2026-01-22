@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
 import time, random, asyncio
 from db_manager import (
-    get_patsan, get_patsan_cached, save_patsan, get_top_players,
+    get_patsan, save_patsan, get_top_players,
     save_rademka_fight, calculate_atm_regen_time, get_connection,
     davka_zmiy, sdat_zmiy, pump_skill, get_rank
 )
@@ -16,16 +16,76 @@ from keyboards import (
 
 router = Router()
 
-def gr(p):
-    if 'rank_emoji' in p and 'rank_name' in p:
-        return p['rank_emoji'], p['rank_name']
-    a = p.get('avtoritet', 1)
+# Декоратор для обработки ошибок
+def handle_callback_errors(func):
+    async def wrapper(callback: types.CallbackQuery, *args, **kwargs):
+        try:
+            return await func(callback, *args, **kwargs)
+        except Exception as e:
+            # Логирование ошибки
+            import logging
+            logging.error(f"Error in {func.__name__}: {e}", exc_info=True)
+            
+            # Показ ошибки пользователю
+            error_msg = f"❌ Ошибка: {str(e)[:100]}"
+            try:
+                await callback.answer(error_msg, show_alert=True)
+            except:
+                try:
+                    await callback.message.answer(error_msg)
+                except:
+                    pass
+                    
+            # Возврат в главное меню при критической ошибке
+            try:
+                p = await get_patsan(callback.from_user.id)
+                await callback.message.edit_text(
+                    f"<b>Произошла ошибка</b>\n\nВозвращаемся в главное меню...",
+                    reply_markup=main_keyboard(),
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+    return wrapper
+
+# Глобальный кэш рангов
+_rank_cache = {}
+_RANK_CACHE_MAX_SIZE = 1000
+
+def gr(p, use_cache=True):
+    # Получаем ID пользователя и авторитет
+    user_id = p.get('user_id')
+    av = p.get('avtoritet', 1)
+    
+    # Проверяем кэш
+    if use_cache and user_id and user_id in _rank_cache:
+        cached_av, cached_result = _rank_cache[user_id]
+        if av == cached_av:
+            return cached_result
+    
+    # Логика определения ранга
     R = {1:("👶","Пацанчик"), 11:("👊","Браток"), 51:("👑","Авторитет"), 
          201:("🐉","Царь гофры"), 501:("🏛️","Император"), 1001:("💩","БОГ ГОВНА")}
+    
     rn, re = "Пацанчик", "👶"
     for t, (e, n) in sorted(R.items()):
-        if a >= t: rn, re = n, e
+        if av >= t: 
+            rn, re = n, e
+    
+    # Сохраняем в кэш
+    if user_id:
+        _rank_cache[user_id] = (av, (re, rn))
+        
+        # Очистка кэша если слишком большой
+        if len(_rank_cache) > _RANK_CACHE_MAX_SIZE:
+            # Удаляем самые старые записи (первые 100)
+            keys_to_remove = list(_rank_cache.keys())[:100]
+            for key in keys_to_remove:
+                del _rank_cache[key]
+    
+    # Сохраняем в объект пользователя для быстрого доступа
     p['rank_emoji'], p['rank_name'] = re, rn
+    
     return re, rn
 
 async def eoa(c, t, kb=None, p="HTML"):
@@ -138,35 +198,24 @@ async def ha(c, act):
         except: await c.message.answer(f"❌ Ошибка: {str(e)[:100]}")
 
 @router.callback_query(F.data.in_(["davka", "sdat"]))
+@handle_callback_errors
 async def cba(c):
     try: await c.answer("🔄 Обработка...")
     except: pass
     await ha(c, c.data)
 
 @router.callback_query(F.data == "back_main")
+@handle_callback_errors
 async def bm(c):
     try:
-        print(f"DEBUG: Нажата кнопка back_main")
-        await c.answer("Возвращаемся в главное меню...")
-        p = await get_patsan_cached(c.from_user.id)
-        print(f"DEBUG: Получили пользователя: {p.get('nickname')}")
-        
-        menu_text = await mmt(p)
-        print(f"DEBUG: Текст меню: {menu_text[:50]}...")
-        
-        keyboard = main_keyboard()
-        print(f"DEBUG: Клавиатура создана")
-        
-        await eoa(c, menu_text, keyboard)
-        print(f"DEBUG: Сообщение обновлено")
-        
+        await c.answer()
+        p = await get_patsan(c.from_user.id)
+        await eoa(c, await mmt(p), main_keyboard())
     except Exception as e:
-        print(f"DEBUG: Ошибка в bm: {e}")
-        import traceback
-        traceback.print_exc()
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "nickname_menu")
+@handle_callback_errors
 async def nm(c):
     try:
         await c.answer()
@@ -176,6 +225,7 @@ async def nm(c):
         await c.answer("Ошибка загрузки меню ника", show_alert=True)
 
 @router.callback_query(F.data == "daily")
+@handle_callback_errors
 async def cd(c):
     try:
         await c.answer()
@@ -185,6 +235,7 @@ async def cd(c):
         await c.answer("Ошибка загрузки ежедневной награды", show_alert=True)
 
 @router.callback_query(F.data == "rademka")
+@handle_callback_errors
 async def cr(c):
     try:
         await c.answer()
@@ -194,10 +245,11 @@ async def cr(c):
         await c.answer("Ошибка загрузки радёмки", show_alert=True)
 
 @router.callback_query(F.data == "pump")
+@handle_callback_errors
 async def cp(c):
     try:
         await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
+        p = await get_patsan(c.from_user.id)
         d, z, n = p.get('skill_davka', 1), p.get('skill_zashita', 1), p.get('skill_nahodka', 1)
         cs = {'davka': 180 + (d * 10), 'zashita': 270 + (z * 15), 'nahodka': 225 + (n * 12)}
         await eoa(c, f"<b>Прокачка скиллов:</b>\n💰 Деньги: {p.get('dengi', 0)} руб.\n📈 Уровень: {p.get('level', 1)} | 📚 Опыт: {p.get('experience', 0)}\n\n💪 <b>Давка змия</b> (+100г за уровень)\nУровень: {d} | Следующий: {cs['davka']}р/ур\n\n🛡️ <b>Защита атмосфер</b> (ускоряет восстановление)\nУровень: {z} | Следующий: {cs['zashita']}р/ур\n\n🔍 <b>Находка двенашек</b> (+5% шанс за уровень)\nУровень: {n} | Следующий: {cs['nahodka']}р/ур\n\n<i>Выбери, что прокачать:</i>", pump_keyboard())
@@ -205,6 +257,7 @@ async def cp(c):
         await c.answer(f"Ошибка прокачки: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("pump_"))
+@handle_callback_errors
 async def cps(c):
     try:
         await c.answer("⚙️ Прокачка...")
@@ -216,10 +269,11 @@ async def cps(c):
         await c.answer(f"Ошибка прокачки: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "inventory")
+@handle_callback_errors
 async def ci(c):
     try:
         await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
+        p = await get_patsan(c.from_user.id)
         i = p.get("inventory", [])
         if not i: 
             t = "Пусто... Только пыль и тоска"
@@ -232,10 +286,11 @@ async def ci(c):
         await c.answer(f"Ошибка инвентаря: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "profile")
+@handle_callback_errors
 async def cpr(c):
     try:
         await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
+        p = await get_patsan(c.from_user.id)
         re, rn = gr(p)
         a, m, up = p.get('atm_count', 0), p.get('max_atm', 12), p.get("upgrades", {})
         bu = [k for k, v in up.items() if v] if up else []
@@ -246,10 +301,11 @@ async def cpr(c):
         await c.answer(f"Ошибка профиля: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "level_stats")
+@handle_callback_errors
 async def cls(c):
     try:
         await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
+        p = await get_patsan(c.from_user.id)
         cl, ce = p.get("level", 1), p.get("experience", 0)
         re, pp = int(100 * (cl ** 1.5)), (ce / re * 100) if re > 0 else 0
         t = f"<b>📈 СТАТИСТИКА УРОВНЕЙ</b>\n\n🏆 <b>Текущий уровень:</b> {cl}\n📚 <b>Опыт:</b> {ce}/{re}\n📊 <b>Прогресс:</b> [{pb(ce, re, 10)}] {pp:.1f}%\n\n🎁 <b>Награда за {cl + 1} уровень:</b>\n• +{(cl + 1) * 100}р\n" + ("• +1 к максимальным атмосферам\n" if (cl + 1) % 5 == 0 else "") + f"\n<b>ℹ️ Информация:</b>\n• Опыт даётся за все действия\n• Каждый 5 уровень увеличивает запас атмосфер\n• Уровень влияет на ежедневные награды\n"
@@ -258,10 +314,11 @@ async def cls(c):
         await c.answer(f"Ошибка статистики уровней: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "atm_status")
+@handle_callback_errors
 async def cas(c):
     try:
         await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
+        p = await get_patsan(c.from_user.id)
         a, m = p.get('atm_count', 0), p.get('max_atm', 12)
         rt, bs = calculate_atm_regen_time(p), []
         if p.get("skill_zashita", 1) >= 10: bs.append("Скилл защиты ≥10: -10% времени")
@@ -274,6 +331,7 @@ async def cas(c):
 TO = {"avtoritet":("авторитету","⭐","avtoritet"),"dengi":("деньгам","💰","dengi"),"zmiy":("змию","🐍","zmiy"),"total_skill":("сумме скиллов","💪","total_skill"),"level":("уровню","📈","level"),"rademka_wins":("победам в радёмках","👊","rademka_wins")}
 
 @router.callback_query(F.data == "top")
+@handle_callback_errors
 async def ctm(c):
     try:
         await c.answer()
@@ -292,6 +350,7 @@ async def grwt():
         return []
 
 @router.callback_query(F.data.startswith("top_"))
+@handle_callback_errors
 async def cst(c):
     try:
         await c.answer()
@@ -330,8 +389,8 @@ async def cst(c):
     except Exception as e:
         await c.answer(f"Ошибка загрузки топа: {str(e)[:50]}", show_alert=True)
 
-# НОВЫЙ ОБРАБОТЧИК ДЛЯ top_level
 @router.callback_query(F.data == "top_level")
+@handle_callback_errors
 async def top_level_handler(c):
     try:
         await c.answer()
@@ -369,6 +428,7 @@ async def top_level_handler(c):
         await c.answer(f"Ошибка загрузки топа по уровням: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("inventory_"))
+@handle_callback_errors
 async def cia(c):
     try:
         await c.answer()
@@ -384,6 +444,7 @@ async def cia(c):
         await c.answer(f"Ошибка инвентаря: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "confirm_trash_inventory")
+@handle_callback_errors
 async def cct(c):
     try:
         await c.answer("🗑️ Удаление...")
@@ -400,6 +461,7 @@ async def cct(c):
         await c.answer(f"Ошибка удаления мусора: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "shop")
+@handle_callback_errors
 async def cs(c):
     try:
         await c.answer()
@@ -409,6 +471,7 @@ async def cs(c):
         await c.answer(f"Ошибка магазина: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("buy_"))
+@handle_callback_errors
 async def cb(c):
     try:
         await c.answer("💰 Покупка...")
@@ -418,6 +481,7 @@ async def cb(c):
         await c.answer(f"Ошибка покупки: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data.in_(["level_progress", "level_next", "atm_regen_time", "atm_max_info", "atm_boosters"]))
+@handle_callback_errors
 async def handle_progress(c):
     try:
         await c.answer()
@@ -429,6 +493,7 @@ async def handle_progress(c):
         await c.answer("Ошибка загрузки", show_alert=True)
 
 @router.callback_query(F.data.in_(["rademka_stats", "rademka_top", "rademka_random"]))
+@handle_callback_errors
 async def handle_placeholders(c):
     try:
         await c.answer()
@@ -445,15 +510,17 @@ async def handle_placeholders(c):
         await c.answer("Ошибка", show_alert=True)
 
 @router.callback_query(F.data == "my_reputation")
+@handle_callback_errors
 async def cmr(c):
     try:
         await c.answer()
-        p = await get_patsan_cached(c.from_user.id)
+        p = await get_patsan(c.from_user.id)
         await c.answer(f"Твоя репутация (авторитет): {p.get('avtoritet', 1)}", show_alert=True)
     except Exception:
         await c.answer("Ошибка репутации", show_alert=True)
 
 @router.callback_query(F.data == "top_reputation")
+@handle_callback_errors
 async def ctr(c):
     try:
         await c.answer()
@@ -463,6 +530,7 @@ async def ctr(c):
         await c.answer("Ошибка топа репутации", show_alert=True)
 
 @router.callback_query(F.data == "change_nickname")
+@handle_callback_errors
 async def ccn(c, state: FSMContext):
     try:
         await c.answer()
@@ -471,8 +539,8 @@ async def ccn(c, state: FSMContext):
     except Exception:
         await c.answer("Ошибка смены ника", show_alert=True)
 
-# ОБРАБОТЧИКИ ДЛЯ КНОПОК "НАЗАД"
 @router.callback_query(F.data == "back_rademka")
+@handle_callback_errors
 async def back_rademka_handler(c):
     try:
         await c.answer()
@@ -482,6 +550,7 @@ async def back_rademka_handler(c):
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "back_profile")
+@handle_callback_errors
 async def back_profile_handler(c):
     try:
         await c.answer()
@@ -490,6 +559,7 @@ async def back_profile_handler(c):
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "back_inventory")
+@handle_callback_errors
 async def back_inventory_handler(c):
     try:
         await c.answer()
@@ -498,6 +568,7 @@ async def back_inventory_handler(c):
         await c.answer(f"Ошибка: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query()
+@handle_callback_errors
 async def uc(c):
     try:
         await c.answer(f"Кнопка '{c.data}' пока не работает. Разработчик в курсе!", show_alert=True)
