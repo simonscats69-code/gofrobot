@@ -14,14 +14,14 @@ ATM_BASE_TIME = 7200
 BATCH_INT = 5
 
 GOFRY = {
-    1: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 50, "max_grams": 200},
-    10: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 80, "max_grams": 300},
-    25: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 120, "max_grams": 450},
-    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 180, "max_grams": 650},
-    100: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 250, "max_grams": 900},
-    200: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 350, "max_grams": 1200},
-    500: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 500, "max_grams": 1600},
-    1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000}
+    1: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 50, "max_grams": 200, "atm_speed": 1.0},
+    10: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 80, "max_grams": 300, "atm_speed": 0.9},
+    25: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 120, "max_grams": 450, "atm_speed": 0.8},
+    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 180, "max_grams": 650, "atm_speed": 0.7},
+    100: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 250, "max_grams": 900, "atm_speed": 0.6},
+    200: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 350, "max_grams": 1200, "atm_speed": 0.5},
+    500: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 500, "max_grams": 1600, "atm_speed": 0.4},
+    1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000, "atm_speed": 0.3}
 }
 
 class DatabaseManager:
@@ -272,6 +272,9 @@ def get_gofra_info(gofra_value):
     else:
         current_info["next_threshold"] = 1000
         current_info["progress"] = (gofra_value - current_info["threshold"]) / (1000 - current_info["threshold"])
+    
+    if "atm_speed" not in current_info:
+        current_info["atm_speed"] = 1.0
     
     return current_info
 
