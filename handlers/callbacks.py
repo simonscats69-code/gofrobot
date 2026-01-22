@@ -8,7 +8,7 @@ import logging
 from db_manager import (
     get_patsan, save_patsan, get_top_players,
     save_rademka_fight, calculate_atm_regen_time,
-    davka_zmiy, uletet_zmiy, get_gofra_info, calculate_pvp_chance
+    davka_zmiy, uletet_zmiy, get_gofra_info, calculate_pvp_chance, format_length
 )
 from keyboards import (
     main_keyboard, gofra_info_kb, cable_info_kb, atm_status_keyboard,
@@ -74,10 +74,10 @@ router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 async def mmt(p):
     atm = p.get('atm_count', 0)
     max_atm = 12
-    gofra_info = get_gofra_info(p.get('gofra', 1))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     return f"""Главное меню
-{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra', 1)} | 🔌 {p.get('cable_power', 1)}
+{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {gofra_info['length_display']} | 🔌 {format_length(p.get('cable_mm', 10.0))}
 
 🌀 Атмосферы: [{pb(atm, max_atm)}] {atm}/{max_atm}
 🐍 Змий: {p.get('zmiy_grams', 0):.0f}г | 📊 Давок: {p.get('total_davki', 0)}
@@ -119,17 +119,17 @@ async def handle_actions(c):
     
 📏 Свисло {res['zmiy_grams']}г говна
 💩 Говна навалом...
-🏗️ Гофра: {res['old_gofra']} → {res['new_gofra']}"""
+🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}"""
             ]
             
-            gofra_info = get_gofra_info(p.get('gofra', 1))
+            gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
             text = random.choice(davka_texts) + f"""
 
 ⚡ Вес змия: {res['zmiy_grams']}г
-🏗️ Гофра: {res['old_gofra']} → {res['new_gofra']}
+🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}
 {gofra_info['emoji']} Теперь: {gofra_info['name']}
-🔌 Кабель: {res['old_cable_power']} → {res['new_cable_power']} (+{res['cable_power_gain']})
-📈 Опыта: +{res['exp_gained']}
+🔌 Кабель: {format_length(res['old_cable_mm'])} → {format_length(res['new_cable_mm'])} (+{res['cable_gain_mm']:.2f} мм)
+📈 Опыта: +{res['exp_gained_mm']:.2f} мм
 
 🌀 Атмосферы: 0/12 (полная перезарядка)
 ⚡ Скорость восстановления: x{res['atm_speed']:.2f}
@@ -149,8 +149,8 @@ async def handle_actions(c):
 📦 Отправлено: {res['zmiy_grams']:.0f}г коричневага
 🌍 Летит к братьям по говну...
 
-🏗️ Гофра: {p.get('gofra', 1)}
-🔌 Сила кабеля: {p.get('cable_power', 1)}
+🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}
+🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}
 
 Диспетчер: "Рейс 322 готов к вылету! Курс - на коричневый закат!" """
             
@@ -170,7 +170,7 @@ async def cpr(c):
     
     atm = p.get('atm_count', 0)
     max_atm = 12
-    gofra_info = get_gofra_info(p.get('gofra', 1))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     regen_info = calculate_atm_regen_time(p)
     
@@ -178,8 +178,8 @@ async def cpr(c):
 
 {gofra_info['emoji']} {gofra_info['name']}
 👤 {p.get('nickname', 'Пацанчик')}
-🏗️ Гофра: {p.get('gofra', 1)}
-🔌 Сила кабеля: {p.get('cable_power', 1)}
+🏗️ Гофра: {gofra_info['length_display']}
+🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}
 
 Ресурсы:
 🌀 Атмосферы: [{pb(atm, max_atm)}] {atm}/{max_atm}
@@ -200,12 +200,12 @@ async def cpr(c):
 async def gofra_info_handler(c):
     await c.answer()
     p = await get_patsan(c.from_user.id)
-    gofra_info = get_gofra_info(p.get('gofra', 1))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     text = f"""🏗️ ИНФОРМАЦИЯ О ГОФРЕ
 
 {gofra_info['emoji']} {gofra_info['name']}
-📊 Значение гофры: {p.get('gofra', 1)}
+📊 Длина гофры: {gofra_info['length_display']}
 
 Характеристики:
 ⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}
@@ -217,7 +217,7 @@ async def gofra_info_handler(c):
         progress = gofra_info['progress']
         next_gofra = get_gofra_info(gofra_info['next_threshold'])
         text += f"\n{gofra_info['emoji']} → {next_gofra['emoji']}"
-        text += f"\n{next_gofra['name']} (от {gofra_info['next_threshold']} опыта)"
+        text += f"\n{next_gofra['name']} (от {next_gofra['length_display']})"
         text += f"\n📈 Прогресс: [{pb(progress, 1, 10)}] {progress*100:.1f}%"
         text += f"\n⚡ Новая скорость: x{next_gofra['atm_speed']:.2f}"
         text += f"\n⚖️ Новый вес: {next_gofra['min_grams']}-{next_gofra['max_grams']}г"
@@ -236,16 +236,17 @@ async def cable_info_handler(c):
     
     text = f"""🔌 СИЛОВОЙ КАБЕЛЬ
 
-💪 Сила кабеля: {p.get('cable_power', 1)}
-⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
+💪 Длина кабеля: {format_length(p.get('cable_mm', 10.0))}
+⚔️ Бонус в PvP: +{(p.get('cable_mm', 10.0) * 0.02):.1f}% к шансу
 
 Как прокачать:
 🐍 Дави змия - кабель укрепляется
-⚖️ Каждые 1000г змия = +1 к силе
-👊 Побеждай в радёмках
+⚖️ Каждые 2кг змия = +0.2 мм
+👊 Побеждай в радёмках (+0.2 мм)
 
 Текущий прогресс:
-📊 Следующий уровень через: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г змия
+📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
+📈 Следующий +0.1 мм через: {(2000 - (p.get('total_zmiy_grams', 0) % 2000)):.0f}г
 
 Сильный кабель = победы в радёмках!"""
     
@@ -260,7 +261,7 @@ async def atm_status_handler(c):
     atm = p.get('atm_count', 0)
     max_atm = 12
     regen_info = calculate_atm_regen_time(p)
-    gofra_info = get_gofra_info(p.get('gofra', 1))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     text = f"""🌡️ СОСТОЯНИЕ АТМОСФЕР
 
@@ -285,7 +286,7 @@ async def atm_status_handler(c):
 async def details_handler(c):
     await c.answer()
     p = await get_patsan(c.from_user.id)
-    gofra_info = get_gofra_info(p.get('gofra', 1))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     if c.data == "gofra_progress":
         if gofra_info.get('next_threshold'):
@@ -297,8 +298,8 @@ async def details_handler(c):
 {gofra_info['name']} → {next_gofra['name']}
 
 📊 Прогресс: [{pb(progress, 1, 10)}] {progress*100:.1f}%
-🎯 Нужно опыта: {gofra_info['next_threshold'] - p.get('gofra', 1)}
-⭐ Текущий опыт: {p.get('gofra', 1)}/{gofra_info['next_threshold']}
+🎯 Нужно мм: {gofra_info['next_threshold'] - p.get('gofra_mm', 10.0):.1f}
+📏 Текущая длина: {gofra_info['length_display']} → {next_gofra['length_display']}
 
 Дави больше змия для прогресса!"""
         else:
@@ -315,19 +316,20 @@ async def details_handler(c):
 ⏱️ 1 атмосфера: 2 часа
 
 С вашей гофрой:
-⏱️ 1 атмосфера: {ft(7200 * gofra_info['atm_speed'])}
-🕐 12 атмосфер: {ft(7200 * 12 * gofra_info['atm_speed'])}
+⏱️ 1 атмосфера: {ft(7200 / gofra_info['atm_speed'])}
+🕐 12 атмосфер: {ft(7200 * 12 / gofra_info['atm_speed'])}
 
 Следующие уровни:"""
         
-        thresholds = [1, 10, 25, 50, 100, 200, 500, 1000]
-        current_idx = thresholds.index(gofra_info['threshold']) if gofra_info['threshold'] in thresholds else len(thresholds)-1
+        thresholds = [10.0, 50.0, 150.0, 300.0, 600.0, 1200.0, 2500.0, 5000.0, 10000.0, 20000.0]
+        current_gofra = p.get('gofra_mm', 10.0)
         
-        for i in range(1, 4):
-            if current_idx + i < len(thresholds):
-                next_threshold = thresholds[current_idx + i]
-                next_info = get_gofra_info(next_threshold)
-                text += f"\n{gofra_info['emoji']}→{next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.2f}"
+        for i, threshold in enumerate(thresholds):
+            if current_gofra < threshold:
+                next_info = get_gofra_info(threshold)
+                text += f"\n{next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.2f}"
+                if i >= 2:
+                    break
         await c.message.edit_text(text, reply_markup=gofra_info_kb())
     
     elif c.data == "gofra_next":
@@ -348,35 +350,37 @@ async def details_handler(c):
     elif c.data == "cable_power_info":
         text = f"""💪 СИЛА КАБЕЛЯ
 
-🔌 Текущая сила: {p.get('cable_power', 1)}
-⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
+🔌 Длина кабеля: {format_length(p.get('cable_mm', 10.0))}
+⚔️ Бонус в PvP: +{(p.get('cable_mm', 10.0) * 0.02):.1f}% к шансу
 
 Как работает:
-• Каждый 1000г змия = +1 к силе
-• Победы в радёмках тоже дают +1
+• Каждый 2кг змия = +0.2 мм к кабелю
+• Победы в радёмках дают +0.2 мм
 
 Прогресс:
 📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
-📈 Следующий +1 через: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г
+📈 Следующий +0.1 мм через: {(2000 - (p.get('total_zmiy_grams', 0) % 2000)):.0f}г
 
 Сильный кабель = победы!"""
         await c.message.edit_text(text, reply_markup=cable_info_kb())
     
     elif c.data == "cable_pvp_info":
+        cable_mm = p.get('cable_mm', 10.0)
+        bonus_percent = cable_mm * 0.02
         text = f"""⚔️ КАБЕЛЬ В PvP
 
-🔌 Сила кабеля: {p.get('cable_power', 1)}
-🎯 Влияние на шанс: +{p.get('cable_power', 1)}%
+🔌 Длина кабеля: {format_length(cable_mm)}
+🎯 Влияние на шанс: +{bonus_percent:.1f}%
 
 Как считается шанс:
 • База: 50% (равные силы)
-• Разница в кабеле: ±1% за каждую единицу
-• Разница в гофре: ±0.5% за каждые 10 опыта
+• Разница в кабеле: ±0.02% за каждый мм
+• Разница в гофре: ±0.0005% за каждый мм
 
 Пример:
-• Ваш кабель: 10, враг: 5 → +5% к шансу
-• Ваша гофра: 100, враг: 50 → +2.5% к шансу
-• Итого: 50% + 5% + 2.5% = 57.5%
+• Ваш кабель: 150 мм, враг: 100 мм → +1.0% к шансу
+• Ваша гофра: 500 мм, враг: 400 мм → +0.05% к шансу
+• Итого: 50% + 1.0% + 0.05% = 51.05%
 
 Укрепляй кабель - побеждай чаще!"""
         await c.message.edit_text(text, reply_markup=cable_info_kb())
@@ -384,21 +388,21 @@ async def details_handler(c):
     elif c.data == "cable_upgrade_info":
         text = f"""📈 ПРОКАЧКА КАБЕЛЯ
 
-🔌 Текущая сила: {p.get('cable_power', 1)}
-📊 Змия для следующего уровня: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г
+🔌 Текущая длина: {format_length(p.get('cable_mm', 10.0))}
+📊 Змия для следующего +0.1 мм: {(2000 - (p.get('total_zmiy_grams', 0) % 2000)):.0f}г
 
 Способы прокачки:
 1. 🐍 Давка змия
-   • Каждые 1000г = +1 к силе
-   • Чем тяжелее змий - тем быстрее
+   • Каждые 2кг = +0.2 мм к кабелю
+   • 10% шанс на +0.1 мм при малом змие
 
 2. 👊 Победы в радёмках
-   • Каждая победа = +1 к силе
-   • Проигрыш не отнимает силу
+   • Каждая победа = +0.2 мм
+   • Проигрыш не отнимает длину
 
 3. 📊 Общий прогресс
    • Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
-   • Уровень кабеля: {p.get('cable_power', 1)}
+   • Длина кабеля: {format_length(p.get('cable_mm', 10.0))}
 
 Кабель = сила пацана!"""
         await c.message.edit_text(text, reply_markup=cable_info_kb())
@@ -460,10 +464,10 @@ async def cst(c):
             nn = pl.get('nickname', f'Пацан_{pl.get("user_id", "?")}')[:20] + ("..." if len(pl.get('nickname', '')) > 20 else "")
             
             if st == "gofra": 
-                gi = get_gofra_info(pl.get('gofra', 1))
-                v = f"🏗️ {pl.get('gofra', 0)} {gi['emoji']}"
+                gi = get_gofra_info(pl.get('gofra_mm', 10.0))
+                v = f"🏗️ {gi['length_display']} {gi['emoji']}"
             elif st == "cable":
-                v = f"🔌 {pl.get('cable_power', 0)}"
+                v = f"🔌 {format_length(pl.get('cable_mm', 10.0))}"
             elif st == "zmiy":
                 v = f"🐍 {pl.get('zmiy_grams', 0):.0f}г"
             elif st == "atm":
