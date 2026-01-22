@@ -64,7 +64,6 @@ def top_kb(): return mk("top", "back_main", 2)
 def back_kb(to="back_main"): 
     return InlineKeyboardMarkup(inline_keyboard=[[Btn(text="⬅️ Назад", callback_data=to)]])
 
-# Алиасы для совместимости
 main_keyboard = main_kb
 nickname_keyboard = nickname_kb
 rademka_keyboard = rad_kb
@@ -74,7 +73,6 @@ back_to_profile_keyboard = lambda: back_kb("profile")
 back_to_rademka_keyboard = lambda: back_kb("rademka")
 profile_extended_keyboard = lambda: mk("gofra", "profile", 1)
 
-# Специальные клавиатуры
 def atm_status_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [Btn(text="⏱️ Время восстановления", callback_data="atm_regen_time")],
@@ -90,6 +88,18 @@ def gofra_info_kb():
         [Btn(text="⬅️ В главное", callback_data="back_main")]
     ])
 
-# Обновлённые алиасы
 level_stats_keyboard = gofra_info_kb
 atm_status_keyboard = atm_status_kb
+
+def rademka_fight_keyboard(target_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            Btn(text="✅ Протащить!", callback_data=f"rademka_confirm_{target_id}"),
+            Btn(text="❌ Отмена", callback_data="rademka")
+        ]
+    ])
+
+def back_to_rademka_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [Btn(text="⬅️ Назад к радёмке", callback_data="rademka")]
+    ])
