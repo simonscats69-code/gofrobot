@@ -38,13 +38,13 @@ BATCH_INT = 5
 
 GOFRY = {
     1: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 50, "max_grams": 200, "atm_speed": 1.0},
-    10: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 80, "max_grams": 300, "atm_speed": 0.9},
-    25: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 120, "max_grams": 450, "atm_speed": 0.8},
-    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 180, "max_grams": 650, "atm_speed": 0.7},
-    100: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 250, "max_grams": 900, "atm_speed": 0.6},
-    200: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 350, "max_grams": 1200, "atm_speed": 0.5},
-    500: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 500, "max_grams": 1600, "atm_speed": 0.4},
-    1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000, "atm_speed": 0.3}
+    10: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 80, "max_grams": 300, "atm_speed": 1.1},
+    25: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 120, "max_grams": 450, "atm_speed": 1.2},
+    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 180, "max_grams": 650, "atm_speed": 1.3},
+    100: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 250, "max_grams": 900, "atm_speed": 1.4},
+    200: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 350, "max_grams": 1200, "atm_speed": 1.5},
+    500: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 500, "max_grams": 1600, "atm_speed": 1.6},
+    1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000, "atm_speed": 1.7}
 }
 
 class Metrics:
@@ -322,7 +322,7 @@ class UserDataManager:
         gofra_info = get_gofra_info(gofra)
         atm_speed = gofra_info["atm_speed"]
         
-        atm_regen_time = ATM_BASE_TIME * atm_speed
+        atm_regen_time = ATM_BASE_TIME / atm_speed
         
         if user.get("atm_count", 12) < 12:
             time_passed = now - last_update
@@ -385,7 +385,7 @@ user_manager = UserDataManager()
 def get_gofra_info(gofra_value):
     if gofra_value >= 10000:
         level = gofra_value // 1000
-        speed = max(0.05, 0.3 - (level * 0.01))
+        speed = 2.0 + (level * 0.05)
         weight_bonus = 1 + ((level - 10) * 0.15)
         min_grams = round(700 * weight_bonus)
         max_grams = round(2000 * weight_bonus)
@@ -402,7 +402,7 @@ def get_gofra_info(gofra_value):
         }
     elif gofra_value >= 1000:
         sublevel = (gofra_value - 1000) // 100
-        speed = max(0.1, 0.3 - (sublevel * 0.01))
+        speed = 1.7 + (sublevel * 0.1)
         weight_bonus = 1 + (sublevel * 0.08)
         min_grams = round(700 * weight_bonus)
         max_grams = round(2000 * weight_bonus)
@@ -594,7 +594,7 @@ def calculate_atm_regen_time(user):
     gofra = user.get("gofra", 1)
     gofra_info = get_gofra_info(gofra)
     
-    base_time_per_atm = ATM_BASE_TIME * gofra_info["atm_speed"]
+    base_time_per_atm = ATM_BASE_TIME / gofra_info["atm_speed"]
     
     atm_needed = 12 - user.get("atm_count", 0)
     
