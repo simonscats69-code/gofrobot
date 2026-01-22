@@ -5,7 +5,7 @@ import time, random, asyncio
 from db_manager import (
     get_patsan, save_patsan, get_top_players,
     save_rademka_fight, calculate_atm_regen_time, get_connection,
-    davka_zmiy, sdat_zmiy, get_gofra_info, calculate_pvp_chance
+    davka_zmiy, uletet_zmiy, get_gofra_info, calculate_pvp_chance
 )
 from keyboards import (
     main_keyboard, gofra_info_kb, cable_info_kb, atm_status_keyboard,
@@ -70,7 +70,7 @@ async def mmt(p):
     gofra_info = get_gofra_info(p.get('gofra', 1))
     
     return f"""Главное меню
-{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra', 1)} | 🔌 {p.get('cable_power', 1)} | 💰 {p.get('dengi', 0)}р
+{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra', 1)} | 🔌 {p.get('cable_power', 1)}
 
 🌀 Атмосферы: [{pb(atm, max_atm)}] {atm}/{max_atm}
 🐍 Змий: {p.get('zmiy_grams', 0):.0f}г | 📊 Давок: {p.get('total_davki', 0)}
@@ -84,7 +84,7 @@ async def bm(c):
     p = await get_patsan(c.from_user.id)
     await c.message.edit_text(await mmt(p), reply_markup=main_keyboard())
 
-@router.callback_query(F.data.in_(["davka", "sdat"]))
+@router.callback_query(F.data.in_(["davka", "uletet"]))
 @handle_callback_errors
 async def handle_actions(c):
     await c.answer("🔄 Обработка...")
@@ -130,23 +130,21 @@ async def handle_actions(c):
         
         await c.message.edit_text(text, reply_markup=main_keyboard())
         
-    elif c.data == "sdat":
-        success, p, res = await sdat_zmiy(c.from_user.id)
+    elif c.data == "uletet":
+        success, p, res = await uletet_zmiy(c.from_user.id)
         if not success:
             await c.answer(res, show_alert=True)
             return
             
-        text = f"""💰 СДАЛ КОРИЧНЕВАГА НА УДОБРЕНИЯ!
+        text = f"""✈️ ЗМИЙ ОТПРАВЛЕН В КОРИЧНЕВУЮ СТРАНУ!
 
-📦 Сдано: {res['zmiy_grams']:.0f}г коричневага
-💰 Получил: {res['money']}р
-   (вес: {res['base_money']}р + гофра: {res['gofra_bonus']}р + кабель: {res['cable_bonus']}р)
+📦 Отправлено: {res['zmiy_grams']:.0f}г коричневага
+🌍 Летит к братьям по говну...
 
-💸 Теперь на кармане: {p.get('dengi', 0)}р
 🏗️ Гофра: {p.get('gofra', 1)}
 🔌 Сила кабеля: {p.get('cable_power', 1)}
 
-Приёмщик: "Ух, какой аромат! Беру с наценкой!" """
+Диспетчер: "Рейс 322 готов к вылету! Курс - на коричневый закат!" """
         
         await c.message.edit_text(text, reply_markup=main_keyboard())
 
@@ -173,7 +171,6 @@ async def cpr(c):
 🌀 Атмосферы: [{pb(atm, max_atm)}] {atm}/{max_atm}
 ⏱️ Восстановление: {ft(regen_info['per_atm'])} за 1 атм.
 🐍 Змий: {p.get('zmiy_grams', 0):.0f}г
-💰 Деньги: {p.get('dengi', 0)}р
 
 Статистика:
 📊 Всего давок: {p.get('total_davki', 0)}
@@ -227,7 +224,6 @@ async def cable_info_handler(c):
 
 💪 Сила кабеля: {p.get('cable_power', 1)}
 ⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
-📈 Влияет на доход: +{p.get('cable_power', 1) * 10}р при сдазе змия
 
 Как прокачать:
 🐍 Дави змия - кабель укрепляется
@@ -340,7 +336,6 @@ async def details_handler(c):
 
 🔌 Текущая сила: {p.get('cable_power', 1)}
 ⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
-💰 Бонус к деньгам: +{p.get('cable_power', 1) * 10}р
 
 Как работает:
 • Каждый 1000г змия = +1 к силе
@@ -350,7 +345,7 @@ async def details_handler(c):
 📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
 📈 Следующий +1 через: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г
 
-Сильный кабель = победы и деньги!"""
+Сильный кабель = победы!"""
         await c.message.edit_text(text, reply_markup=cable_info_kb())
     
     elif c.data == "cable_pvp_info":
@@ -390,7 +385,6 @@ async def details_handler(c):
 3. 📊 Общий прогресс
    • Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
    • Уровень кабеля: {p.get('cable_power', 1)}
-   • Эффективность: {p.get('cable_power', 1) * 10}р/давка
 
 Кабель = сила пацана!"""
         await c.message.edit_text(text, reply_markup=cable_info_kb())
@@ -428,7 +422,7 @@ async def grwt():
         cur = await cn.execute('SELECT u.user_id,u.nickname,u.gofra,u.cable_power,COUNT(rf.id) as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.gofra,u.cable_power ORDER BY wins DESC LIMIT 10')
         r = await cur.fetchall()
         await cn.close()
-        return [dict(x) | {"wins": x["wins"] or 0, "zmiy_grams": 0, "dengi": 0, "atm_count": 0} for x in r]
+        return [dict(x) | {"wins": x["wins"] or 0, "zmiy_grams": 0, "atm_count": 0} for x in r]
     except Exception:
         return []
 
@@ -441,7 +435,6 @@ async def cst(c):
             "gofra": ("гофре", "🏗️", "gofra"),
             "cable": ("кабелю", "🔌", "cable_power"),
             "zmiy": ("змию", "🐍", "zmiy_grams"),
-            "dengi": ("деньгам", "💰", "dengi"),
             "atm": ("атмосферам", "🌀", "atm_count")
         }
         
@@ -466,8 +459,6 @@ async def cst(c):
                 v = f"🏗️ {pl.get('gofra', 0)} {gi['emoji']}"
             elif st == "cable":
                 v = f"🔌 {pl.get('cable_power', 0)}"
-            elif st == "dengi":
-                v = f"💰 {pl.get('dengi', 0)}р"
             elif st == "zmiy":
                 v = f"🐍 {pl.get('zmiy_grams', 0):.0f}г"
             elif st == "atm":
