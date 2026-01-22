@@ -9,11 +9,10 @@ DB_NAME = os.getenv("DB_NAME", "bot_database.db")
 DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))
 CACHE_TTL = int(os.getenv("CACHE_TTL", "30"))
 MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "500"))
-ATM_MAX = 12  # Фиксировано
-ATM_BASE_TIME = 86400  # 24 часа в секундах
+ATM_MAX = 12
+ATM_BASE_TIME = 86400
 BATCH_INT = 5
 
-# Система гофры вместо уровней
 GOFRY = {
     1: {"name": "Новая гофра", "emoji": "🆕", "atm_speed": 1.0, "min_cm": 1.0, "max_cm": 2.0},
     10: {"name": "Слегка разъезжена", "emoji": "🔄", "atm_speed": 0.9, "min_cm": 1.2, "max_cm": 2.3},
@@ -51,7 +50,8 @@ class DatabaseManager:
                 max_atm INTEGER DEFAULT 12,
                 experience INTEGER DEFAULT 0,
                 total_davki INTEGER DEFAULT 0,
-                total_zmiy_cm REAL DEFAULT 0.0
+                total_zmiy_cm REAL DEFAULT 0.0,
+                nickname_changed BOOLEAN DEFAULT FALSE
             );
             CREATE INDEX IF NOT EXISTS idx_gofra ON users(gofra DESC);
             CREATE INDEX IF NOT EXISTS idx_zmiy ON users(zmiy_cm DESC);
@@ -107,13 +107,14 @@ class UserDataManager:
                 d.get("experience", 0),
                 d.get("total_davki", 0),
                 d.get("total_zmiy_cm", 0.0),
+                d.get("nickname_changed", False),
                 uid
             ))
         await pool.executemany('''
             UPDATE users SET 
                 nickname=?, gofra=?, zmiy_cm=?, dengi=?, 
                 last_update=?, last_davka=?, atm_count=?, max_atm=?,
-                experience=?, total_davki=?, total_zmiy_cm=?
+                experience=?, total_davki=?, total_zmiy_cm=?, nickname_changed=?
             WHERE user_id=?
         ''', vals)
     
@@ -150,32 +151,30 @@ class UserDataManager:
             "max_atm": 12,
             "experience": 0,
             "total_davki": 0,
-            "total_zmiy_cm": 0.0
+            "total_zmiy_cm": 0.0,
+            "nickname_changed": False
         }
         pool = await DatabaseManager.get_pool()
         await pool.execute('''
             INSERT OR IGNORE INTO users 
-            (user_id, nickname, last_update, atm_count) 
-            VALUES (?,?,?,?)
-        ''', (uid, user["nickname"], now, 12))
+            (user_id, nickname, last_update, atm_count, nickname_changed) 
+            VALUES (?,?,?,?,?)
+        ''', (uid, user["nickname"], now, 12, False))
         return user
     
     async def _process_user(self, user):
         now = time.time()
         last_update = user.get("last_update", now)
         
-        # Восстановление атмосфер в зависимости от гофры
         gofra = user.get("gofra", 1)
         gofra_info = get_gofra_info(gofra)
         atm_speed = gofra_info["atm_speed"]
         
-        # Время восстановления одной атмосферы с учетом гофры
         atm_regen_time = ATM_BASE_TIME * atm_speed
         
         if user.get("atm_count", 12) < 12:
             time_passed = now - last_update
             if time_passed >= atm_regen_time:
-                # Сколько атмосфер восстановилось
                 recovered = int(time_passed // atm_regen_time)
                 if recovered > 0:
                     user["atm_count"] = min(12, user.get("atm_count", 0) + recovered)
@@ -214,7 +213,6 @@ class UserDataManager:
 user_manager = UserDataManager()
 
 def get_gofra_info(gofra_value):
-    """Получить информацию о гофре по значению"""
     sorted_thresholds = sorted(GOFRY.items())
     current_info = None
     
@@ -229,7 +227,6 @@ def get_gofra_info(gofra_value):
         current_info = GOFRY[1].copy()
         current_info["threshold"] = 1
     
-    # Добавляем прогресс до следующей гофры
     thresholds = list(GOFRY.keys())
     current_index = thresholds.index(current_info["threshold"])
     
@@ -255,36 +252,28 @@ async def save_patsan(d):
         await user_manager.save_user(uid)
 
 async def davka_zmiy(uid):
-    """Давка змия - можно только при полных 12 атмосферах"""
     p = await user_manager.get_user(uid)
     
-    # Проверка атмосфер
     if p.get("atm_count", 0) < 12:
         return False, None, "Нужны все 12 атмосфер! Сейчас: {}/12".format(p.get("atm_count", 0))
     
-    # Получаем информацию о гофре
     gofra_info = get_gofra_info(p.get("gofra", 1))
     min_cm = gofra_info["min_cm"]
     max_cm = gofra_info["max_cm"]
     
-    # Генерируем длину кабеля в см
     cable_cm = round(random.uniform(min_cm, max_cm), 1)
     
-    # Сбрасываем атмосферы
     p["atm_count"] = 0
     p["last_davka"] = int(time.time())
     p["last_update"] = int(time.time())
     
-    # Добавляем змия
     p["zmiy_cm"] = p.get("zmiy_cm", 0.0) + cable_cm
     p["total_zmiy_cm"] = p.get("total_zmiy_cm", 0.0) + cable_cm
     p["total_davki"] = p.get("total_davki", 0) + 1
     
-    # Добавляем опыт (гондра = опыт)
-    exp_gained = int(cable_cm * 10)  # 1 см = 10 опыта
+    exp_gained = int(cable_cm * 10)
     p["experience"] = p.get("experience", 0) + exp_gained
     
-    # Проверяем повышение гофры
     old_gofra = p.get("gofra", 1)
     new_gofra = old_gofra + exp_gained
     p["gofra"] = new_gofra
@@ -305,7 +294,6 @@ async def davka_zmiy(uid):
     return True, p, res
 
 async def sdat_zmiy(uid):
-    """Сдать змия"""
     p = await user_manager.get_user(uid)
     
     if p.get("zmiy_cm", 0) <= 0:
@@ -313,7 +301,6 @@ async def sdat_zmiy(uid):
     
     zmiy_cm = p.get("zmiy_cm", 0.0)
     
-    # Деньги за змия: 1 см = 100 руб + бонус за гофру
     base_money = int(zmiy_cm * 100)
     gofra_bonus = p.get("gofra", 1) * 5
     total_money = base_money + gofra_bonus
@@ -330,6 +317,21 @@ async def sdat_zmiy(uid):
         "gofra_bonus": gofra_bonus
     }
     return True, p, res
+
+async def change_nickname(uid, nick):
+    pool = await DatabaseManager.get_pool()
+    async with pool.execute('SELECT nickname_changed,dengi FROM users WHERE user_id=?', (uid,)) as c:
+        u = await c.fetchone()
+        cost = 5000
+        if not u: return False, "Нет юзера"
+        if not u["nickname_changed"]:
+            await pool.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
+            await user_manager.get_user(uid, True)
+            return True, "Ник изменён! (бесплатно)"
+        if u["dengi"] < cost: return False, f"Не хватает {cost-u['dengi']}р"
+        await pool.execute('UPDATE users SET nickname=?, dengi=dengi-? WHERE user_id=?', (nick, cost, uid))
+        await user_manager.get_user(uid, True)
+        return True, f"Ник изменён! -{cost}р"
 
 async def get_top_players(limit=10, sort_by="gofra"):
     return await user_manager.get_top_fast(limit, sort_by)
@@ -355,17 +357,13 @@ async def shutdown():
         DatabaseManager._pool = None
 
 def calculate_atm_regen_time(user):
-    """Рассчитать время восстановления атмосфер"""
     gofra = user.get("gofra", 1)
     gofra_info = get_gofra_info(gofra)
     
-    # Базовое время восстановления одной атмосферы
     base_time_per_atm = ATM_BASE_TIME * gofra_info["atm_speed"]
     
-    # Сколько атмосфер нужно восстановить
     atm_needed = 12 - user.get("atm_count", 0)
     
-    # Общее время восстановления
     total_time = base_time_per_atm * atm_needed
     
     return {
