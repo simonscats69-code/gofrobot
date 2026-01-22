@@ -120,3 +120,27 @@ def rademka_fight_keyboard(target_id: int):
             Btn(text="❌ Отмена", callback_data="rademka")
         ]
     ])
+
+def chat_menu_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            Btn(text="🐍 Давить в чате", callback_data="chat_davka"),
+            Btn(text="👊 Радёмка", callback_data="chat_rademka")
+        ],
+        [
+            Btn(text="🏆 Топ чата", callback_data="chat_top"),
+            Btn(text="📊 Стата чата", callback_data="chat_stats")
+        ],
+        [
+            Btn(text="👤 Мой вклад", callback_data="chat_me"),
+            Btn(text="🏗️ Моя гофра", callback_data="chat_gofra")
+        ],
+        [
+            Btn(text="🔌 Мой кабель", callback_data="chat_cable"),
+            Btn(text="🌡️ Атмосферы", callback_data="chat_atm")
+        ],
+        [
+            Btn(text="🆘 Помощь", callback_data="chat_help"),
+            Btn(text="📱 Меню", callback_data="chat_menu")
+        ]
+    ])
