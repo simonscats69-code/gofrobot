@@ -11,7 +11,7 @@ from db_manager import (
     davka_zmiy, uletet_zmiy, get_gofra_info, calculate_pvp_chance, format_length
 )
 from keyboards import (
-    main_keyboard, gofra_info_kb, cable_info_kb, atm_status_keyboard,
+    main_keyboard, gofra_info_kb, cable_info_kb, atm_status_kb,
     top_sort_keyboard, rademka_keyboard, nickname_keyboard, profile_extended_kb
 )
 
@@ -149,7 +149,7 @@ async def handle_actions(c):
 📦 Отправлено: {res['zmiy_grams']:.0f}г коричневага
 🌍 Летит к братьям по говну...
 
-🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}
+🏗️ Гофra: {format_length(p.get('gofra_mm', 10.0))}
 🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}
 
 Диспетчер: "Рейс 322 готов к вылету! Курс - на коричневый закат!" """
@@ -279,7 +279,7 @@ async def atm_status_handler(c):
 
 Полные 12 атмосфер нужны для давки!"""
     
-    await c.message.edit_text(text, reply_markup=atm_status_keyboard())
+    await c.message.edit_text(text, reply_markup=atm_status_kb())
 
 @router.callback_query(F.data.in_(["gofra_progress", "gofra_speed", "gofra_next", "cable_power_info", "cable_pvp_info", "cable_upgrade_info", "atm_regen_time"]))
 @handle_callback_errors
@@ -379,7 +379,7 @@ async def details_handler(c):
 
 Пример:
 • Ваш кабель: 150 мм, враг: 100 мм → +1.0% к шансу
-• Ваша гофра: 500 мм, враг: 400 мм → +0.05% к шансу
+• Ваша гофra: 500 мм, враг: 400 мм → +0.05% к шансу
 • Итого: 50% + 1.0% + 0.05% = 51.05%
 
 Укрепляй кабель - побеждай чаще!"""
@@ -420,7 +420,7 @@ async def details_handler(c):
 ⏱️ Время на 1 атмосферу: {ft(regen_info['per_atm'])}
 🕐 Общее время: {ft(regen_info['total'])}
 📅 Полная зарядка: через {ft(regen_info['total'])}"""
-        await c.message.edit_text(text, reply_markup=atm_status_keyboard())
+        await c.message.edit_text(text, reply_markup=atm_status_kb())
 
 @router.callback_query(F.data == "top")
 @handle_callback_errors
