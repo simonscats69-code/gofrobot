@@ -159,7 +159,6 @@ class DatabaseManager:
             if len(backups) > 5:
                 for old_backup in backups[:-5]:
                     os.remove(old_backup)
-                    logger.debug(f"🗑️ Удалён старый бэкап: {os.path.basename(old_backup)}")
                     
         except Exception as e:
             logger.error(f"⚠️ Бэкап не удался: {e}")
@@ -203,11 +202,10 @@ class UserDataManager:
                 raise
     
     async def _batch_save(self, users):
-        pool = await DatabaseManager.get_pool()
-        
-        async with pool.acquire() as conn:
-            await conn.execute("BEGIN TRANSACTION")
+        async with aiosqlite.connect(DB_PATH) as conn:
+            conn.row_factory = aiosqlite.Row
             try:
+                await conn.execute("BEGIN TRANSACTION")
                 for uid, d in users:
                     await conn.execute('''
                         UPDATE users SET 
@@ -260,7 +258,6 @@ class UserDataManager:
         return user
     
     async def get_users_batch(self, uids):
-        """Получить нескольких пользователей за один запрос"""
         if not uids:
             return []
         
@@ -540,7 +537,6 @@ def calculate_pvp_chance(attacker, defender):
     return max(10, min(90, round(chance, 1)))
 
 async def can_fight_pvp(user_id):
-    """Проверяет, может ли пользователь участвовать в PvP"""
     pool = await get_connection()
     
     hour_ago = int(time.time()) - 3600
