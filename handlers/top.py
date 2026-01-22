@@ -1,6 +1,6 @@
 from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
-from db_manager import get_top_players, get_gofra_info
+from db_manager import get_top_players, get_gofra_info, format_length
 from keyboards import main_keyboard, top_sort_keyboard
 
 router = Router()
@@ -66,10 +66,10 @@ async def show_top(callback: types.CallbackQuery):
         medal = medals[i] if i < len(medals) else f"{i+1}."
         
         if sort_type == "gofra":
-            gofra_info = get_gofra_info(player['gofra'])
-            value = f"🏗️ {player['gofra']} {gofra_info['emoji']}"
+            gofra_info = get_gofra_info(player.get('gofra_mm', 10.0))
+            value = f"🏗️ {gofra_info['length_display']} {gofra_info['emoji']}"
         elif sort_type == "cable":
-            value = f"🔌 {player['cable_power']}"
+            value = f"🔌 {format_length(player.get('cable_mm', 10.0))}"
         elif sort_type == "zmiy":
             value = f"🐍 {player['zmiy_grams']:.0f}г"
         else:
@@ -103,10 +103,12 @@ async def show_top(callback: types.CallbackQuery):
 @ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
 async def back_to_main_from_top(callback: types.CallbackQuery):
-    from db_manager import get_patsan
+    from db_manager import get_patsan, get_gofra_info, format_length
     
     patsan = await get_patsan(callback.from_user.id)
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     await callback.message.edit_text(
-        f"Главное меню. Атмосфер: {patsan['atm_count']}/12",
+        f"Главное меню. Атмосфер: {patsan['atm_count']}/12\n"
+        f"{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {gofra_info['length_display']}",
         reply_markup=main_keyboard()
     )
