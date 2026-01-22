@@ -1,9 +1,12 @@
 import os, time, random, json, aiosqlite
 import asyncio
+import logging
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 def ensure_storage():
     storage_path = "storage"
@@ -13,13 +16,13 @@ def ensure_storage():
             os.makedirs(storage_path, exist_ok=True)
             os.makedirs(os.path.join(storage_path, "backups"), exist_ok=True)
             os.makedirs(os.path.join(storage_path, "logs"), exist_ok=True)
-            print(f"📁 Создана папка storage")
+            logger.info(f"📁 Создана папка storage")
             return storage_path
         except Exception as e:
-            print(f"⚠️ Ошибка создания storage: {e}")
+            logger.error(f"⚠️ Ошибка создания storage: {e}")
             return "."
     
-    print(f"✅ Папка storage уже существует")
+    logger.info(f"✅ Папка storage уже существует")
     return storage_path
 
 STORAGE_DIR = ensure_storage()
@@ -44,12 +47,53 @@ GOFRY = {
     1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000, "atm_speed": 0.3}
 }
 
+class Metrics:
+    _instance = None
+    
+    def __init__(self):
+        self.db_queries = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.save_operations = 0
+        self.start_time = time.time()
+    
+    @classmethod
+    def get(cls):
+        if not cls._instance:
+            cls._instance = Metrics()
+        return cls._instance
+    
+    def log_query(self):
+        self.db_queries += 1
+    
+    def log_cache_hit(self):
+        self.cache_hits += 1
+    
+    def log_cache_miss(self):
+        self.cache_misses += 1
+    
+    def log_save(self, count=1):
+        self.save_operations += count
+    
+    def get_stats(self):
+        uptime = time.time() - self.start_time
+        return {
+            "uptime_seconds": uptime,
+            "db_queries": self.db_queries,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "cache_hit_rate": self.cache_hits / max(1, self.cache_hits + self.cache_misses),
+            "save_operations": self.save_operations,
+            "queries_per_second": self.db_queries / max(1, uptime)
+        }
+
 class DatabaseManager:
     _pool = None
+    
     @classmethod
     async def get_pool(cls):
         if not cls._pool:
-            print(f"🔌 Подключение к БД: {DB_PATH}")
+            logger.info(f"🔌 Подключение к БД: {DB_PATH}")
             cls._pool = await aiosqlite.connect(DB_PATH, timeout=30)
             cls._pool.row_factory = aiosqlite.Row
             await cls._create_tables()
@@ -87,7 +131,7 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
             CREATE INDEX IF NOT EXISTS idx_lose ON rademka_fights(loser_id);
         ''')
-
+    
     @staticmethod
     async def create_backup():
         try:
@@ -104,7 +148,7 @@ class DatabaseManager:
             backup_file = os.path.join(backup_dir, f"backup_{timestamp}.db")
             
             shutil.copy2(DB_PATH, backup_file)
-            print(f"✅ Бэкап: {os.path.basename(backup_file)}")
+            logger.info(f"✅ Бэкап: {os.path.basename(backup_file)}")
             
             backups = sorted([
                 os.path.join(backup_dir, f) 
@@ -115,9 +159,10 @@ class DatabaseManager:
             if len(backups) > 5:
                 for old_backup in backups[:-5]:
                     os.remove(old_backup)
+                    logger.debug(f"🗑️ Удалён старый бэкап: {os.path.basename(old_backup)}")
                     
         except Exception as e:
-            print(f"⚠️ Бэкап не удался: {e}")
+            logger.error(f"⚠️ Бэкап не удался: {e}")
 
 class UserCache:
     def __init__(self, data, timestamp):
@@ -126,6 +171,7 @@ class UserCache:
 class UserDataManager:
     def __init__(self):
         self._cache, self._dirty, self._lock, self._save_task = {}, set(), asyncio.Lock(), None
+        self.metrics = Metrics.get()
     
     async def start_batch_saver(self):
         if not self._save_task:
@@ -138,42 +184,66 @@ class UserDataManager:
     
     async def _save_dirty(self):
         async with self._lock:
-            if not self._dirty: return
-            to_save = [(uid, self._cache[uid].data) for uid in self._dirty if uid in self._cache and self._cache[uid].dirty]
-            if to_save: await self._batch_save(to_save)
-            self._dirty.clear()
+            if not self._dirty:
+                return
+            
+            to_save = [(uid, self._cache[uid].data) for uid in self._dirty 
+                      if uid in self._cache and self._cache[uid].dirty]
+            
+            if not to_save:
+                return
+            
+            start_time = time.time()
+            try:
+                await self._batch_save(to_save)
+                self.metrics.log_save(len(to_save))
+                logger.info(f"💾 Сохранено {len(to_save)} пользователей за {time.time()-start_time:.3f}с")
+            except Exception as e:
+                logger.error(f"❌ Ошибка сохранения {len(to_save)} пользователей: {e}")
+                raise
     
     async def _batch_save(self, users):
         pool = await DatabaseManager.get_pool()
-        vals = []
-        for uid, d in users:
-            vals.append((
-                d.get("nickname", ""), 
-                d.get("gofra", 1),
-                d.get("cable_power", 1),
-                d.get("zmiy_grams", 0.0),
-                int(time.time()),
-                d.get("last_davka", 0),
-                d.get("atm_count", 12),
-                d.get("max_atm", 12),
-                d.get("experience", 0),
-                d.get("total_davki", 0),
-                d.get("total_zmiy_grams", 0.0),
-                d.get("nickname_changed", False),
-                uid
-            ))
-        await pool.executemany('''
-            UPDATE users SET 
-                nickname=?, gofra=?, cable_power=?, zmiy_grams=?, 
-                last_update=?, last_davka=?, atm_count=?, max_atm=?,
-                experience=?, total_davki=?, total_zmiy_grams=?, nickname_changed=?
-            WHERE user_id=?
-        ''', vals)
+        
+        async with pool.acquire() as conn:
+            await conn.execute("BEGIN TRANSACTION")
+            try:
+                for uid, d in users:
+                    await conn.execute('''
+                        UPDATE users SET 
+                            nickname=?, gofra=?, cable_power=?, zmiy_grams=?, 
+                            last_update=?, last_davka=?, atm_count=?, max_atm=?,
+                            experience=?, total_davki=?, total_zmiy_grams=?, nickname_changed=?
+                        WHERE user_id=?
+                    ''', (
+                        d.get("nickname", ""), 
+                        d.get("gofra", 1),
+                        d.get("cable_power", 1),
+                        d.get("zmiy_grams", 0.0),
+                        int(time.time()),
+                        d.get("last_davka", 0),
+                        d.get("atm_count", 12),
+                        d.get("max_atm", 12),
+                        d.get("experience", 0),
+                        d.get("total_davki", 0),
+                        d.get("total_zmiy_grams", 0.0),
+                        d.get("nickname_changed", False),
+                        uid
+                    ))
+                await conn.execute("COMMIT")
+            except Exception as e:
+                await conn.execute("ROLLBACK")
+                raise e
     
     async def get_user(self, uid, force=False):
         now = time.time()
+        
         if not force and uid in self._cache and now - self._cache[uid].timestamp < CACHE_TTL:
+            self.metrics.log_cache_hit()
             return self._cache[uid].data
+        
+        self.metrics.log_cache_miss()
+        self.metrics.log_query()
         
         pool = await DatabaseManager.get_pool()
         async with pool.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
@@ -188,6 +258,39 @@ class UserDataManager:
         if len(self._cache) > MAX_CACHE: 
             self._clean_cache()
         return user
+    
+    async def get_users_batch(self, uids):
+        """Получить нескольких пользователей за один запрос"""
+        if not uids:
+            return []
+        
+        now = time.time()
+        result = {}
+        to_fetch = []
+        
+        for uid in uids:
+            if uid in self._cache and now - self._cache[uid].timestamp < CACHE_TTL:
+                self.metrics.log_cache_hit()
+                result[uid] = self._cache[uid].data
+            else:
+                self.metrics.log_cache_miss()
+                to_fetch.append(uid)
+        
+        if to_fetch:
+            self.metrics.log_query()
+            pool = await DatabaseManager.get_pool()
+            placeholders = ','.join('?' * len(to_fetch))
+            async with pool.execute(f'''
+                SELECT * FROM users WHERE user_id IN ({placeholders})
+            ''', to_fetch) as c:
+                rows = await c.fetchall()
+                for row in rows:
+                    user = dict(row)
+                    await self._process_user(user)
+                    result[user['user_id']] = user
+                    self._cache[user['user_id']] = UserCache(user, now)
+        
+        return [result.get(uid) for uid in uids]
     
     async def _create_user(self, uid):
         now = int(time.time())
@@ -246,21 +349,39 @@ class UserDataManager:
         del_ids = [uid for uid, ce in self._cache.items() if now - ce.timestamp > CACHE_TTL*2]
         for uid in del_ids: 
             del self._cache[uid]
+            self._dirty.discard(uid)
+        
         if len(self._cache) > MAX_CACHE:
             sorted_c = sorted(self._cache.items(), key=lambda x: x[1].timestamp)
             for uid, _ in sorted_c[:MAX_CACHE//2]: 
                 del self._cache[uid]
+                self._dirty.discard(uid)
     
     async def get_top_fast(self, limit=10, sort="gofra"):
+        allowed_sorts = ["gofra", "cable_power", "zmiy_grams", "atm_count", 
+                        "total_davki", "total_zmiy_grams", "experience"]
+        
+        if sort not in allowed_sorts:
+            sort = "gofra"
+        
+        self.metrics.log_query()
         pool = await DatabaseManager.get_pool()
         async with pool.execute(f'''
-            SELECT user_id, nickname, gofra, cable_power, zmiy_grams, atm_count, total_davki, total_zmiy_grams
+            SELECT user_id, nickname, gofra, cable_power, zmiy_grams, 
+                   atm_count, total_davki, total_zmiy_grams
             FROM users 
             ORDER BY {sort} DESC 
             LIMIT ?
         ''', (limit,)) as c:
             rows = await c.fetchall()
             return [dict(row) for row in rows]
+    
+    def get_stats(self):
+        return {
+            "cache_size": len(self._cache),
+            "dirty_count": len(self._dirty),
+            "metrics": self.metrics.get_stats()
+        }
 
 user_manager = UserDataManager()
 
@@ -418,6 +539,23 @@ def calculate_pvp_chance(attacker, defender):
     
     return max(10, min(90, round(chance, 1)))
 
+async def can_fight_pvp(user_id):
+    """Проверяет, может ли пользователь участвовать в PvP"""
+    pool = await get_connection()
+    
+    hour_ago = int(time.time()) - 3600
+    async with pool.execute('''
+        SELECT COUNT(*) as fight_count 
+        FROM rademka_fights 
+        WHERE (winner_id = ? OR loser_id = ?) 
+        AND created_at > ?
+    ''', (user_id, user_id, hour_ago)) as c:
+        row = await c.fetchone()
+        if row and row['fight_count'] >= 10:
+            return False, "Лимит: 10 боёв в час"
+    
+    return True, "OK"
+
 async def change_nickname(uid, nick):
     pool = await DatabaseManager.get_pool()
     async with pool.execute('SELECT nickname_changed FROM users WHERE user_id=?', (uid,)) as c:
@@ -444,7 +582,7 @@ async def get_connection():
     return await DatabaseManager.get_pool()
 
 async def init_bot(): 
-    print(f"🚀 Инициализация бота | Storage: {STORAGE_DIR}")
+    logger.info(f"🚀 Инициализация бота | Storage: {STORAGE_DIR}")
     await DatabaseManager.get_pool()
     await user_manager.start_batch_saver()
     
