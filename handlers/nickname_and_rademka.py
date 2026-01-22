@@ -50,31 +50,21 @@ def validate_nickname(nickname):
     
     return True, "OK"
 
+@router.message(Command("nickname"))
+async def cmd_nickname_handler(m: types.Message, state: FSMContext):
+    await cmd_nickname(m, state)
+
 async def cmd_nickname(message: types.Message, state: FSMContext = None):
     p = await get_patsan(message.from_user.id)
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
     await message.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
-async def cmd_rademka(message: types.Message):
-    p = await get_patsan(message.from_user.id)
-    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
-    
-    can_fight, fight_msg = await can_fight_pvp(message.from_user.id)
-    fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
-    
-    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +0.2 мм к кабелю\n• +5-12 мм к гофре\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))}\n🔌 {format_length(p.get('cable_mm', 10.0))}"
-    await message.answer(txt, reply_markup=rademka_keyboard())
-
-@router.message(Command("nickname"))
-async def cmd_nickname_handler(m: types.Message, state: FSMContext):
-    await cmd_nickname(m, state)
-
 @router.callback_query(F.data == "nickname_menu")
-async def nickname_menu(c: types.CallbackQuery):
+async def nickname_menu(c: types.CallbackQuery, state: FSMContext):
+    await c.answer()
     p = await get_patsan(c.from_user.id)
     cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
     await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {cst}\n\nВыбери действие:", reply_markup=nickname_keyboard())
-    await c.answer()
 
 @router.callback_query(F.data == "my_reputation")
 async def my_reputation(c: types.CallbackQuery):
@@ -107,8 +97,10 @@ async def top_reputation(c: types.CallbackQuery):
 @router.callback_query(F.data == "change_nickname")
 async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     p = await get_patsan(c.from_user.id)
+    
     if await state.get_state() == NicknameChange.waiting_for_nickname.state:
-        return await c.answer("Ты уже в процессе смены ника!", show_alert=True)
+        await c.answer("Ты уже в процессе смены ника!", show_alert=True)
+        return
     
     nc = p.get("nickname_changed", False)
     txt = f"✏️ СМЕНА НИКА\n\nТвой текущий ник: {p.get('nickname','Неизвестно')}\n"
@@ -124,34 +116,51 @@ async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
         txt += f"• Буквы, цифры, пробелы, дефисы, подчёркивания\n"
         txt += f"• Без запрещённых слов (admin, бот и т.д.)\n"
         txt += f"• Без лишних пробелов\n\n"
-        txt += f"Напиши новый ник:"
+        txt += f"Напиши новый ник в чат:"
     
-    await c.message.answer(txt, reply_markup=nickname_keyboard())
+    await c.message.edit_text(txt, reply_markup=back_kb("nickname_menu"))
     await state.set_state(NicknameChange.waiting_for_nickname)
-    await c.answer("Введи новый ник")
+    await c.answer("Введи новый ник в чат")
 
+# ОБРАБОТЧИК ВВОДА НИКА - ВАЖНО!
 @router.message(NicknameChange.waiting_for_nickname)
-async def process_nickname(m: types.Message, state: FSMContext):
-    nn = m.text.strip()
+async def process_nickname_input(message: types.Message, state: FSMContext):
+    nn = message.text.strip()
     
     is_valid, error_msg = validate_nickname(nn)
     if not is_valid:
-        await m.answer(f"❌ {error_msg}\n\nПопробуй другой ник:")
+        await message.answer(f"❌ {error_msg}\n\nПопробуй другой ник:", reply_markup=back_kb("nickname_menu"))
         return
     
-    ok, msg = await change_nickname(m.from_user.id, nn)
+    ok, msg = await change_nickname(message.from_user.id, nn)
     if ok:
-        await m.answer(f"✅ {msg}\nТеперь ты: {nn}", reply_markup=main_keyboard())
+        await message.answer(f"✅ {msg}\nТеперь ты: {nn}", reply_markup=main_keyboard())
     else:
-        await m.answer(f"❌ {msg}\nПопробуй другой:", reply_markup=main_keyboard())
+        await message.answer(f"❌ {msg}\nПопробуй другой:", reply_markup=main_keyboard())
+    
     await state.clear()
 
 @router.message(Command("cancel"))
 async def cmd_cancel(m: types.Message, state: FSMContext):
-    if await state.get_state() is None: 
-        return await m.answer("Нечего отменять.")
-    await state.clear()
-    await m.answer("Смена ника отменена.", reply_markup=main_keyboard())
+    current_state = await state.get_state()
+    if not current_state:
+        return await m.answer("Нечего отменять.", reply_markup=main_keyboard())
+    
+    if current_state == NicknameChange.waiting_for_nickname.state:
+        await state.clear()
+        await m.answer("Смена ника отменена.", reply_markup=main_keyboard())
+    else:
+        await m.answer("Нет активного процесса для отмены.", reply_markup=main_keyboard())
+
+async def cmd_rademka(m: types.Message):
+    p = await get_patsan(m.from_user.id)
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+    
+    can_fight, fight_msg = await can_fight_pvp(m.from_user.id)
+    fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
+    
+    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +0.2 мм к кабелю\n• +5-12 мм к гофре\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))}\n🔌 {format_length(p.get('cable_mm', 10.0))}"
+    await m.answer(txt, reply_markup=rademka_keyboard())
 
 @router.message(Command("rademka"))
 async def cmd_rademka_handler(m: types.Message):
@@ -320,4 +329,4 @@ async def back_to_main(c: types.CallbackQuery):
         logger.error(f"Ошибка главного: {e}")
         await c.message.edit_text("Главное меню\n\nБот работает!", reply_markup=main_keyboard())
 
-__all__ = ["router", "process_nickname", "cmd_nickname", "cmd_rademka"]
+__all__ = ["router", "process_nickname_input", "cmd_nickname", "cmd_rademka"]
