@@ -36,16 +36,45 @@ ATM_MAX = 12
 ATM_BASE_TIME = 7200
 BATCH_INT = 5
 
-GOFRY = {
-    1: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 50, "max_grams": 200, "atm_speed": 1.0},
-    10: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 80, "max_grams": 300, "atm_speed": 1.1},
-    25: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 120, "max_grams": 450, "atm_speed": 1.2},
-    50: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 180, "max_grams": 650, "atm_speed": 1.3},
-    100: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 250, "max_grams": 900, "atm_speed": 1.4},
-    200: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 350, "max_grams": 1200, "atm_speed": 1.5},
-    500: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 500, "max_grams": 1600, "atm_speed": 1.6},
-    1000: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 700, "max_grams": 2000, "atm_speed": 1.7}
+BALANCE = {
+    "UNIT_SCALE": 10.0,
+    "DISPLAY_DECIMALS": 1,
+    "GOFRA_EXP_PER_GRAM": 0.02,
+    "MIN_GOFRA_EXP": 0.8,
+    "GOFRA_SOFT_CAP": 500.0,
+    "GOFRA_SOFT_CAP_MULT": 0.3,
+    "CABLE_MM_PER_KG": 0.2,
+    "MIN_CABLE_GAIN": 0.05,
+    "CABLE_CHANCE_SMALL": 0.08,
+    "PVP_GOFRA_MIN": 5.0,
+    "PVP_GOFRA_MAX": 12.0,
+    "PVP_CABLE_GAIN": 0.2,
+    "PVP_CABLE_MULT": 0.02,
+    "PVP_GOFRA_MULT": 0.0005,
 }
+
+GOFRY_MM = {
+    10.0: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 30, "max_grams": 100, "atm_speed": 1.0},
+    50.0: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 45, "max_grams": 120, "atm_speed": 1.1},
+    150.0: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 60, "max_grams": 150, "atm_speed": 1.2},
+    300.0: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 80, "max_grams": 190, "atm_speed": 1.3},
+    600.0: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 110, "max_grams": 250, "atm_speed": 1.4},
+    1200.0: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 150, "max_grams": 320, "atm_speed": 1.5},
+    2500.0: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 200, "max_grams": 420, "atm_speed": 1.6},
+    5000.0: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 270, "max_grams": 550, "atm_speed": 1.7},
+    10000.0: {"name": "БОГ ГОФРЫ", "emoji": "👁️‍🗨️", "min_grams": 350, "max_grams": 700, "atm_speed": 1.8},
+    20000.0: {"name": "ВСЕЛЕННАЯ ГОФРА", "emoji": "🌌", "min_grams": 450, "max_grams": 900, "atm_speed": 2.0},
+}
+
+def mm_to_cm(mm_value):
+    return round(mm_value / BALANCE["UNIT_SCALE"], BALANCE["DISPLAY_DECIMALS"])
+
+def cm_to_mm(cm_value):
+    return cm_value * BALANCE["UNIT_SCALE"]
+
+def format_length(mm_value):
+    cm = mm_to_cm(mm_value)
+    return f"{cm:.{BALANCE['DISPLAY_DECIMALS']}f} см"
 
 class Metrics:
     _instance = None
@@ -111,6 +140,8 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY, 
                 nickname TEXT DEFAULT '', 
+                gofra_mm REAL DEFAULT 10.0,
+                cable_mm REAL DEFAULT 10.0,
                 gofra INTEGER DEFAULT 1,
                 cable_power INTEGER DEFAULT 1,
                 zmiy_grams REAL DEFAULT 0.0,
@@ -135,6 +166,37 @@ class DatabaseManager:
             );
             CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
             CREATE INDEX IF NOT EXISTS idx_lose ON rademka_fights(loser_id);
+            
+            CREATE TABLE IF NOT EXISTS chats (
+                chat_id INTEGER PRIMARY KEY,
+                chat_title TEXT DEFAULT '',
+                chat_type TEXT DEFAULT 'group',
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at INTEGER DEFAULT (strftime('%s','now')),
+                last_activity INTEGER DEFAULT (strftime('%s','now'))
+            );
+            
+            CREATE TABLE IF NOT EXISTS chat_stats (
+                chat_id INTEGER,
+                user_id INTEGER,
+                total_zmiy_grams REAL DEFAULT 0.0,
+                total_davki INTEGER DEFAULT 0,
+                last_davka_at INTEGER DEFAULT 0,
+                PRIMARY KEY (chat_id, user_id),
+                FOREIGN KEY (chat_id) REFERENCES chats(chat_id)
+            );
+            
+            CREATE TABLE IF NOT EXISTS chat_top (
+                chat_id INTEGER,
+                user_id INTEGER,
+                total_zmiy_grams REAL DEFAULT 0.0,
+                rank INTEGER DEFAULT 0,
+                last_updated INTEGER DEFAULT (strftime('%s','now')),
+                PRIMARY KEY (chat_id, user_id)
+            );
+            
+            CREATE INDEX IF NOT EXISTS idx_chat_stats ON chat_stats(chat_id, total_zmiy_grams DESC);
+            CREATE INDEX IF NOT EXISTS idx_chat_top ON chat_top(chat_id, rank);
         ''')
         await conn.commit()
         await conn.close()
@@ -169,6 +231,119 @@ class DatabaseManager:
                     
         except Exception as e:
             logger.error(f"⚠️ Бэкап не удался: {e}")
+
+class ChatManager:
+    @staticmethod
+    async def register_chat(chat_id, chat_title="", chat_type="group"):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            await conn.execute('''
+                INSERT OR REPLACE INTO chats 
+                (chat_id, chat_title, chat_type, last_activity, is_active)
+                VALUES (?,?,?,?,?)
+            ''', (chat_id, chat_title, chat_type, int(time.time()), True))
+            await conn.commit()
+    
+    @staticmethod
+    async def update_chat_activity(chat_id):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            await conn.execute('''
+                UPDATE chats SET last_activity = ? WHERE chat_id = ?
+            ''', (int(time.time()), chat_id))
+            await conn.commit()
+    
+    @staticmethod
+    async def record_davka(chat_id, user_id, zmiy_grams):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            await conn.execute('''
+                INSERT INTO chat_stats (chat_id, user_id, total_zmiy_grams, total_davki, last_davka_at)
+                VALUES (?,?,?,1,?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                    total_zmiy_grams = total_zmiy_grams + ?,
+                    total_davki = total_davki + 1,
+                    last_davka_at = ?
+            ''', (chat_id, user_id, zmiy_grams, int(time.time()), zmiy_grams, int(time.time())))
+            
+            await conn.execute('''
+                INSERT OR REPLACE INTO chat_top (chat_id, user_id, total_zmiy_grams, last_updated)
+                VALUES (?,?,?,?)
+            ''', (chat_id, user_id, 
+                  await ChatManager.get_user_total_in_chat(chat_id, user_id),
+                  int(time.time())))
+            
+            await conn.commit()
+            await ChatManager.update_chat_ranks(chat_id)
+    
+    @staticmethod
+    async def get_user_total_in_chat(chat_id, user_id):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            async with conn.execute('''
+                SELECT total_zmiy_grams FROM chat_stats 
+                WHERE chat_id = ? AND user_id = ?
+            ''', (chat_id, user_id)) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else 0.0
+    
+    @staticmethod
+    async def update_chat_ranks(chat_id):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            async with conn.execute('''
+                SELECT user_id, total_zmiy_grams FROM chat_stats
+                WHERE chat_id = ?
+                ORDER BY total_zmiy_grams DESC
+            ''', (chat_id,)) as cursor:
+                rows = await cursor.fetchall()
+                
+            for rank, (user_id, total_grams) in enumerate(rows, 1):
+                await conn.execute('''
+                    UPDATE chat_top SET rank = ?, last_updated = ?
+                    WHERE chat_id = ? AND user_id = ?
+                ''', (rank, int(time.time()), chat_id, user_id))
+            
+            await conn.commit()
+    
+    @staticmethod
+    async def get_chat_top(chat_id, limit=10):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            async with conn.execute('''
+                SELECT ct.user_id, ct.rank, ct.total_zmiy_grams, u.nickname
+                FROM chat_top ct
+                LEFT JOIN users u ON ct.user_id = u.user_id
+                WHERE ct.chat_id = ?
+                ORDER BY ct.rank
+                LIMIT ?
+            ''', (chat_id, limit)) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+    
+    @staticmethod
+    async def get_chat_stats(chat_id):
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            async with conn.execute('''
+                SELECT 
+                    COUNT(DISTINCT user_id) as total_players,
+                    SUM(total_zmiy_grams) as total_zmiy_all,
+                    SUM(total_davki) as total_davki_all,
+                    MAX(last_davka_at) as last_activity
+                FROM chat_stats 
+                WHERE chat_id = ?
+            ''', (chat_id,)) as cursor:
+                stats = await cursor.fetchone()
+            
+            week_ago = int(time.time()) - 604800
+            async with conn.execute('''
+                SELECT COUNT(DISTINCT user_id) as active_players
+                FROM chat_stats 
+                WHERE chat_id = ? AND last_davka_at > ?
+            ''', (chat_id, week_ago)) as cursor:
+                active = await cursor.fetchone()
+            
+            return {
+                "total_players": stats[0] if stats and stats[0] else 0,
+                "total_zmiy_all": stats[1] if stats and stats[1] else 0.0,
+                "total_davki_all": stats[2] if stats and stats[2] else 0,
+                "last_activity": stats[3] if stats and stats[3] else 0,
+                "active_players": active[0] if active and active[0] else 0
+            }
 
 class UserCache:
     def __init__(self, data, timestamp):
@@ -220,13 +395,15 @@ class UserDataManager:
                 for uid, d in users:
                     await conn.execute('''
                         INSERT OR REPLACE INTO users 
-                        (user_id, nickname, gofra, cable_power, zmiy_grams, 
+                        (user_id, nickname, gofra_mm, cable_mm, gofra, cable_power, zmiy_grams, 
                          last_update, last_davka, atm_count, max_atm,
                          experience, total_davki, total_zmiy_grams, nickname_changed)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ''', (
                         uid,
                         d.get("nickname", ""), 
+                        d.get("gofra_mm", 10.0),
+                        d.get("cable_mm", 10.0),
                         d.get("gofra", 1),
                         d.get("cable_power", 1),
                         d.get("zmiy_grams", 0.0),
@@ -307,6 +484,8 @@ class UserDataManager:
         user = {
             "user_id": uid, 
             "nickname": f"Пацанчик_{uid}", 
+            "gofra_mm": 10.0,
+            "cable_mm": 10.0,
             "gofra": 1,
             "cable_power": 1,
             "zmiy_grams": 0.0,
@@ -323,9 +502,9 @@ class UserDataManager:
         async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
             await conn.execute('''
                 INSERT OR IGNORE INTO users 
-                (user_id, nickname, last_update, atm_count, nickname_changed) 
-                VALUES (?,?,?,?,?)
-            ''', (uid, user["nickname"], now, 12, False))
+                (user_id, nickname, last_update, atm_count, nickname_changed, gofra_mm, cable_mm) 
+                VALUES (?,?,?,?,?,?,?)
+            ''', (uid, user["nickname"], now, 12, False, 10.0, 10.0))
             await conn.commit()
         
         return user
@@ -334,8 +513,8 @@ class UserDataManager:
         now = time.time()
         last_update = user.get("last_update", now)
         
-        gofra = user.get("gofra", 1)
-        gofra_info = get_gofra_info(gofra)
+        gofra_mm = user.get("gofra_mm", 10.0)
+        gofra_info = get_gofra_info(gofra_mm)
         atm_speed = gofra_info["atm_speed"]
         
         atm_regen_time = ATM_BASE_TIME / atm_speed
@@ -399,66 +578,54 @@ class UserDataManager:
 
 user_manager = UserDataManager()
 
-def get_gofra_info(gofra_value):
-    if gofra_value >= 10000:
-        level = gofra_value // 1000
-        speed = 2.0 + (level * 0.05)
-        weight_bonus = 1 + ((level - 10) * 0.15)
-        min_grams = round(700 * weight_bonus)
-        max_grams = round(2000 * weight_bonus)
+def get_gofra_info(gofra_value_mm):
+    if gofra_value_mm >= 100000.0:
+        meters = gofra_value_mm / 1000.0
+        speed = 2.5 + (meters / 100) * 0.1
+        weight_bonus = 1 + ((meters - 100) / 50) * 0.05
+        min_grams = round(1000 * weight_bonus)
+        max_grams = round(2500 * weight_bonus)
         
         return {
-            "name": f"БОГ ГОФРЫ {level-9}",
-            "emoji": "👁️‍🗨️",
+            "name": f"КОСМИЧЕСКАЯ ГОФРА {int(meters)}м",
+            "emoji": "🚀",
             "atm_speed": round(speed, 2),
             "min_grams": min_grams,
             "max_grams": max_grams,
-            "threshold": 10000,
-            "next_threshold": gofra_value + 1000,
-            "progress": (gofra_value % 1000) / 1000
-        }
-    elif gofra_value >= 1000:
-        sublevel = (gofra_value - 1000) // 100
-        speed = 1.7 + (sublevel * 0.1)
-        weight_bonus = 1 + (sublevel * 0.08)
-        min_grams = round(700 * weight_bonus)
-        max_grams = round(2000 * weight_bonus)
-        
-        return {
-            "name": f"Царь-гофра {sublevel+1}",
-            "emoji": "🐉" + "🔥" * min(sublevel//10, 3),
-            "atm_speed": round(speed, 2),
-            "min_grams": min_grams,
-            "max_grams": max_grams,
-            "threshold": 1000,
-            "next_threshold": 1000 + ((sublevel + 1) * 100),
-            "progress": ((gofra_value - 1000) % 100) / 100
+            "threshold": 100000.0,
+            "next_threshold": gofra_value_mm + 5000.0,
+            "progress": (gofra_value_mm % 5000.0) / 5000.0,
+            "length_mm": gofra_value_mm,
+            "length_display": f"{meters:.1f} м"
         }
     
-    sorted_thresholds = sorted(GOFRY.items())
+    sorted_thresholds = sorted(GOFRY_MM.items())
     current_info = None
     
-    for threshold, info in sorted_thresholds:
-        if gofra_value >= threshold:
+    for threshold_mm, info in sorted_thresholds:
+        if gofra_value_mm >= threshold_mm:
             current_info = info.copy()
-            current_info["threshold"] = threshold
+            current_info["threshold"] = threshold_mm
         else:
             break
     
     if not current_info:
-        current_info = GOFRY[1].copy()
-        current_info["threshold"] = 1
+        current_info = GOFRY_MM[10.0].copy()
+        current_info["threshold"] = 10.0
     
-    thresholds = list(GOFRY.keys())
+    thresholds = list(GOFRY_MM.keys())
     current_index = thresholds.index(current_info["threshold"])
     
     if current_index < len(thresholds) - 1:
         next_threshold = thresholds[current_index + 1]
         current_info["next_threshold"] = next_threshold
-        current_info["progress"] = (gofra_value - current_info["threshold"]) / (next_threshold - current_info["threshold"])
+        current_info["progress"] = (gofra_value_mm - current_info["threshold"]) / (next_threshold - current_info["threshold"])
     else:
-        current_info["next_threshold"] = 1000
-        current_info["progress"] = (gofra_value - current_info["threshold"]) / (1000 - current_info["threshold"])
+        current_info["next_threshold"] = 100000.0
+        current_info["progress"] = (gofra_value_mm - current_info["threshold"]) / (100000.0 - current_info["threshold"])
+    
+    current_info["length_mm"] = gofra_value_mm
+    current_info["length_display"] = format_length(gofra_value_mm)
     
     if "atm_speed" not in current_info:
         current_info["atm_speed"] = 1.0
@@ -476,13 +643,13 @@ async def save_patsan(d):
             user_manager._cache[uid].dirty = True
         await user_manager.save_user(uid)
 
-async def davka_zmiy(uid):
+async def davka_zmiy(uid, chat_id=None):
     p = await user_manager.get_user(uid)
     
     if p.get("atm_count", 0) < 12:
         return False, None, "Нужны все 12 атмосфер! Сейчас: {}/12".format(p.get("atm_count", 0))
     
-    gofra_info = get_gofra_info(p.get("gofra", 1))
+    gofra_info = get_gofra_info(p.get("gofra_mm", 10.0))
     min_grams = gofra_info["min_grams"]
     max_grams = gofra_info["max_grams"]
     
@@ -496,32 +663,58 @@ async def davka_zmiy(uid):
     p["total_zmiy_grams"] = p.get("total_zmiy_grams", 0.0) + zmiy_grams
     p["total_davki"] = p.get("total_davki", 0) + 1
     
-    exp_gained = zmiy_grams // 10
-    p["experience"] = p.get("experience", 0) + exp_gained
+    current_gofra_mm = p.get("gofra_mm", 10.0)
     
-    old_gofra = p.get("gofra", 1)
-    new_gofra = old_gofra + exp_gained
-    p["gofra"] = new_gofra
+    base_exp_mm = zmiy_grams * BALANCE["GOFRA_EXP_PER_GRAM"]
+    min_exp_mm = BALANCE["MIN_GOFRA_EXP"]
+    exp_gained_mm = max(min_exp_mm, base_exp_mm)
     
-    cable_power_gain = zmiy_grams // 1000
-    old_cable_power = p.get("cable_power", 1)
-    p["cable_power"] = old_cable_power + cable_power_gain
+    if current_gofra_mm > BALANCE["GOFRA_SOFT_CAP"]:
+        over_cap = current_gofra_mm - BALANCE["GOFRA_SOFT_CAP"]
+        reduction = 1.0 - (over_cap / (over_cap + 5000.0)) * 0.7
+        exp_gained_mm *= max(BALANCE["GOFRA_SOFT_CAP_MULT"], reduction)
     
-    gofra_up = new_gofra > old_gofra
+    exp_gained_mm = round(exp_gained_mm, 2)
+    
+    old_gofra_mm = current_gofra_mm
+    new_gofra_mm = old_gofra_mm + exp_gained_mm
+    p["gofra_mm"] = new_gofra_mm
+    p["experience"] = p.get("experience", 0) + int(exp_gained_mm * 10)
+    
+    current_cable_mm = p.get("cable_mm", 10.0)
+    cable_gain_mm = (zmiy_grams / 1000.0) * BALANCE["CABLE_MM_PER_KG"]
+    
+    if cable_gain_mm < BALANCE["MIN_CABLE_GAIN"]:
+        if random.random() < BALANCE["CABLE_CHANCE_SMALL"]:
+            cable_gain_mm = BALANCE["MIN_CABLE_GAIN"]
+        else:
+            cable_gain_mm = 0
+    
+    cable_gain_mm = round(cable_gain_mm, 2)
+    old_cable_mm = current_cable_mm
+    new_cable_mm = old_cable_mm + cable_gain_mm
+    p["cable_mm"] = new_cable_mm
+    
+    p["gofra"] = int(new_gofra_mm / 10)
+    p["cable_power"] = int(new_cable_mm / 5)
+    
+    if chat_id:
+        await ChatManager.record_davka(chat_id, uid, zmiy_grams)
     
     user_manager.mark_dirty(uid)
     
     res = {
         "zmiy_grams": zmiy_grams,
-        "exp_gained": exp_gained,
-        "old_gofra": old_gofra,
-        "new_gofra": new_gofra,
-        "old_cable_power": old_cable_power,
-        "new_cable_power": p["cable_power"],
-        "cable_power_gain": cable_power_gain,
-        "gofra_up": gofra_up,
-        "gofra_info": get_gofra_info(new_gofra),
-        "atm_speed": gofra_info["atm_speed"]
+        "exp_gained_mm": exp_gained_mm,
+        "old_gofra_mm": old_gofra_mm,
+        "new_gofra_mm": new_gofra_mm,
+        "old_cable_mm": old_cable_mm,
+        "new_cable_mm": new_cable_mm,
+        "cable_gain_mm": cable_gain_mm,
+        "gofra_up": new_gofra_mm > old_gofra_mm,
+        "gofra_info": get_gofra_info(new_gofra_mm),
+        "atm_speed": gofra_info["atm_speed"],
+        "chat_id": chat_id
     }
     return True, p, res
 
@@ -543,15 +736,22 @@ async def uletet_zmiy(uid):
     return True, p, res
 
 def calculate_pvp_chance(attacker, defender):
-    chance = 50
+    base_chance = 50
     
-    cable_diff = attacker.get("cable_power", 1) - defender.get("cable_power", 1)
-    chance += cable_diff * 1.0
+    attacker_cable_mm = attacker.get("cable_mm", 10.0)
+    defender_cable_mm = defender.get("cable_mm", 10.0)
+    cable_diff_mm = attacker_cable_mm - defender_cable_mm
+    base_chance += cable_diff_mm * BALANCE["PVP_CABLE_MULT"]
     
-    gofra_diff = attacker.get("gofra", 1) - defender.get("gofra", 1)
-    chance += (gofra_diff / 10) * 0.5
+    attacker_gofra_mm = attacker.get("gofra_mm", 10.0)
+    defender_gofra_mm = defender.get("gofra_mm", 10.0)
+    gofra_diff_mm = attacker_gofra_mm - defender_gofra_mm
+    base_chance += gofra_diff_mm * BALANCE["PVP_GOFRA_MULT"]
     
-    return max(10, min(90, round(chance, 1)))
+    random_factor = random.uniform(-5, 5)
+    base_chance += random_factor
+    
+    return max(15, min(85, round(base_chance, 1)))
 
 async def can_fight_pvp(user_id):
     async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
@@ -609,7 +809,7 @@ async def shutdown():
         DatabaseManager._pool = None
 
 def calculate_atm_regen_time(user):
-    gofra = user.get("gofra", 1)
+    gofra = user.get("gofra_mm", 10.0)
     gofra_info = get_gofra_info(gofra)
     
     base_time_per_atm = ATM_BASE_TIME / gofra_info["atm_speed"]
