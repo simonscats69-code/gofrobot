@@ -4,5 +4,10 @@
   },
   "run": {
     "command": "python main.py"
+  },
+  "storage": {
+    "enabled": true,
+    "path": "storage",
+    "persistent": true
   }
 }
