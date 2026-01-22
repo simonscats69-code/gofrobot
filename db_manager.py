@@ -29,8 +29,8 @@ STORAGE_DIR = ensure_storage()
 DB_PATH = os.path.join(STORAGE_DIR, "bot_database.db")
 
 DB_NAME = os.getenv("DB_NAME", DB_PATH)
-DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))
-CACHE_TTL = int(os.getenv("CACHE_TTL", "10"))
+DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "60"))
+CACHE_TTL = int(os.getenv("CACHE_TTL", "30"))
 MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "100"))
 ATM_MAX = 12
 ATM_BASE_TIME = 7200
@@ -89,20 +89,25 @@ class Metrics:
 
 class DatabaseManager:
     _pool = None
+    _lock = asyncio.Lock()
     
     @classmethod
-    async def get_pool(cls):
-        if not cls._pool:
-            logger.info(f"🔌 Подключение к БД: {DB_PATH}")
-            cls._pool = await aiosqlite.connect(DB_PATH, timeout=30)
-            cls._pool.row_factory = aiosqlite.Row
-            await cls._create_tables()
-        return cls._pool
+    async def get_connection(cls):
+        async with cls._lock:
+            if not cls._pool:
+                logger.info(f"🔌 Создание пула соединений к БД: {DB_PATH}")
+                cls._pool = await aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT)
+                cls._pool.row_factory = aiosqlite.Row
+                await cls._create_tables(cls._pool)
+        
+        return await aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False)
     
     @staticmethod
-    async def _create_tables():
-        pool = await DatabaseManager.get_pool()
-        await pool.executescript('''
+    async def _create_tables(conn=None):
+        if conn is None:
+            conn = await DatabaseManager.get_connection()
+        
+        await conn.executescript('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY, 
                 nickname TEXT DEFAULT '', 
@@ -131,6 +136,8 @@ class DatabaseManager:
             CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
             CREATE INDEX IF NOT EXISTS idx_lose ON rademka_fights(loser_id);
         ''')
+        await conn.commit()
+        await conn.close()
     
     @staticmethod
     async def create_backup():
@@ -165,11 +172,16 @@ class DatabaseManager:
 
 class UserCache:
     def __init__(self, data, timestamp):
-        self.data, self.timestamp, self.dirty = data, timestamp, False
+        self.data = data
+        self.timestamp = timestamp
+        self.dirty = False
 
 class UserDataManager:
     def __init__(self):
-        self._cache, self._dirty, self._lock, self._save_task = {}, set(), asyncio.Lock(), None
+        self._cache = {}
+        self._dirty = set()
+        self._lock = asyncio.Lock()
+        self._save_task = None
         self.metrics = Metrics.get()
     
     async def start_batch_saver(self):
@@ -199,21 +211,21 @@ class UserDataManager:
                 logger.info(f"💾 Сохранено {len(to_save)} пользователей за {time.time()-start_time:.3f}с")
             except Exception as e:
                 logger.error(f"❌ Ошибка сохранения {len(to_save)} пользователей: {e}")
-                raise
     
     async def _batch_save(self, users):
-        async with aiosqlite.connect(DB_PATH) as conn:
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
             conn.row_factory = aiosqlite.Row
             try:
                 await conn.execute("BEGIN TRANSACTION")
                 for uid, d in users:
                     await conn.execute('''
-                        UPDATE users SET 
-                            nickname=?, gofra=?, cable_power=?, zmiy_grams=?, 
-                            last_update=?, last_davka=?, atm_count=?, max_atm=?,
-                            experience=?, total_davki=?, total_zmiy_grams=?, nickname_changed=?
-                        WHERE user_id=?
+                        INSERT OR REPLACE INTO users 
+                        (user_id, nickname, gofra, cable_power, zmiy_grams, 
+                         last_update, last_davka, atm_count, max_atm,
+                         experience, total_davki, total_zmiy_grams, nickname_changed)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ''', (
+                        uid,
                         d.get("nickname", ""), 
                         d.get("gofra", 1),
                         d.get("cable_power", 1),
@@ -225,12 +237,11 @@ class UserDataManager:
                         d.get("experience", 0),
                         d.get("total_davki", 0),
                         d.get("total_zmiy_grams", 0.0),
-                        d.get("nickname_changed", False),
-                        uid
+                        d.get("nickname_changed", False)
                     ))
-                await conn.execute("COMMIT")
+                await conn.commit()
             except Exception as e:
-                await conn.execute("ROLLBACK")
+                await conn.rollback()
                 raise e
     
     async def get_user(self, uid, force=False):
@@ -243,14 +254,15 @@ class UserDataManager:
         self.metrics.log_cache_miss()
         self.metrics.log_query()
         
-        pool = await DatabaseManager.get_pool()
-        async with pool.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
-            row = await c.fetchone()
-            if row: 
-                user = dict(row)
-                await self._process_user(user)
-            else: 
-                user = await self._create_user(uid)
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
+                row = await c.fetchone()
+                if row: 
+                    user = dict(row)
+                    await self._process_user(user)
+                else: 
+                    user = await self._create_user(uid)
         
         self._cache[uid] = UserCache(user, now)
         if len(self._cache) > MAX_CACHE: 
@@ -275,17 +287,18 @@ class UserDataManager:
         
         if to_fetch:
             self.metrics.log_query()
-            pool = await DatabaseManager.get_pool()
-            placeholders = ','.join('?' * len(to_fetch))
-            async with pool.execute(f'''
-                SELECT * FROM users WHERE user_id IN ({placeholders})
-            ''', to_fetch) as c:
-                rows = await c.fetchall()
-                for row in rows:
-                    user = dict(row)
-                    await self._process_user(user)
-                    result[user['user_id']] = user
-                    self._cache[user['user_id']] = UserCache(user, now)
+            async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+                conn.row_factory = aiosqlite.Row
+                placeholders = ','.join('?' * len(to_fetch))
+                async with conn.execute(f'''
+                    SELECT * FROM users WHERE user_id IN ({placeholders})
+                ''', to_fetch) as c:
+                    rows = await c.fetchall()
+                    for row in rows:
+                        user = dict(row)
+                        await self._process_user(user)
+                        result[user['user_id']] = user
+                        self._cache[user['user_id']] = UserCache(user, now)
         
         return [result.get(uid) for uid in uids]
     
@@ -306,12 +319,15 @@ class UserDataManager:
             "total_zmiy_grams": 0.0,
             "nickname_changed": False
         }
-        pool = await DatabaseManager.get_pool()
-        await pool.execute('''
-            INSERT OR IGNORE INTO users 
-            (user_id, nickname, last_update, atm_count, nickname_changed) 
-            VALUES (?,?,?,?,?)
-        ''', (uid, user["nickname"], now, 12, False))
+        
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            await conn.execute('''
+                INSERT OR IGNORE INTO users 
+                (user_id, nickname, last_update, atm_count, nickname_changed) 
+                VALUES (?,?,?,?,?)
+            ''', (uid, user["nickname"], now, 12, False))
+            await conn.commit()
+        
         return user
     
     async def _process_user(self, user):
@@ -362,16 +378,17 @@ class UserDataManager:
             sort = "gofra"
         
         self.metrics.log_query()
-        pool = await DatabaseManager.get_pool()
-        async with pool.execute(f'''
-            SELECT user_id, nickname, gofra, cable_power, zmiy_grams, 
-                   atm_count, total_davki, total_zmiy_grams
-            FROM users 
-            ORDER BY {sort} DESC 
-            LIMIT ?
-        ''', (limit,)) as c:
-            rows = await c.fetchall()
-            return [dict(row) for row in rows]
+        async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(f'''
+                SELECT user_id, nickname, gofra, cable_power, zmiy_grams, 
+                       atm_count, total_davki, total_zmiy_grams
+                FROM users 
+                ORDER BY {sort} DESC 
+                LIMIT ?
+            ''', (limit,)) as c:
+                rows = await c.fetchall()
+                return [dict(row) for row in rows]
     
     def get_stats(self):
         return {
@@ -537,51 +554,52 @@ def calculate_pvp_chance(attacker, defender):
     return max(10, min(90, round(chance, 1)))
 
 async def can_fight_pvp(user_id):
-    pool = await get_connection()
-    
-    hour_ago = int(time.time()) - 3600
-    async with pool.execute('''
-        SELECT COUNT(*) as fight_count 
-        FROM rademka_fights 
-        WHERE (winner_id = ? OR loser_id = ?) 
-        AND created_at > ?
-    ''', (user_id, user_id, hour_ago)) as c:
-        row = await c.fetchone()
-        if row and row['fight_count'] >= 10:
-            return False, "Лимит: 10 боёв в час"
+    async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+        hour_ago = int(time.time()) - 3600
+        async with conn.execute('''
+            SELECT COUNT(*) as fight_count 
+            FROM rademka_fights 
+            WHERE (winner_id = ? OR loser_id = ?) 
+            AND created_at > ?
+        ''', (user_id, user_id, hour_ago)) as c:
+            row = await c.fetchone()
+            if row and row['fight_count'] >= 10:
+                return False, "Лимит: 10 боёв в час"
     
     return True, "OK"
 
 async def change_nickname(uid, nick):
-    pool = await DatabaseManager.get_pool()
-    async with pool.execute('SELECT nickname_changed FROM users WHERE user_id=?', (uid,)) as c:
-        u = await c.fetchone()
-        if not u: return False, "Нет юзера"
-        if not u["nickname_changed"]:
-            await pool.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
-            await user_manager.get_user(uid, True)
-            return True, "Ник изменён! (бесплатно)"
-        else:
-            return False, "Ник уже менялся! Больше нельзя."
+    async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+        async with conn.execute('SELECT nickname_changed FROM users WHERE user_id=?', (uid,)) as c:
+            u = await c.fetchone()
+            if not u: 
+                return False, "Нет юзера"
+            if not u["nickname_changed"]:
+                await conn.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
+                await conn.commit()
+                await user_manager.get_user(uid, True)
+                return True, "Ник изменён! (бесплатно)"
+            else:
+                return False, "Ник уже менялся! Больше нельзя."
 
 async def get_top_players(limit=10, sort_by="gofra"):
     return await user_manager.get_top_fast(limit, sort_by)
 
 async def save_rademka_fight(win, lose, money=0):
-    pool = await DatabaseManager.get_pool()
-    await pool.execute('''
-        INSERT INTO rademka_fights (winner_id, loser_id, money_taken) 
-        VALUES (?,?,?)
-    ''', (win, lose, money))
+    async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
+        await conn.execute('''
+            INSERT INTO rademka_fights (winner_id, loser_id, money_taken) 
+            VALUES (?,?,?)
+        ''', (win, lose, money))
+        await conn.commit()
 
 async def get_connection():
-    return await DatabaseManager.get_pool()
+    return await DatabaseManager.get_connection()
 
 async def init_bot(): 
     logger.info(f"🚀 Инициализация бота | Storage: {STORAGE_DIR}")
-    await DatabaseManager.get_pool()
+    await DatabaseManager.get_connection()
     await user_manager.start_batch_saver()
-    
     await DatabaseManager.create_backup()
 
 async def shutdown(): 
