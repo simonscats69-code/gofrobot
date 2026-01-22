@@ -19,9 +19,9 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 def handle_callback_errors(func):
-    async def wrapper(callback: types.CallbackQuery, *args, **kwargs):
+    async def wrapper(callback: types.CallbackQuery, **kwargs):
         try:
-            return await func(callback, *args, **kwargs)
+            return await func(callback, **kwargs)
         except asyncio.CancelledError:
             raise
         except TelegramBadRequest as e:
