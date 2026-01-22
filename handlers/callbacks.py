@@ -511,6 +511,3 @@ async def cr(c):
     except Exception as e:
         logger.error(f"Error loading rademka: {e}")
         await c.answer("Ошибка загрузки радёмки", show_alert=True)
-
-get_user_rank = lambda p: ("👶", "Пацанчик")
-get_emoji = lambda i: "📦"
