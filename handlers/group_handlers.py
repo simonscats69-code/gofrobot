@@ -11,34 +11,10 @@ from db_manager import (
     format_length, ChatManager, calculate_atm_regen_time,
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight
 )
-from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_keyboard, rademka_keyboard, nickname_keyboard
+from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_keyboard, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-def get_chat_menu_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🐍 Давить в чате", callback_data="chat_davka"),
-            InlineKeyboardButton(text="👊 Радёмка", callback_data="chat_rademka")
-        ],
-        [
-            InlineKeyboardButton(text="🏆 Топ чата", callback_data="chat_top"),
-            InlineKeyboardButton(text="📊 Стата чата", callback_data="chat_stats")
-        ],
-        [
-            InlineKeyboardButton(text="👤 Мой вклад", callback_data="chat_me"),
-            InlineKeyboardButton(text="🏗️ Моя гофра", callback_data="chat_gofra")
-        ],
-        [
-            InlineKeyboardButton(text="🔌 Мой кабель", callback_data="chat_cable"),
-            InlineKeyboardButton(text="🌡️ Атмосферы", callback_data="chat_atm")
-        ],
-        [
-            InlineKeyboardButton(text="🆘 Помощь", callback_data="chat_help"),
-            InlineKeyboardButton(text="📱 Меню", callback_data="chat_menu")
-        ]
-    ])
 
 @router.message(Command("start", "gofra", "gofrastart"))
 async def group_start(message: types.Message):
