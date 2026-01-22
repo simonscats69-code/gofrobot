@@ -1,7 +1,10 @@
 from aiogram import Router, types, F, BaseMiddleware
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
-import time, random, asyncio
+import time
+import random
+import asyncio
+import logging
 from db_manager import (
     get_patsan, save_patsan, get_top_players,
     save_rademka_fight, calculate_atm_regen_time, get_connection,
@@ -13,26 +16,30 @@ from keyboards import (
 )
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 def handle_callback_errors(func):
     async def wrapper(callback: types.CallbackQuery, *args, **kwargs):
         try:
-            return await func(callback)
+            return await func(callback, *args, **kwargs)
+        except asyncio.CancelledError:
+            raise
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                await callback.answer()
+                return
+            logger.error(f"Telegram error in {func.__name__}: {e}", exc_info=True)
+            await callback.answer("❌ Ошибка Telegram", show_alert=True)
         except Exception as e:
-            import logging
-            logging.error(f"Error in {func.__name__}: {e}", exc_info=True)
-            error_msg = f"❌ Ошибка: {str(e)[:100]}"
+            logger.error(f"Error in {func.__name__}: {e}", exc_info=True)
             try:
-                await callback.answer(error_msg, show_alert=True)
+                await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
             except:
-                try:
-                    await callback.message.answer(error_msg)
-                except:
-                    pass
+                pass
             try:
                 p = await get_patsan(callback.from_user.id)
                 await callback.message.edit_text(
-                    "Произошла ошибка\n\nВозвращаемся в главное меню...",
+                    "❌ Произошла ошибка\n\nВозвращаемся в главное меню...",
                     reply_markup=main_keyboard()
                 )
             except:
@@ -51,12 +58,14 @@ def pb(c, t, l=10):
     return "█" * f + "░" * (l - f)
 
 class IgnoreNotModifiedMiddleware(BaseMiddleware):
-    async def __call__(self, h, e, d):
-        try: return await h(e, d)
+    async def __call__(self, handler, event, data):
+        try:
+            return await handler(event, data)
         except TelegramBadRequest as ex:
             if "message is not modified" in str(ex):
-                if cb := d.get('callback_query', getattr(e, 'callback_query', None)):
-                    if hasattr(cb, 'answer'): await cb.answer()
+                if cb := data.get('callback_query', getattr(event, 'callback_query', None)):
+                    if hasattr(cb, 'answer'):
+                        await cb.answer()
                 return
             raise
 
@@ -85,35 +94,36 @@ async def bm(c):
 @router.callback_query(F.data.in_(["davka", "uletet"]))
 @handle_callback_errors
 async def handle_actions(c):
-    await c.answer("🔄 Обработка...")
-    
-    if c.data == "davka":
-        success, p, res = await davka_zmiy(c.from_user.id)
-        if not success:
-            await c.answer(res, show_alert=True)
-            return
-            
-        davka_texts = [
-            f"""🐍 ДАВКА КОРИЧНЕВАГА!
+    try:
+        await c.answer("🔄 Обработка...")
+        
+        if c.data == "davka":
+            success, p, res = await davka_zmiy(c.from_user.id)
+            if not success:
+                await c.answer(res, show_alert=True)
+                return
+                
+            davka_texts = [
+                f"""🐍 ДАВКА КОРИЧНЕВАГА!
 
 💩 Выдавил {res['zmiy_grams']}г КОРИЧНЕВАГО ЗМЕЯ!
 🗑️ На полу остался килограмм говна...""",
-            
-            f"""🐍 ЗАВАРВАРИЛ ДВАНАШКУ!
+                
+                f"""🐍 ЗАВАРВАРИЛ ДВАНАШКУ!
     
 ⚡ Вылез {res['zmiy_grams']}г коричневага!
 💩 Пахнет жутко...
 🏗️ Гофра прокачалась!""",
-            
-            f"""🐍 КОРИЧНЕВАГ СДОХ!
+                
+                f"""🐍 КОРИЧНЕВАГ СДОХ!
     
 📏 Свисло {res['zmiy_grams']}г говна
 💩 Говна навалом...
 🏗️ Гофра: {res['old_gofra']} → {res['new_gofra']}"""
-        ]
-        
-        gofra_info = get_gofra_info(p.get('gofra', 1))
-        text = random.choice(davka_texts) + f"""
+            ]
+            
+            gofra_info = get_gofra_info(p.get('gofra', 1))
+            text = random.choice(davka_texts) + f"""
 
 ⚡ Вес змия: {res['zmiy_grams']}г
 🏗️ Гофра: {res['old_gofra']} → {res['new_gofra']}
@@ -125,16 +135,16 @@ async def handle_actions(c):
 ⚡ Скорость восстановления: x{res['atm_speed']:.2f}
 
 Упорство пацана дало результат!"""
-        
-        await c.message.edit_text(text, reply_markup=main_keyboard())
-        
-    elif c.data == "uletet":
-        success, p, res = await uletet_zmiy(c.from_user.id)
-        if not success:
-            await c.answer(res, show_alert=True)
-            return
             
-        text = f"""✈️ ЗМИЙ ОТПРАВЛЕН В КОРИЧНЕВУЮ СТРАНУ!
+            await c.message.edit_text(text, reply_markup=main_keyboard())
+            
+        elif c.data == "uletet":
+            success, p, res = await uletet_zmiy(c.from_user.id)
+            if not success:
+                await c.answer(res, show_alert=True)
+                return
+                
+            text = f"""✈️ ЗМИЙ ОТПРАВЛЕН В КОРИЧНЕВУЮ СТРАНУ!
 
 📦 Отправлено: {res['zmiy_grams']:.0f}г коричневага
 🌍 Летит к братьям по говну...
@@ -143,8 +153,14 @@ async def handle_actions(c):
 🔌 Сила кабеля: {p.get('cable_power', 1)}
 
 Диспетчер: "Рейс 322 готов к вылету! Курс - на коричневый закат!" """
-        
-        await c.message.edit_text(text, reply_markup=main_keyboard())
+            
+            await c.message.edit_text(text, reply_markup=main_keyboard())
+            
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.error(f"Error in handle_actions: {e}", exc_info=True)
+        await c.answer("❌ Произошла ошибка", show_alert=True)
 
 @router.callback_query(F.data == "profile")
 @handle_callback_errors
@@ -412,6 +428,7 @@ async def ctm(c):
             reply_markup=top_sort_keyboard()
         )
     except Exception as e:
+        logger.error(f"Error in top menu: {e}", exc_info=True)
         await c.answer(f"Ошибка топа: {str(e)[:50]}", show_alert=True)
 
 async def grwt():
@@ -421,7 +438,8 @@ async def grwt():
         r = await cur.fetchall()
         await cn.close()
         return [dict(x) | {"wins": x["wins"] or 0, "zmiy_grams": 0, "atm_count": 0} for x in r]
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error getting rademka wins: {e}")
         return []
 
 @router.callback_query(F.data.startswith("top_"))
@@ -476,6 +494,7 @@ async def cst(c):
         
         await c.message.edit_text(tt, reply_markup=top_sort_keyboard())
     except Exception as e:
+        logger.error(f"Error in show top: {e}", exc_info=True)
         await c.answer(f"Ошибка загрузки топа: {str(e)[:50]}", show_alert=True)
 
 @router.callback_query(F.data == "nickname_menu")
@@ -485,7 +504,8 @@ async def nm(c):
         await c.answer()
         from handlers.commands import cmd_nickname
         await cmd_nickname(c.message)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error loading nickname menu: {e}")
         await c.answer("Ошибка загрузки меню ника", show_alert=True)
 
 @router.callback_query(F.data == "rademka")
@@ -495,7 +515,8 @@ async def cr(c):
         await c.answer()
         from handlers.commands import cmd_rademka
         await cmd_rademka(c.message)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error loading rademka: {e}")
         await c.answer("Ошибка загрузки радёмки", show_alert=True)
 
 get_user_rank = lambda p: ("👶", "Пацанчик")
