@@ -19,7 +19,6 @@ def ignore_not_modified_error(func):
 
 @router.callback_query(F.data == "top")
 async def callback_top_menu(callback: types.CallbackQuery):
-    """Открыть меню выбора топа"""
     await callback.message.edit_text(
         "🏆 ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА\n\n"
         "Выбери, по какому показателю сортировать рейтинг:",
@@ -29,12 +28,12 @@ async def callback_top_menu(callback: types.CallbackQuery):
 @ignore_not_modified_error
 @router.callback_query(F.data.startswith("top_"))
 async def show_top(callback: types.CallbackQuery):
-    """Показать топ по выбранному критерию"""
     sort_type = callback.data.replace("top_", "")
     
     sort_map = {
         "gofra": ("гофре", "🏗️", "gofra"),
-        "zmiy": ("змию", "🐍", "zmiy_cm"),
+        "cable": ("кабелю", "🔌", "cable_power"),
+        "zmiy": ("змию", "🐍", "zmiy_grams"),
         "dengi": ("деньгам", "💰", "dengi"),
         "atm": ("атмосферам", "🌀", "atm_count")
     }
@@ -70,11 +69,13 @@ async def show_top(callback: types.CallbackQuery):
         if sort_type == "gofra":
             gofra_info = get_gofra_info(player['gofra'])
             value = f"🏗️ {player['gofra']} {gofra_info['emoji']}"
+        elif sort_type == "cable":
+            value = f"🔌 {player['cable_power']}"
         elif sort_type == "dengi":
             value = f"💰 {player['dengi']}р"
         elif sort_type == "zmiy":
-            value = f"🐍 {player['zmiy_cm']:.1f}см"
-        else:  # atm
+            value = f"🐍 {player['zmiy_grams']:.0f}г"
+        else:
             value = f"🌀 {player['atm_count']}/12"
         
         nickname = player['nickname']
@@ -105,7 +106,6 @@ async def show_top(callback: types.CallbackQuery):
 @ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
 async def back_to_main_from_top(callback: types.CallbackQuery):
-    """Возврат в главное меню из топа"""
     from db_manager import get_patsan
     
     patsan = await get_patsan(callback.from_user.id)
