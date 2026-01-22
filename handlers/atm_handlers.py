@@ -30,7 +30,7 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
         max_atm = 12
         
         regen_info = calculate_atm_regen_time(patsan)
-        gofra_info = get_gofra_info(patsan.get('gofra', 1))
+        gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
         
         text = (
             f"⏱️ ВРЕМЯ ВОССТАНОВЛЕНИЯ АТМОСФЕР\n\n"
@@ -66,7 +66,7 @@ async def atm_max_info(callback: types.CallbackQuery):
         current_max = 12
         atm_count = patsan.get('atm_count', 0)
         
-        gofra_info = get_gofra_info(patsan.get('gofra', 1))
+        gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
         
         text = (
             f"📊 МАКСИМАЛЬНЫЙ ЗАПАС АТМОСФЕР\n\n"
@@ -83,7 +83,7 @@ async def atm_max_info(callback: types.CallbackQuery):
             f"Зачем ждать 12 атмосфер?\n"
             f"• Более тяжёлый змий при давке\n"
             f"• Больше опыт для гофры\n"
-            f"• Укрепление кабеля (+1 за 1000г змия)"
+            f"• Укрепление кабеля (+0.1 мм за 1кг змия)"
         )
         
         await callback.message.edit_text(
@@ -99,7 +99,7 @@ async def atm_boosters_info(callback: types.CallbackQuery):
         await callback.answer()
         user_id = callback.from_user.id
         patsan = await get_patsan(user_id)
-        gofra_info = get_gofra_info(patsan.get('gofra', 1))
+        gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
         
         text = (
             f"⚡ УСКОРЕНИЕ ВОССТАНОВЛЕНИЯ\n\n"
@@ -112,13 +112,13 @@ async def atm_boosters_info(callback: types.CallbackQuery):
             f"Как улучшить гофру?\n"
             f"1. Дождись 12 атмосфер (кнопка 🌡️)\n"
             f"2. Дави змия (кнопка 🐍)\n"
-            f"3. Получай опыт\n"
+            f"3. Получай опыт (0.02 мм/г змия)\n"
             f"4. Повышай гофру\n\n"
             f"Следующие уровни гофры:\n"
         )
         
-        thresholds = [1, 10, 25, 50, 100, 200, 500, 1000]
-        current_gofra = patsan.get('gofra', 1)
+        thresholds = [10.0, 50.0, 150.0, 300.0, 600.0, 1200.0, 2500.0, 5000.0, 10000.0, 20000.0]
+        current_gofra = patsan.get('gofra_mm', 10.0)
         
         for i, threshold in enumerate(thresholds):
             if current_gofra < threshold:
