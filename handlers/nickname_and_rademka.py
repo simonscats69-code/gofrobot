@@ -5,7 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
 import time
 import random
-from db_manager import get_patsan, change_nickname, get_connection, save_patsan, save_rademka_fight, get_top_players, get_gofra_info
+from db_manager import get_patsan, change_nickname, get_connection, save_patsan, save_rademka_fight, get_top_players, get_gofra_info, calculate_pvp_chance
 from keyboards import main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_to_rademka_keyboard
 
 router = Router()
@@ -29,20 +29,20 @@ def ignore_not_modified_error(func):
 async def cmd_nickname(m: types.Message, state: FSMContext):
     p = await get_patsan(m.from_user.id)
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else '5000 руб.'
-    await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {p.get('gofra',1)}\n💸 Стоимость смены ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+    await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {p.get('gofra',1)}\n🔌 Кабель: {p.get('cable_power',1)}\n💸 Стоимость смены ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
 @router.callback_query(F.data == "nickname_menu")
 async def nickname_menu(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
     cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else '5000 руб.'
-    await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {p.get('gofra',1)}\n💸 Стоимость смены ника: {cst}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+    await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {p.get('gofra',1)}\n🔌 Кабель: {p.get('cable_power',1)}\n💸 Стоимость смены ника: {cst}\n\nВыбери действие:", reply_markup=nickname_keyboard())
     await c.answer()
 
 @router.callback_query(F.data == "my_reputation")
 async def my_reputation(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra',1))
-    await c.message.edit_text(f"⭐ МОЯ РЕПУТАЦИЯ\n\n{gofra_info['emoji']} Звание: {gofra_info['name']}\n🏗️ Гофра: {p.get('gofra',1)}\n💰 Деньги: {p.get('dengi',0)}р\n🐍 Змий: {p.get('zmiy_cm',0):.1f}см\n\nКак повысить?\n• Дави змия при полных атмосферах\n• Сдавай змия на металлолом\n• Участвуй в радёмках\n\nЧем выше гофра, тем больше уважения!", reply_markup=nickname_keyboard())
+    await c.message.edit_text(f"⭐ МОЯ РЕПУТАЦИЯ\n\n{gofra_info['emoji']} Звание: {gofra_info['name']}\n🏗️ Гофра: {p.get('gofra',1)}\n🔌 Кабель: {p.get('cable_power',1)}\n💰 Деньги: {p.get('dengi',0)}р\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nКак повысить?\n• Дави змия при полных атмосферах\n• Сдавай змия на металлолом\n• Участвуй в радёмках\n\nЧем выше гофра, тем больше уважения!", reply_markup=nickname_keyboard())
 
 @router.callback_query(F.data == "top_reputation")
 async def top_reputation(c: types.CallbackQuery):
@@ -54,7 +54,8 @@ async def top_reputation(c: types.CallbackQuery):
         for i, p in enumerate(tp):
             md = mds[i] if i<len(mds) else f"{i+1}."
             nn = p.get("nickname", f"Пацан_{p.get('user_id','?')}")[:12]+("..." if len(p.get('nickname',''))>15 else "")
-            txt += f"{md} {nn} - 🏗️ {p.get('gofra',0)}\n"
+            gi = get_gofra_info(p.get('gofra',1))
+            txt += f"{md} {nn} - {gi['emoji']} {gi['name']} ({p.get('gofra',0)})\n"
         uid = c.from_user.id
         for i, p in enumerate(tp):
             if p.get('user_id')==uid: 
@@ -107,7 +108,7 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
 async def cmd_rademka(m: types.Message):
     p = await get_patsan(m.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra',1))
-    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +10% его денег\n• Шанс унизить публично\n\nРиски:\n• Можешь потерять 5% своих денег\n• Опозоришься перед всеми\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {p.get('gofra',1)}\n💰 {p.get('dengi',0)}р"
+    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +10% его денег\n• +1 к силе кабеля\n• Шанс унизить публично\n\nРиски:\n• Можешь потерять 5% своих денег\n• Опозоришься перед всеми\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {p.get('gofra',1)}\n🔌 {p.get('cable_power',1)}\n💰 {p.get('dengi',0)}р"
     await m.answer(txt, reply_markup=rademka_keyboard())
 
 @ignore_not_modified_error
@@ -115,7 +116,7 @@ async def cmd_rademka(m: types.Message):
 async def callback_rademka(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra',1))
-    await c.message.edit_text(f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\nВыбери пацана!\nЗа успех: +10% его денег, публичное унижение\n\nРиски: -5% денег, публичный позор\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {p.get('gofra',1)} | 💰 {p.get('dengi',0)}р", reply_markup=rademka_keyboard())
+    await c.message.edit_text(f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\nВыбери пацана!\nЗа успех: +10% его денег, +1 к кабелю\n\nРиски: -5% денег, публичный позор\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {p.get('gofra',1)} | 🔌 {p.get('cable_power',1)} | 💰 {p.get('dengi',0)}р", reply_markup=rademka_keyboard())
 
 @router.callback_query(F.data == "rademka_random")
 async def rademka_random(c: types.CallbackQuery):
@@ -126,22 +127,18 @@ async def rademka_random(c: types.CallbackQuery):
     t = random.choice(tg)
     pid, tn = t.get("user_id"), t.get("nickname","Неизвестно")
     tgofra = t.get("gofra",1)
+    tcable = t.get("cable_power",1)
+    
     p = await get_patsan(c.from_user.id)
     mgofra = p.get("gofra",1)
+    mcable = p.get("cable_power",1)
     
-    # Шанс зависит от разницы в гофре
-    ch = 50
-    if mgofra > tgofra: 
-        ch += min(30, (mgofra-tgofra))
-    elif tgofra > mgofra: 
-        ch -= min(30, (tgofra-mgofra))
-    
-    ch = max(10, min(95, ch))
+    chance = calculate_pvp_chance(p, t)
     
     tgofra_info = get_gofra_info(tgofra)
     mgofra_info = get_gofra_info(mgofra)
     
-    await c.message.edit_text(f"🎯 НАШЁЛ ЦЕЛЬ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n👤 Цель: {tn}\n{tgofra_info['emoji']} {tgofra_info['name']}\n🏗️ {tgofra} | 💰 {t.get('dengi',0)}р\n\n👤 Ты: {mgofra_info['emoji']} {mgofra_info['name']}\n🏗️ {mgofra}\n🎯 Шанс: {ch}%\n\nНаграда: +10% его денег\nРиск: -5% денег\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid))
+    await c.message.edit_text(f"🎯 НАШЁЛ ЦЕЛЬ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n👤 Цель: {tn}\n{tgofra_info['emoji']} {tgofra_info['name']}\n🏗️ {tgofra} | 🔌 {tcable} | 💰 {t.get('dengi',0)}р\n\n👤 Ты: {mgofra_info['emoji']} {mgofra_info['name']}\n🏗️ {mgofra} | 🔌 {mcable}\n🎯 Шанс: {chance}%\n\nНаграда: +10% его денег, +1 к кабелю\nРиск: -5% денег\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid))
 
 @router.callback_query(F.data.startswith("rademka_confirm_"))
 async def rademka_confirm(c: types.CallbackQuery):
@@ -150,11 +147,9 @@ async def rademka_confirm(c: types.CallbackQuery):
     if not a or not t: 
         return await c.answer("Ошибка: пацан не найден!", show_alert=True)
     
-    mgofra, tgofra = a.get("gofra",1), t.get("gofra",1)
-    ch = 50 + (mgofra - tgofra)
-    ch = max(10, min(95, ch))
+    chance = calculate_pvp_chance(a, t)
     
-    suc = random.random() < (ch/100)
+    suc = random.random() < (chance/100)
     mt = 0
     
     if suc:
@@ -162,16 +157,17 @@ async def rademka_confirm(c: types.CallbackQuery):
         a["dengi"] = a.get("dengi",0) + mt
         t["dengi"] = max(10, t.get("dengi",0) - mt)
         
-        # Добавляем опыт за победу
+        a["cable_power"] = a.get("cable_power",1) + 1
+        
         exp_gain = max(1, mt // 100)
         a["gofra"] = a.get("gofra",1) + exp_gain
         
-        txt = f"✅ УСПЕХ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ! ТЫ ПРОТАЩИЛ!\n\nТы унизил {t.get('nickname','Неизвестно')}!\n💰 +{mt}р\n🏗️ +{exp_gain} к гофре (теперь {a.get('gofra',1)})\n🎯 Шанс: {ch}%\nОн теперь боится!"
+        txt = f"✅ УСПЕХ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ! ТЫ ПРОТАЩИЛ!\n\nТы унизил {t.get('nickname','Неизвестно')}!\n💰 +{mt}р\n🔌 +1 к кабелю (теперь {a.get('cable_power',1)})\n🏗️ +{exp_gain} к гофре (теперь {a.get('gofra',1)})\n🎯 Шанс был: {chance}%\nОн теперь боится!"
     else:
         mp = int(a.get("dengi",0)*0.05)
         a["dengi"] = a.get("dengi",0) - mp
         
-        txt = f"❌ ПРОВАЛ!\n\nСам оказался радёмкой...\n\n{t.get('nickname','Неизвестно')} круче!\n💰 -{mp}р\n🎯 Шанс: {ch}%\nТеперь смеются..."
+        txt = f"❌ ПРОВАЛ!\n\nСам оказался радёмкой...\n\n{t.get('nickname','Неизвестно')} круче!\n💰 -{mp}р\n🎯 Шанс был: {chance}%\nТеперь смеются..."
     
     await save_patsan(a)
     await save_patsan(t)
@@ -203,19 +199,19 @@ async def rademka_stats(c: types.CallbackQuery):
 async def rademka_top(c: types.CallbackQuery):
     try:
         cn = await get_connection()
-        cur = await cn.execute('SELECT u.nickname, u.user_id, u.gofra, COUNT(CASE WHEN rf.winner_id=u.user_id THEN 1 END) as w, COUNT(CASE WHEN rf.loser_id=u.user_id THEN 1 END) as l, SUM(CASE WHEN rf.winner_id=u.user_id THEN rf.money_taken ELSE 0 END) as tm FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id OR u.user_id=rf.loser_id GROUP BY u.user_id, u.nickname, u.gofra HAVING w>0 ORDER BY w DESC, tm DESC LIMIT 10')
+        cur = await cn.execute('SELECT u.nickname, u.user_id, u.gofra, u.cable_power, COUNT(CASE WHEN rf.winner_id=u.user_id THEN 1 END) as w, COUNT(CASE WHEN rf.loser_id=u.user_id THEN 1 END) as l, SUM(CASE WHEN rf.winner_id=u.user_id THEN rf.money_taken ELSE 0 END) as tm FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id OR u.user_id=rf.loser_id GROUP BY u.user_id, u.nickname, u.gofra, u.cable_power HAVING w>0 ORDER BY w DESC, tm DESC LIMIT 10')
         tp = await cur.fetchall()
         if tp:
             mds, txt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], "🥇 ТОП РАДЁМЩИКОВ\n\n"
             for i, p in enumerate(tp):
                 if i>=len(mds): 
                     break
-                md, nn, w, l, tm, gofra = mds[i], p.get("nickname","Неизвестно"), p.get("w",0) or 0, p.get("l",0) or 0, p.get("tm",0) or 0, p.get("gofra",1)
+                md, nn, w, l, tm, gofra, cable = mds[i], p.get("nickname","Неизвестно"), p.get("w",0) or 0, p.get("l",0) or 0, p.get("tm",0) or 0, p.get("gofra",1), p.get("cable_power",1)
                 gofra_info = get_gofra_info(gofra)
                 if len(nn)>15: 
                     nn=nn[:12]+"..."
                 win_rate = 0 if w+l==0 else (w/(w+l)*100)
-                txt+=f"{md} {nn} {gofra_info['emoji']}\n   🏗️ {gofra} | ✅ {w} ({win_rate:.0f}%) | 💰 {tm}р\n\n"
+                txt+=f"{md} {nn} {gofra_info['emoji']}\n   🏗️ {gofra} | 🔌 {cable} | ✅ {w} ({win_rate:.0f}%) | 💰 {tm}р\n\n"
             txt+="Топ по победам"
         else: 
             txt = f"🥇 ТОП РАДЁМЩИКОВ\n\nПока никого!\nБудь первым!\n\nСлава ждёт!"
@@ -232,7 +228,7 @@ async def back_to_main(c: types.CallbackQuery):
     try:
         p = await get_patsan(c.from_user.id)
         gofra_info = get_gofra_info(p.get('gofra',1))
-        await c.message.edit_text(f"Главное меню\n{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra',1)} | 💰 {p.get('dengi',0)}р\n\n🌀 Атмосферы: {p.get('atm_count',0)}/12\n🐍 Змий: {p.get('zmiy_cm',0):.1f}см\n\nВыбери действие:", reply_markup=main_keyboard())
+        await c.message.edit_text(f"Главное меню\n{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra',1)} | 🔌 {p.get('cable_power',1)} | 💰 {p.get('dengi',0)}р\n\n🌀 Атмосферы: {p.get('atm_count',0)}/12\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nВыбери действие:", reply_markup=main_keyboard())
     except Exception as e: 
         print(f"Ошибка главного: {e}")
         await c.message.edit_text("Главное меню\n\nБот работает!", reply_markup=main_keyboard())
