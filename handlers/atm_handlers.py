@@ -7,7 +7,6 @@ router = Router()
 
 @router.callback_query(F.data == "atm_regen_time")
 async def atm_regen_time_info(callback: types.CallbackQuery):
-    """Информация о времени восстановления атмосфер"""
     user_id = callback.from_user.id
     patsan = await get_patsan(user_id)
     
@@ -23,9 +22,9 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
         f"🌀 Атмосферы: {atm_count}/{max_atm}\n"
         f"🕐 Восстановить: {regen_info['needed']} шт.\n\n"
         f"Скорость восстановления:\n"
-        f"• Базовая: 1 атм. за 24 часа\n"
+        f"• Базовая: 1 атм. за 2 часа\n"
         f"• С учётом гофры ({gofra_info['name']}): 1 атм. за {ft(regen_info['per_atm'])}\n"
-        f"• Множитель скорости: x{gofra_info['atm_speed']:.1f}\n\n"
+        f"• Множитель скорости: x{gofra_info['atm_speed']:.2f}\n\n"
         f"Полное восстановление:\n"
         f"🕐 Примерное время: {ft(regen_info['total'])}\n\n"
         f"Как ускорить:\n"
@@ -42,7 +41,6 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "atm_max_info")
 async def atm_max_info(callback: types.CallbackQuery):
-    """Информация о максимальном запасе атмосфер"""
     user_id = callback.from_user.id
     patsan = await get_patsan(user_id)
     
@@ -62,7 +60,7 @@ async def atm_max_info(callback: types.CallbackQuery):
         f"• Восстановление зависит от гофры\n\n"
         f"Твоя гофра:\n"
         f"{gofra_info['emoji']} {gofra_info['name']}\n"
-        f"⚡ Скорость восстановления: x{gofra_info['atm_speed']:.1f}\n\n"
+        f"⚡ Скорость восстановления: x{gofra_info['atm_speed']:.2f}\n\n"
         f"Зачем ждать 12 атмосфер?\n"
         f"• Больше кабель свиснет при давке\n"
         f"• Больше опыт для гофры\n"
@@ -77,7 +75,6 @@ async def atm_max_info(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "atm_boosters")
 async def atm_boosters_info(callback: types.CallbackQuery):
-    """Информация о бустерах активности"""
     user_id = callback.from_user.id
     patsan = await get_patsan(user_id)
     gofra_info = get_gofra_info(patsan.get('gofra',1))
@@ -89,7 +86,7 @@ async def atm_boosters_info(callback: types.CallbackQuery):
         f"🏗️ СИСТЕМА ГОФРЫ\n\n"
         f"Твоя гофра:\n"
         f"{gofra_info['emoji']} {gofra_info['name']}\n"
-        f"⚡ Множитель скорости: x{gofra_info['atm_speed']:.1f}\n\n"
+        f"⚡ Множитель скорости: x{gofra_info['atm_speed']:.2f}\n\n"
         f"Как улучшить гофру?\n"
         f"1. Жди полных 12 атмосфер\n"
         f"2. Дави змия (кнопка 🐍)\n"
@@ -98,15 +95,14 @@ async def atm_boosters_info(callback: types.CallbackQuery):
         f"Следующие уровни гофры:\n"
     )
     
-    # Показываем следующие 3 уровня
     thresholds = [1, 10, 25, 50, 100, 200, 500, 1000]
     current_gofra = patsan.get('gofra',1)
     
     for i, threshold in enumerate(thresholds):
         if current_gofra < threshold:
             next_info = get_gofra_info(threshold)
-            text += f"• {next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.1f}\n"
-            if i >= 2:  # Показываем только 3 следующих
+            text += f"• {next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.2f}\n"
+            if i >= 2:
                 break
     
     await callback.message.edit_text(
@@ -115,9 +111,7 @@ async def atm_boosters_info(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# Вспомогательная функция для форматирования времени
 def ft(s):
-    """Форматирование времени"""
     if s < 60: return f"{s}с"
     m, h, d = s // 60, s // 3600, s // 86400
     if d > 0: return f"{d}д {h%24}ч {m%60}м"
