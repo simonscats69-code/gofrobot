@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from db_manager import get_patsan, get_gofra_info, calculate_atm_regen_time, format_length
 from keyboards import main_keyboard, profile_extended_kb
-from keyboards import rademka_keyboard, top_sort_keyboard, nickname_keyboard, gofra_info_kb, cable_info_kb, atm_status_keyboard
+from keyboards import rademka_keyboard, top_sort_keyboard, nickname_keyboard, gofra_info_kb, cable_info_kb, atm_status_kb
 
 router = Router()
 
@@ -112,7 +112,7 @@ async def cmd_atm(message: types.Message):
     text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}\n\n"
     text += f"Полные 12 атмосфер нужны для давки!"
     
-    await message.answer(text, reply_markup=atm_status_keyboard())
+    await message.answer(text, reply_markup=atm_status_kb())
 
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message):
