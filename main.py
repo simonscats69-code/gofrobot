@@ -1,7 +1,7 @@
 import asyncio
-import logging
 import os
-import time
+import logging
+from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from db_manager import init_bot, shutdown
@@ -10,17 +10,76 @@ from handlers import router
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+def setup_logging():
+    """Настройка цветного логирования в консоль и файл"""
+    
+    # Создаём папку для логов если её нет
+    log_dir = "storage/logs"
+    os.makedirs(log_dir, exist_ok=True)
+    
+    try:
+        import colorlog
+        
+        # Формат для файлов
+        log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        date_format = '%Y-%m-%d %H:%M:%S'
+        
+        # Консольный handler с цветами
+        console_handler = colorlog.StreamHandler()
+        console_handler.setFormatter(colorlog.ColoredFormatter(
+            f'%(log_color)s{log_format}',
+            datefmt=date_format,
+            log_colors={
+                'DEBUG': 'cyan',
+                'INFO': 'green',
+                'WARNING': 'yellow',
+                'ERROR': 'red',
+                'CRITICAL': 'red,bg_white',
+            }
+        ))
+        
+        # Файловый handler
+        log_file = os.path.join(log_dir, f"bot_{datetime.now().strftime('%Y%m%d')}.log")
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter(log_format, datefmt=date_format))
+        
+        # Настройка основного логгера
+        logger = colorlog.getLogger()
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
+        logger.setLevel(logging.INFO)
+        
+        # Уровни для разных модулей
+        logging.getLogger('aiogram').setLevel(logging.WARNING)
+        logging.getLogger('asyncio').setLevel(logging.WARNING)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
+        
+        logger.info(f"📝 Логирование настроено. Файл: {log_file}")
+        
+        return logger
+        
+    except ImportError:
+        # Если colorlog не установлен, используем обычное логирование
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(os.path.join(log_dir, f"bot_{datetime.now().strftime('%Y%m%d')}.log"), encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+        logger = logging.getLogger(__name__)
+        logger.info("📝 Обычное логирование (colorlog не установлен)")
+        return logger
+
+# Инициализация логирования
+logger = setup_logging()
 
 async def main():
     try:
-        print("🚀 Запуск бота на bothost.ru")
-        print(f"📁 Рабочая директория: {os.getcwd()}")
-        print(f"📂 Содержимое: {os.listdir('.')}")
+        logger.info("🚀 Запуск бота на bothost.ru")
+        logger.info(f"📁 Рабочая директория: {os.getcwd()}")
+        logger.info(f"📂 Содержимое: {os.listdir('.')}")
         
         await init_bot()
         
@@ -38,7 +97,7 @@ async def main():
         await dp.start_polling(bot)
         
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {e}")
+        logger.error(f"Ошибка при запуске бота: {e}", exc_info=True)
         
     finally:
         await shutdown()
