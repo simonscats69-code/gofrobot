@@ -120,12 +120,3 @@ def rademka_fight_keyboard(target_id: int):
             Btn(text="❌ Отмена", callback_data="rademka")
         ]
     ])
-
-def back_to_rademka_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="⬅️ Назад к радёмке", callback_data="rademka")]
-    ])
-
-level_stats_keyboard = gofra_info_kb
-atm_status_keyboard = atm_status_kb
-cable_stats_keyboard = cable_info_kb
