@@ -17,9 +17,7 @@ router = Router()
 def handle_callback_errors(func):
     async def wrapper(callback: types.CallbackQuery, *args, **kwargs):
         try:
-            kwargs.pop('dispatcher', None)
-            kwargs.pop('state', None)
-            return await func(callback, *args, **kwargs)
+            return await func(callback)
         except Exception as e:
             import logging
             logging.error(f"Error in {func.__name__}: {e}", exc_info=True)
