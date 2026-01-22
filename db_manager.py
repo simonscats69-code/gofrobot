@@ -44,7 +44,6 @@ class DatabaseManager:
                 gofra INTEGER DEFAULT 1,
                 cable_power INTEGER DEFAULT 1,
                 zmiy_grams REAL DEFAULT 0.0,
-                dengi INTEGER DEFAULT 150,
                 last_update INTEGER DEFAULT 0,
                 last_davka INTEGER DEFAULT 0,
                 atm_count INTEGER DEFAULT 12,
@@ -101,7 +100,6 @@ class UserDataManager:
                 d.get("gofra", 1),
                 d.get("cable_power", 1),
                 d.get("zmiy_grams", 0.0),
-                d.get("dengi", 150),
                 int(time.time()),
                 d.get("last_davka", 0),
                 d.get("atm_count", 12),
@@ -114,7 +112,7 @@ class UserDataManager:
             ))
         await pool.executemany('''
             UPDATE users SET 
-                nickname=?, gofra=?, cable_power=?, zmiy_grams=?, dengi=?, 
+                nickname=?, gofra=?, cable_power=?, zmiy_grams=?, 
                 last_update=?, last_davka=?, atm_count=?, max_atm=?,
                 experience=?, total_davki=?, total_zmiy_grams=?, nickname_changed=?
             WHERE user_id=?
@@ -147,7 +145,6 @@ class UserDataManager:
             "gofra": 1,
             "cable_power": 1,
             "zmiy_grams": 0.0,
-            "dengi": 150,
             "last_update": now,
             "last_davka": 0,
             "atm_count": 12,
@@ -205,7 +202,7 @@ class UserDataManager:
     async def get_top_fast(self, limit=10, sort="gofra"):
         pool = await DatabaseManager.get_pool()
         async with pool.execute(f'''
-            SELECT user_id, nickname, gofra, cable_power, zmiy_grams, dengi, atm_count, total_davki, total_zmiy_grams
+            SELECT user_id, nickname, gofra, cable_power, zmiy_grams, atm_count, total_davki, total_zmiy_grams
             FROM users 
             ORDER BY {sort} DESC 
             LIMIT ?
@@ -338,30 +335,20 @@ async def davka_zmiy(uid):
     }
     return True, p, res
 
-async def sdat_zmiy(uid):
+async def uletet_zmiy(uid):
     p = await user_manager.get_user(uid)
     
     if p.get("zmiy_grams", 0) <= 0:
-        return False, None, "Нечего сдавать!"
+        return False, None, "Нечего отправлять!"
     
     zmiy_grams = p.get("zmiy_grams", 0.0)
     
-    base_money = int(zmiy_grams * 0.5)
-    gofra_bonus = p.get("gofra", 1) * 2
-    cable_bonus = p.get("cable_power", 1) * 10
-    total_money = base_money + gofra_bonus + cable_bonus
-    
-    p["dengi"] = p.get("dengi", 0) + total_money
     p["zmiy_grams"] = 0.0
     
     user_manager.mark_dirty(uid)
     
     res = {
-        "zmiy_grams": zmiy_grams,
-        "money": total_money,
-        "base_money": base_money,
-        "gofra_bonus": gofra_bonus,
-        "cable_bonus": cable_bonus
+        "zmiy_grams": zmiy_grams
     }
     return True, p, res
 
@@ -378,18 +365,15 @@ def calculate_pvp_chance(attacker, defender):
 
 async def change_nickname(uid, nick):
     pool = await DatabaseManager.get_pool()
-    async with pool.execute('SELECT nickname_changed,dengi FROM users WHERE user_id=?', (uid,)) as c:
+    async with pool.execute('SELECT nickname_changed FROM users WHERE user_id=?', (uid,)) as c:
         u = await c.fetchone()
-        cost = 5000
         if not u: return False, "Нет юзера"
         if not u["nickname_changed"]:
             await pool.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
             await user_manager.get_user(uid, True)
             return True, "Ник изменён! (бесплатно)"
-        if u["dengi"] < cost: return False, f"Не хватает {cost-u['dengi']}р"
-        await pool.execute('UPDATE users SET nickname=?, dengi=dengi-? WHERE user_id=?', (nick, cost, uid))
-        await user_manager.get_user(uid, True)
-        return True, f"Ник изменён! -{cost}р"
+        else:
+            return False, "Ник уже менялся! Больше нельзя."
 
 async def get_top_players(limit=10, sort_by="gofra"):
     return await user_manager.get_top_fast(limit, sort_by)
