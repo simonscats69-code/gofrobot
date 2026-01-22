@@ -1,5 +1,5 @@
 from aiogram import Router, types, F
-from db_manager import get_patsan_cached
+from db_manager import get_patsan, calculate_atm_regen_time, get_gofra_info
 from keyboards import back_to_profile_keyboard
 import time
 
@@ -9,54 +9,34 @@ router = Router()
 async def atm_regen_time_info(callback: types.CallbackQuery):
     """Информация о времени восстановления атмосфер"""
     user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
+    patsan = await get_patsan(user_id)
     
     atm_count = patsan['atm_count']
-    max_atm = patsan.get('max_atm', 12)
+    max_atm = 12
     
-    base_regen_time = 30
-    
-    skill_zashita = patsan.get("skill_zashita", 0)
-    reduced_time = base_regen_time * (1 - skill_zashita * 0.05)
-    
-    active_boosters = patsan.get("active_boosters", {})
-    if "regen" in active_boosters:
-        reduced_time *= 0.7
-    
-    atm_to_regen = max_atm - atm_count
-    total_time_minutes = atm_to_regen * reduced_time
-    
-    hours = int(total_time_minutes // 60)
-    minutes = int(total_time_minutes % 60)
-    
-    time_text = f"{hours}ч {minutes}мин" if hours > 0 else f"{minutes}мин"
+    regen_info = calculate_atm_regen_time(patsan)
+    gofra_info = get_gofra_info(patsan.get('gofra',1))
     
     text = (
-        f"⏱️ <b>ВРЕМЯ ВОССТАНОВЛЕНИЯ АТМОСФЕР</b>\n\n"
-        f"<b>Текущее состояние:</b>\n"
+        f"⏱️ ВРЕМЯ ВОССТАНОВЛЕНИЯ АТМОСФЕР\n\n"
+        f"Текущее состояние:\n"
         f"🌀 Атмосферы: {atm_count}/{max_atm}\n"
-        f"🕐 Восстановить осталось: {atm_to_regen} шт.\n\n"
-        f"<b>Скорость восстановления:</b>\n"
-        f"• Базовая: 1 атм. за {base_regen_time} мин.\n"
-        f"• С учётом навыка ({skill_zashita} ур.): 1 атм. за {reduced_time:.1f} мин.\n"
-    )
-    
-    if "regen" in active_boosters:
-        text += f"• ⚡ <b>Бустер активности:</b> ускорение на 30%\n"
-    
-    text += (
-        f"\n<b>Полное восстановление:</b>\n"
-        f"🕐 Примерное время: {time_text}\n\n"
-        f"<b>Как ускорить:</b>\n"
-        f"• Прокачать навык 'Защита атмосфер'\n"
-        f"• Использовать бустеры активности\n"
-        f"• Купить улучшения в магазине\n"
+        f"🕐 Восстановить: {regen_info['needed']} шт.\n\n"
+        f"Скорость восстановления:\n"
+        f"• Базовая: 1 атм. за 24 часа\n"
+        f"• С учётом гофры ({gofra_info['name']}): 1 атм. за {ft(regen_info['per_atm'])}\n"
+        f"• Множитель скорости: x{gofra_info['atm_speed']:.1f}\n\n"
+        f"Полное восстановление:\n"
+        f"🕐 Примерное время: {ft(regen_info['total'])}\n\n"
+        f"Как ускорить:\n"
+        f"• Повышай гофру - ускоряет восстановление\n"
+        f"• Жди полной зарядки (12/12)\n"
+        f"• Тогда можно давить змия!"
     )
     
     await callback.message.edit_text(
         text,
-        reply_markup=back_to_profile_keyboard(),
-        parse_mode="HTML"
+        reply_markup=back_to_profile_keyboard()
     )
     await callback.answer()
 
@@ -64,49 +44,34 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
 async def atm_max_info(callback: types.CallbackQuery):
     """Информация о максимальном запасе атмосфер"""
     user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
+    patsan = await get_patsan(user_id)
     
-    current_max = patsan.get('max_atm', 12)
+    current_max = 12
     atm_count = patsan['atm_count']
     
-    skill_zashita = patsan.get("skill_zashita", 0)
-    max_increase_from_skill = skill_zashita * 2
-    
-    active_boosters = patsan.get("active_boosters", {})
-    max_increase_from_boosters = 0
-    
-    if "capacity" in active_boosters:
-        max_increase_from_boosters = active_boosters.get("capacity_amount", 5)
-    
-    total_max_possible = 12 + max_increase_from_skill + max_increase_from_boosters
+    gofra_info = get_gofra_info(patsan.get('gofra',1))
     
     text = (
-        f"📊 <b>МАКСИМАЛЬНЫЙ ЗАПАС АТМОСФЕР</b>\n\n"
-        f"<b>Текущие показатели:</b>\n"
+        f"📊 МАКСИМАЛЬНЫЙ ЗАПАС АТМОСФЕР\n\n"
+        f"Текущие показатели:\n"
         f"🌀 Текущий запас: {atm_count}/{current_max}\n"
-        f"🎯 Максимум сейчас: {current_max} атм.\n\n"
-        f"<b>Из чего состоит максимум:</b>\n"
-        f"• База: 12 атм.\n"
-        f"• От навыка ({skill_zashita} ур.): +{max_increase_from_skill} атм.\n"
-    )
-    
-    if max_increase_from_boosters > 0:
-        text += f"• От бустеров: +{max_increase_from_boosters} атм.\n"
-    
-    text += (
-        f"\n<b>Теоретический максимум:</b>\n"
-        f"🎖️ Всего возможно: {total_max_possible} атм.\n\n"
-        f"<b>Как увеличить запас:</b>\n"
-        f"• Прокачать навык 'Защита атмосфер' (макс. +20 атм.)\n"
-        f"• Использовать бустеры ёмкости\n"
-        f"• Купить улучшения в магазине\n\n"
-        f"<i>Больше атмосфер = больше давок за раз!</i>"
+        f"🎯 Максимум: {current_max} атм.\n\n"
+        f"Особенности системы:\n"
+        f"• Фиксированный максимум: 12 атмосфер\n"
+        f"• Только при полных 12 можно давить змия\n"
+        f"• Восстановление зависит от гофры\n\n"
+        f"Твоя гофра:\n"
+        f"{gofra_info['emoji']} {gofra_info['name']}\n"
+        f"⚡ Скорость восстановления: x{gofra_info['atm_speed']:.1f}\n\n"
+        f"Зачем ждать 12 атмосфер?\n"
+        f"• Больше кабель свиснет при давке\n"
+        f"• Больше опыт для гофры\n"
+        f"• Больше денег при сдаче"
     )
     
     await callback.message.edit_text(
         text,
-        reply_markup=back_to_profile_keyboard(),
-        parse_mode="HTML"
+        reply_markup=back_to_profile_keyboard()
     )
     await callback.answer()
 
@@ -114,61 +79,47 @@ async def atm_max_info(callback: types.CallbackQuery):
 async def atm_boosters_info(callback: types.CallbackQuery):
     """Информация о бустерах активности"""
     user_id = callback.from_user.id
-    patsan = await get_patsan_cached(user_id)
-    
-    inventory = patsan.get("inventory", [])
-    active_boosters = patsan.get("active_boosters", {})
-    
-    regen_boosters = inventory.count("бустер_активности") if inventory else 0
-    capacity_boosters = inventory.count("бустер_ёмкости") if inventory else 0
+    patsan = await get_patsan(user_id)
+    gofra_info = get_gofra_info(patsan.get('gofra',1))
     
     text = (
-        f"⚡ <b>БУСТЕРЫ АКТИВНОСТИ АТМОСФЕР</b>\n\n"
-        f"<b>Доступные бустеры:</b>\n"
-        f"• ⏱️ Бустер времени: {regen_boosters} шт. (ускоряет восстановление на 30%)\n"
-        f"• 📊 Бустер ёмкости: {capacity_boosters} шт. (+5 к максимальному запасу)\n\n"
+        f"⚡ УСКОРЕНИЕ ВОССТАНОВЛЕНИЯ\n\n"
+        f"В новой системе нет бустеров!\n\n"
+        f"Вместо бустеров работает:\n"
+        f"🏗️ СИСТЕМА ГОФРЫ\n\n"
+        f"Твоя гофра:\n"
+        f"{gofra_info['emoji']} {gofra_info['name']}\n"
+        f"⚡ Множитель скорости: x{gofra_info['atm_speed']:.1f}\n\n"
+        f"Как улучшить гофру?\n"
+        f"1. Жди полных 12 атмосфер\n"
+        f"2. Дави змия (кнопка 🐍)\n"
+        f"3. Получай опыт\n"
+        f"4. Повышай гофру\n\n"
+        f"Следующие уровни гофры:\n"
     )
     
-    if active_boosters:
-        text += "<b>Активные бустеры:</b>\n"
-        
-        if "regen" in active_boosters:
-            expires_at = active_boosters.get("regen_expires", 0)
-            time_left = max(0, expires_at - time.time())
-            hours_left = int(time_left // 3600)
-            minutes_left = int((time_left % 3600) // 60)
-            
-            text += f"• ⏱️ Ускорение восстановления: {hours_left}ч {minutes_left}мин\n"
-        
-        if "capacity" in active_boosters:
-            text += f"• 📊 Увеличение запаса: +{active_boosters.get('capacity_amount', 5)} атм.\n"
-    else:
-        text += "<i>Активных бустеров нет</i>\n\n"
+    # Показываем следующие 3 уровня
+    thresholds = [1, 10, 25, 50, 100, 200, 500, 1000]
+    current_gofra = patsan.get('gofra',1)
     
-    text += (
-        f"\n<b>Эффекты бустеров:</b>\n"
-        f"• ⏱️ <b>Бустер времени:</b>\n"
-        f"  - Сокращает время восстановления на 30%\n"
-        f"  - Длительность: 4 часа\n"
-        f"  - Можно использовать несколько\n"
-        f"  - Эффекты суммируются\n\n"
-        f"• 📊 <b>Бустер ёмкости:</b>\n"
-        f"  - Увеличивает максимальный запас на 5\n"
-        f"  - Длительность: 6 часов\n"
-        f"  - Можно использовать несколько\n\n"
-        f"<b>Как использовать:</b>\n"
-        f"1. Перейдите в 🎒 Инвентарь\n"
-        f"2. Выберите '🛠️ Использовать предмет'\n"
-        f"3. Выберите нужный бустер\n\n"
-        f"<b>Как получить:</b>\n"
-        f"• Крафт в меню 🔨 Крафт\n"
-        f"• Покупка в 🛒 Нагнетательной столовой\n"
-        f"• Награды за достижения\n"
-    )
+    for i, threshold in enumerate(thresholds):
+        if current_gofra < threshold:
+            next_info = get_gofra_info(threshold)
+            text += f"• {next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.1f}\n"
+            if i >= 2:  # Показываем только 3 следующих
+                break
     
     await callback.message.edit_text(
         text,
-        reply_markup=back_to_profile_keyboard(),
-        parse_mode="HTML"
+        reply_markup=back_to_profile_keyboard()
     )
     await callback.answer()
+
+# Вспомогательная функция для форматирования времени
+def ft(s):
+    """Форматирование времени"""
+    if s < 60: return f"{s}с"
+    m, h, d = s // 60, s // 3600, s // 86400
+    if d > 0: return f"{d}д {h%24}ч {m%60}м"
+    if h > 0: return f"{h}ч {m%60}м {s%60}с"
+    return f"{m}м {s%60}с"
