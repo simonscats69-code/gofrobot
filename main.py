@@ -5,6 +5,7 @@ import gc
 from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand, BotCommandScopeDefault
 from db_manager import init_bot, shutdown
 from dotenv import load_dotenv
 from handlers import router
@@ -66,6 +67,26 @@ def setup_logging():
 
 logger = setup_logging()
 
+async def set_bot_commands(bot: Bot):
+    commands = [
+        BotCommand(command="start", description="🚀 Начать игру"),
+        BotCommand(command="davka", description="🐍 Давить коричневага"),
+        BotCommand(command="uletet", description="✈️ Отправить змия"),
+        BotCommand(command="profile", description="📊 Профиль игрока"),
+        BotCommand(command="gofra", description="🏗️ Инфо о гофре"),
+        BotCommand(command="cable", description="🔌 Инфо о кабеле"),
+        BotCommand(command="atm", description="🌡️ Состояние атмосфер"),
+        BotCommand(command="top", description="🏆 Топ игроков"),
+        BotCommand(command="nickname", description="👤 Смена ника"),
+        BotCommand(command="rademka", description="👊 Радёмка (PvP)"),
+        BotCommand(command="help", description="🆘 Помощь"),
+        BotCommand(command="version", description="🔄 Версия бота"),
+        BotCommand(command="menu", description="📱 Главное меню"),
+    ]
+    
+    await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+    logger.info("✅ Команды бота установлены")
+
 async def main():
     gc.collect()
     
@@ -83,6 +104,8 @@ async def main():
         
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
+        
+        await set_bot_commands(bot)
         
         dp.include_router(router)
         
