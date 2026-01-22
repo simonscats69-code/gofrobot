@@ -5,17 +5,15 @@ import time, random, asyncio
 from db_manager import (
     get_patsan, save_patsan, get_top_players,
     save_rademka_fight, calculate_atm_regen_time, get_connection,
-    davka_zmiy, sdat_zmiy, get_gofra_info
+    davka_zmiy, sdat_zmiy, get_gofra_info, calculate_pvp_chance
 )
 from keyboards import (
-    main_keyboard, gofra_info_kb, atm_status_keyboard,
-    top_sort_keyboard, rademka_keyboard, nickname_keyboard,
-    profile_extended_keyboard
+    main_keyboard, gofra_info_kb, cable_info_kb, atm_status_keyboard,
+    top_sort_keyboard, rademka_keyboard, nickname_keyboard, profile_extended_kb
 )
 
 router = Router()
 
-# Декоратор для обработки ошибок
 def handle_callback_errors(func):
     async def wrapper(callback: types.CallbackQuery, *args, **kwargs):
         try:
@@ -42,7 +40,6 @@ def handle_callback_errors(func):
     return wrapper
 
 def ft(s):
-    """Форматирование времени"""
     if s < 60: return f"{s}с"
     m, h, d = s // 60, s // 3600, s // 86400
     if d > 0: return f"{d}д {h%24}ч {m%60}м"
@@ -50,7 +47,6 @@ def ft(s):
     return f"{m}м {s%60}с"
 
 def pb(c, t, l=10):
-    """Прогресс-бар"""
     f = int((c / t) * l) if t > 0 else 0
     return "█" * f + "░" * (l - f)
 
@@ -67,16 +63,15 @@ class IgnoreNotModifiedMiddleware(BaseMiddleware):
 router.callback_query.middleware(IgnoreNotModifiedMiddleware())
 
 async def mmt(p):
-    """Главное меню текст"""
     atm = p.get('atm_count', 0)
     max_atm = 12
     gofra_info = get_gofra_info(p.get('gofra', 1))
     
     return f"""Главное меню
-{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra', 1)} | 💰 {p.get('dengi', 0)}р
+{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {p.get('gofra', 1)} | 🔌 {p.get('cable_power', 1)} | 💰 {p.get('dengi', 0)}р
 
 🌀 Атмосферы: [{pb(atm, max_atm)}] {atm}/{max_atm}
-🐍 Змий: {p.get('zmiy_cm', 0):.1f}см | 📊 Давок: {p.get('total_davki', 0)}
+🐍 Змий: {p.get('zmiy_grams', 0):.0f}г | 📊 Давок: {p.get('total_davki', 0)}
 
 Выбери действие, пацан:"""
 
@@ -98,19 +93,38 @@ async def handle_actions(c):
             await c.answer(res, show_alert=True)
             return
             
-        gofra_info = get_gofra_info(p.get('gofra', 1))
-        
-        text = f"""🐍 ДАВКА КОРИЧНЕВАГА!
+        davka_texts = [
+            f"""🐍 ДАВКА КОРИЧНЕВАГА!
 
-⚡ Силовой кабель свис: {res['cable_cm']}см
+💩 Выдавил {res['zmiy_grams']}г КОРИЧНЕВАГО ЗМЕЯ!
+🗑️ На полу остался килограмм говна...""",
+            
+            f"""🐍 ЗАВАРВАРИЛ ДВАНАШКУ!
+    
+⚡ Вылез {res['zmiy_grams']}г коричневага!
+💩 Пахнет жутко...
+🏗️ Гофра прокачалась!""",
+            
+            f"""🐍 КОРИЧНЕВАГ СДОХ!
+    
+📏 Свисло {res['zmiy_grams']}г говна
+💩 Говна навалом...
+🏗️ Гофра: {res['old_gofra']} → {res['new_gofra']}"""
+        ]
+        
+        gofra_info = get_gofra_info(p.get('gofra', 1))
+        text = random.choice(davka_texts) + f"""
+
+⚡ Вес змия: {res['zmiy_grams']}г
 🏗️ Гофра: {res['old_gofra']} → {res['new_gofra']}
 {gofra_info['emoji']} Теперь: {gofra_info['name']}
+🔌 Кабель: {res['old_cable_power']} → {res['new_cable_power']} (+{res['cable_power_gain']})
 📈 Опыта: +{res['exp_gained']}
 
 🌀 Атмосферы: 0/12 (полная перезарядка)
-⚡ Скорость восстановления: x{res['atm_speed']:.1f}
+⚡ Скорость восстановления: x{res['atm_speed']:.2f}
 
-Кабель завис идеально! Ждём перезарядки атмосфер..."""
+Упорство пацана дало результат!"""
         
         await c.message.edit_text(text, reply_markup=main_keyboard())
         
@@ -120,16 +134,17 @@ async def handle_actions(c):
             await c.answer(res, show_alert=True)
             return
             
-        text = f"""💰 СДАЛ ЗМИЯ НА МЕТАЛЛОЛОМ
+        text = f"""💰 СДАЛ КОРИЧНЕВАГА НА УДОБРЕНИЯ!
 
-📦 Сдано: {res['zmiy_cm']:.1f}см змия
+📦 Сдано: {res['zmiy_grams']:.0f}г коричневага
 💰 Получил: {res['money']}р
-   (база: {res['base_money']}р + бонус гофры: {res['gofra_bonus']}р)
+   (вес: {res['base_money']}р + гофра: {res['gofra_bonus']}р + кабель: {res['cable_bonus']}р)
 
 💸 Теперь на кармане: {p.get('dengi', 0)}р
 🏗️ Гофра: {p.get('gofra', 1)}
+🔌 Сила кабеля: {p.get('cable_power', 1)}
 
-Приёмщик: "Кабель огонь! Беру с наценкой!" """
+Приёмщик: "Ух, какой аромат! Беру с наценкой!" """
         
         await c.message.edit_text(text, reply_markup=main_keyboard())
 
@@ -143,7 +158,6 @@ async def cpr(c):
     max_atm = 12
     gofra_info = get_gofra_info(p.get('gofra', 1))
     
-    # Расчет времени восстановления
     regen_info = calculate_atm_regen_time(p)
     
     text = f"""📊 ПРОФИЛЬ ПАЦАНА
@@ -151,21 +165,22 @@ async def cpr(c):
 {gofra_info['emoji']} {gofra_info['name']}
 👤 {p.get('nickname', 'Пацанчик')}
 🏗️ Гофра: {p.get('gofra', 1)}
+🔌 Сила кабеля: {p.get('cable_power', 1)}
 
 Ресурсы:
 🌀 Атмосферы: [{pb(atm, max_atm)}] {atm}/{max_atm}
 ⏱️ Восстановление: {ft(regen_info['per_atm'])} за 1 атм.
-🐍 Змий: {p.get('zmiy_cm', 0):.1f}см
+🐍 Змий: {p.get('zmiy_grams', 0):.0f}г
 💰 Деньги: {p.get('dengi', 0)}р
 
 Статистика:
 📊 Всего давок: {p.get('total_davki', 0)}
-📈 Всего змия: {p.get('total_zmiy_cm', 0):.1f}см
+📈 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
 ⭐ Опыт: {p.get('experience', 0)}
 
-Чем больше гофра - тем быстрее атмосферы!"""
+Чем больше гофра - тем тяжелее змий!"""
     
-    await c.message.edit_text(text, reply_markup=profile_extended_keyboard())
+    await c.message.edit_text(text, reply_markup=profile_extended_kb())
 
 @router.callback_query(F.data == "gofra_info")
 @handle_callback_errors
@@ -180,8 +195,8 @@ async def gofra_info_handler(c):
 📊 Значение гофры: {p.get('gofra', 1)}
 
 Характеристики:
-⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.1f}
-📏 Длина кабеля: {gofra_info['min_cm']:.1f}-{gofra_info['max_cm']:.1f}см
+⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}
+⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г
 
 Следующая гофра:"""
     
@@ -191,13 +206,38 @@ async def gofra_info_handler(c):
         text += f"\n{gofra_info['emoji']} → {next_gofra['emoji']}"
         text += f"\n{next_gofra['name']} (от {gofra_info['next_threshold']} опыта)"
         text += f"\n📈 Прогресс: [{pb(progress, 1, 10)}] {progress*100:.1f}%"
-        text += f"\n⚡ Новая скорость: x{next_gofra['atm_speed']:.1f}"
+        text += f"\n⚡ Новая скорость: x{next_gofra['atm_speed']:.2f}"
+        text += f"\n⚖️ Новый вес: {next_gofra['min_grams']}-{next_gofra['max_grams']}г"
     else:
         text += "\n🎉 Максимальный уровень гофры!"
     
-    text += "\n\nЧем больше гофра - тем быстрее атмосферы и длиннее кабель!"
+    text += "\n\nЧем больше гофра - тем тяжелее змий и быстрее атмосферы!"
     
     await c.message.edit_text(text, reply_markup=gofra_info_kb())
+
+@router.callback_query(F.data == "cable_info")
+@handle_callback_errors
+async def cable_info_handler(c):
+    await c.answer()
+    p = await get_patsan(c.from_user.id)
+    
+    text = f"""🔌 СИЛОВОЙ КАБЕЛЬ
+
+💪 Сила кабеля: {p.get('cable_power', 1)}
+⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
+📈 Влияет на доход: +{p.get('cable_power', 1) * 10}р при сдаче змия
+
+Как прокачать:
+🐍 Дави змия - кабель укрепляется
+⚖️ Каждые 1000г змия = +1 к силе
+👊 Побеждай в радёмках
+
+Текущий прогресс:
+📊 Следующий уровень через: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г змия
+
+Сильный кабель = победы в радёмках!"""
+    
+    await c.message.edit_text(text, reply_markup=cable_info_kb())
 
 @router.callback_query(F.data == "atm_status")
 @handle_callback_errors
@@ -222,15 +262,15 @@ async def atm_status_handler(c):
 
 Влияние гофры:
 {gofra_info['emoji']} {gofra_info['name']}
-⚡ Скорость: x{gofra_info['atm_speed']:.1f}
+⚡ Скорость: x{gofra_info['atm_speed']:.2f}
 
 Полные 12 атмосфер нужны для давки!"""
     
     await c.message.edit_text(text, reply_markup=atm_status_keyboard())
 
-@router.callback_query(F.data.in_(["gofra_progress", "gofra_speed", "gofra_next", "atm_regen_time"]))
+@router.callback_query(F.data.in_(["gofra_progress", "gofra_speed", "gofra_next", "cable_power_info", "cable_pvp_info", "cable_upgrade_info", "atm_regen_time"]))
 @handle_callback_errors
-async def gofra_details(c):
+async def details_handler(c):
     await c.answer()
     p = await get_patsan(c.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra', 1))
@@ -251,33 +291,34 @@ async def gofra_details(c):
 Дави больше змия для прогресса!"""
         else:
             text = "🎉 МАКСИМАЛЬНАЯ ГОФРА!\n\nТы достиг максимального уровня гофры!"
+        await c.message.edit_text(text, reply_markup=gofra_info_kb())
     
     elif c.data == "gofra_speed":
         text = f"""⚡ СКОРОСТЬ ВОССТАНОВЛЕНИЯ АТМОСФЕР
 
 {gofra_info['emoji']} {gofra_info['name']}
-⚡ Множитель скорости: x{gofra_info['atm_speed']:.1f}
+⚡ Множитель скорости: x{gofra_info['atm_speed']:.2f}
 
 Базовая скорость:
-⏱️ 1 атмосфера: 24 часа
+⏱️ 1 атмосфера: 2 часа
 
 С вашей гофрой:
-⏱️ 1 атмосфера: {ft(86400 * gofra_info['atm_speed'])}
-🕐 12 атмосфер: {ft(86400 * 12 * gofra_info['atm_speed'])}
+⏱️ 1 атмосфера: {ft(7200 * gofra_info['atm_speed'])}
+🕐 12 атмосфер: {ft(7200 * 12 * gofra_info['atm_speed'])}
 
 Следующие уровни:"""
         
-        # Показываем следующие 3 уровня
         thresholds = [1, 10, 25, 50, 100, 200, 500, 1000]
-        current_idx = thresholds.index(gofra_info['threshold'])
+        current_idx = thresholds.index(gofra_info['threshold']) if gofra_info['threshold'] in thresholds else len(thresholds)-1
         
         for i in range(1, 4):
             if current_idx + i < len(thresholds):
                 next_threshold = thresholds[current_idx + i]
                 next_info = get_gofra_info(next_threshold)
-                text += f"\n{gofra_info['emoji']}→{next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.1f}"
+                text += f"\n{gofra_info['emoji']}→{next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.2f}"
+        await c.message.edit_text(text, reply_markup=gofra_info_kb())
     
-    elif c.data in ["gofra_next", "atm_regen_time"]:
+    elif c.data == "gofra_next":
         regen_info = calculate_atm_regen_time(p)
         text = f"""⏱️ ВРЕМЯ ВОССТАНОВЛЕНИЯ
 
@@ -285,13 +326,87 @@ async def gofra_details(c):
 📈 Нужно восстановить: {regen_info['needed']} атм.
 
 {gofra_info['emoji']} {gofra_info['name']}
-⚡ Скорость: x{gofra_info['atm_speed']:.1f}
+⚡ Скорость: x{gofra_info['atm_speed']:.2f}
 
 ⏱️ Время на 1 атмосферу: {ft(regen_info['per_atm'])}
 🕐 Общее время: {ft(regen_info['total'])}
 📅 Полная зарядка: через {ft(regen_info['total'])}"""
+        await c.message.edit_text(text, reply_markup=gofra_info_kb())
     
-    await c.message.edit_text(text, reply_markup=gofra_info_kb())
+    elif c.data == "cable_power_info":
+        text = f"""💪 СИЛА КАБЕЛЯ
+
+🔌 Текущая сила: {p.get('cable_power', 1)}
+⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
+💰 Бонус к деньгам: +{p.get('cable_power', 1) * 10}р
+
+Как работает:
+• Каждый 1000г змия = +1 к силе
+• Победы в радёмках тоже дают +1
+
+Прогресс:
+📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
+📈 Следующий +1 через: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г
+
+Сильный кабель = победы и деньги!"""
+        await c.message.edit_text(text, reply_markup=cable_info_kb())
+    
+    elif c.data == "cable_pvp_info":
+        text = f"""⚔️ КАБЕЛЬ В PvP
+
+🔌 Сила кабеля: {p.get('cable_power', 1)}
+🎯 Влияние на шанс: +{p.get('cable_power', 1)}%
+
+Как считается шанс:
+• База: 50% (равные силы)
+• Разница в кабеле: ±1% за каждую единицу
+• Разница в гофре: ±0.5% за каждые 10 опыта
+
+Пример:
+• Ваш кабель: 10, враг: 5 → +5% к шансу
+• Ваша гофра: 100, враг: 50 → +2.5% к шансу
+• Итого: 50% + 5% + 2.5% = 57.5%
+
+Укрепляй кабель - побеждай чаще!"""
+        await c.message.edit_text(text, reply_markup=cable_info_kb())
+    
+    elif c.data == "cable_upgrade_info":
+        text = f"""📈 ПРОКАЧКА КАБЕЛЯ
+
+🔌 Текущая сила: {p.get('cable_power', 1)}
+📊 Змия для следующего уровня: {1000 - (p.get('total_zmiy_grams', 0) % 1000):.0f}г
+
+Способы прокачки:
+1. 🐍 Давка змия
+   • Каждые 1000г = +1 к силе
+   • Чем тяжелее змий - тем быстрее
+
+2. 👊 Победы в радёмках
+   • Каждая победа = +1 к силе
+   • Проигрыш не отнимает силу
+
+3. 📊 Общий прогресс
+   • Всего змия: {p.get('total_zmiy_grams', 0):.0f}г
+   • Уровень кабеля: {p.get('cable_power', 1)}
+   • Эффективность: {p.get('cable_power', 1) * 10}р/давка
+
+Кабель = сила пацана!"""
+        await c.message.edit_text(text, reply_markup=cable_info_kb())
+    
+    elif c.data == "atm_regen_time":
+        regen_info = calculate_atm_regen_time(p)
+        text = f"""⏱️ ВРЕМЯ ВОССТАНОВЛЕНИЯ
+
+🌀 Атмосфер сейчас: {p.get('atm_count', 0)}/12
+📈 Нужно восстановить: {regen_info['needed']} атм.
+
+{gofra_info['emoji']} {gofra_info['name']}
+⚡ Скорость: x{gofra_info['atm_speed']:.2f}
+
+⏱️ Время на 1 атмосферу: {ft(regen_info['per_atm'])}
+🕐 Общее время: {ft(regen_info['total'])}
+📅 Полная зарядка: через {ft(regen_info['total'])}"""
+        await c.message.edit_text(text, reply_markup=atm_status_keyboard())
 
 @router.callback_query(F.data == "top")
 @handle_callback_errors
@@ -299,7 +414,7 @@ async def ctm(c):
     try:
         await c.answer()
         await c.message.edit_text(
-            "🏆 ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА\n\nВыбери, по какому показателю сортировать рейтинг:\n\nНовые варианты:\n• 🏗️ По гофре - кто больше разъездил\n• 👊 По победам в радёмках - кто самый дерзкий",
+            "🏆 ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА\n\nВыбери, по какому показателю сортировать рейтинг:",
             reply_markup=top_sort_keyboard()
         )
     except Exception as e:
@@ -308,10 +423,10 @@ async def ctm(c):
 async def grwt():
     try:
         cn = await get_connection()
-        cur = await cn.execute('SELECT u.user_id,u.nickname,u.gofra,COUNT(rf.id) as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.gofra ORDER BY wins DESC LIMIT 10')
+        cur = await cn.execute('SELECT u.user_id,u.nickname,u.gofra,u.cable_power,COUNT(rf.id) as wins FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id GROUP BY u.user_id,u.nickname,u.gofra,u.cable_power ORDER BY wins DESC LIMIT 10')
         r = await cur.fetchall()
         await cn.close()
-        return [dict(x) | {"wins": x["wins"] or 0, "zmiy_cm": 0, "dengi": 0, "atm_count": 0} for x in r]
+        return [dict(x) | {"wins": x["wins"] or 0, "zmiy_grams": 0, "dengi": 0, "atm_count": 0} for x in r]
     except Exception:
         return []
 
@@ -322,7 +437,8 @@ async def cst(c):
         await c.answer()
         sort_map = {
             "gofra": ("гофре", "🏗️", "gofra"),
-            "zmiy": ("змию", "🐍", "zmiy_cm"),
+            "cable": ("кабелю", "🔌", "cable_power"),
+            "zmiy": ("змию", "🐍", "zmiy_grams"),
             "dengi": ("деньгам", "💰", "dengi"),
             "atm": ("атмосферам", "🌀", "atm_count")
         }
@@ -344,11 +460,14 @@ async def cst(c):
             nn = pl.get('nickname', f'Пацан_{pl.get("user_id", "?")}')[:20] + ("..." if len(pl.get('nickname', '')) > 20 else "")
             
             if st == "gofra": 
-                v = f"🏗️ {pl.get('gofra', 0)}"
+                gi = get_gofra_info(pl.get('gofra', 1))
+                v = f"🏗️ {pl.get('gofra', 0)} {gi['emoji']}"
+            elif st == "cable":
+                v = f"🔌 {pl.get('cable_power', 0)}"
             elif st == "dengi":
                 v = f"💰 {pl.get('dengi', 0)}р"
             elif st == "zmiy":
-                v = f"🐍 {pl.get('zmiy_cm', 0):.1f}см"
+                v = f"🐍 {pl.get('zmiy_grams', 0):.0f}г"
             elif st == "atm":
                 v = f"🌀 {pl.get('atm_count', 0)}/12"
             else: 
@@ -367,9 +486,6 @@ async def cst(c):
         await c.message.edit_text(tt, reply_markup=top_sort_keyboard())
     except Exception as e:
         await c.answer(f"Ошибка загрузки топа: {str(e)[:50]}", show_alert=True)
-
-# Остальные обработчики (nickname_menu, daily, rademka, inventory и т.д.) 
-# нужно будет адаптировать под новую систему
 
 @router.callback_query(F.data == "nickname_menu")
 @handle_callback_errors
@@ -391,6 +507,5 @@ async def cr(c):
     except Exception:
         await c.answer("Ошибка загрузки радёмки", show_alert=True)
 
-# Добавляем недостающие импорты для совместимости
-get_user_rank = lambda p: ("👶", "Пацанчик")  # Заглушка для совместимости
-get_emoji = lambda i: "📦"  # Заглушка для совместимости
+get_user_rank = lambda p: ("👶", "Пацанчик")
+get_emoji = lambda i: "📦"
