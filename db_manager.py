@@ -30,8 +30,8 @@ DB_PATH = os.path.join(STORAGE_DIR, "bot_database.db")
 
 DB_NAME = os.getenv("DB_NAME", DB_PATH)
 DB_TIMEOUT = int(os.getenv("DB_TIMEOUT", "30"))
-CACHE_TTL = int(os.getenv("CACHE_TTL", "30"))
-MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "500"))
+CACHE_TTL = int(os.getenv("CACHE_TTL", "10"))
+MAX_CACHE = int(os.getenv("MAX_CACHE_SIZE", "100"))
 ATM_MAX = 12
 ATM_BASE_TIME = 7200
 BATCH_INT = 5
