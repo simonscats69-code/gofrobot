@@ -29,7 +29,6 @@ def ignore_not_modified_error(func):
     return wrapper
 
 def validate_nickname(nickname):
-    """Валидация ника"""
     if len(nickname) < 3 or len(nickname) > 20:
         return False, "Длина ника должна быть от 3 до 20 символов"
     
@@ -51,11 +50,24 @@ def validate_nickname(nickname):
     
     return True, "OK"
 
-@router.message(Command("nickname"))
-async def cmd_nickname(m: types.Message, state: FSMContext):
-    p = await get_patsan(m.from_user.id)
+async def cmd_nickname(message: types.Message, state: FSMContext = None):
+    p = await get_patsan(message.from_user.id)
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
-    await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {p.get('gofra',1)}\n🔌 Кабель: {p.get('cable_power',1)}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+    await message.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {p.get('gofra',1)}\n🔌 Кабель: {p.get('cable_power',1)}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+
+async def cmd_rademka(message: types.Message):
+    p = await get_patsan(message.from_user.id)
+    gofra_info = get_gofra_info(p.get('gofra',1))
+    
+    can_fight, fight_msg = await can_fight_pvp(message.from_user.id)
+    fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
+    
+    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +1 к силе кабеля\n• +50 к гофре\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {p.get('gofra',1)}\n🔌 {p.get('cable_power',1)}"
+    await message.answer(txt, reply_markup=rademka_keyboard())
+
+@router.message(Command("nickname"))
+async def cmd_nickname_handler(m: types.Message, state: FSMContext):
+    await cmd_nickname(m, state)
 
 @router.callback_query(F.data == "nickname_menu")
 async def nickname_menu(c: types.CallbackQuery):
@@ -142,15 +154,8 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
     await m.answer("Смена ника отменена.", reply_markup=main_keyboard())
 
 @router.message(Command("rademka"))
-async def cmd_rademka(m: types.Message):
-    p = await get_patsan(m.from_user.id)
-    gofra_info = get_gofra_info(p.get('gofra',1))
-    
-    can_fight, fight_msg = await can_fight_pvp(m.from_user.id)
-    fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
-    
-    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +1 к силе кабеля\n• +50 к гофре\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {p.get('gofra',1)}\n🔌 {p.get('cable_power',1)}"
-    await m.answer(txt, reply_markup=rademka_keyboard())
+async def cmd_rademka_handler(m: types.Message):
+    await cmd_rademka(m)
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
@@ -251,7 +256,7 @@ async def rademka_stats(c: types.CallbackQuery):
             txt += f"⏱️ За час: {hour_fights}/10 боёв\n\n"
             txt += f"Лимит: 10 боёв в час"
         else: 
-            txt = f"📊 СТАТИСТИКА РАДЁМОК\n\nНет радёмок!\nВыбери цель!\n\nПока мирный пацан..."
+            txt = f"📊 СТАТИСТИКА РАДёмОК\n\nНет радёмок!\nВыбери цель!\n\nПока мирный пацан..."
         await cn.close()
     except Exception as e:
         logger.error(f"Ошибка статистики: {e}")
@@ -297,4 +302,4 @@ async def back_to_main(c: types.CallbackQuery):
         logger.error(f"Ошибка главного: {e}")
         await c.message.edit_text("Главное меню\n\nБот работает!", reply_markup=main_keyboard())
 
-__all__ = ["router", "process_nickname"]
+__all__ = ["router", "process_nickname", "cmd_nickname", "cmd_rademka"]
