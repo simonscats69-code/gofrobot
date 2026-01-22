@@ -17,6 +17,8 @@ router = Router()
 def handle_callback_errors(func):
     async def wrapper(callback: types.CallbackQuery, *args, **kwargs):
         try:
+            kwargs.pop('dispatcher', None)
+            kwargs.pop('state', None)
             return await func(callback, *args, **kwargs)
         except Exception as e:
             import logging
@@ -225,7 +227,7 @@ async def cable_info_handler(c):
 
 💪 Сила кабеля: {p.get('cable_power', 1)}
 ⚔️ Бонус в PvP: +{p.get('cable_power', 1)}% к шансу
-📈 Влияет на доход: +{p.get('cable_power', 1) * 10}р при сдаче змия
+📈 Влияет на доход: +{p.get('cable_power', 1) * 10}р при сдазе змия
 
 Как прокачать:
 🐍 Дави змия - кабель укрепляется
