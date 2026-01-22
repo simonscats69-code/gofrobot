@@ -7,8 +7,8 @@ import time
 import random
 import re
 import logging
-from db_manager import get_patsan, change_nickname, get_connection, save_patsan, save_rademka_fight, get_top_players, get_gofra_info, calculate_pvp_chance, can_fight_pvp
-from keyboards import main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_to_rademka_keyboard
+from db_manager import get_patsan, change_nickname, save_patsan, save_rademka_fight, get_top_players, get_gofra_info, calculate_pvp_chance, can_fight_pvp
+from keyboards import main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_kb
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ async def rademka_random(c: types.CallbackQuery):
     tp = await get_top_players(limit=50, sort_by="gofra")
     tg = [p for p in tp if p.get("user_id")!=c.from_user.id]
     if not tg: 
-        return await c.message.edit_text("😕 НЕКОГО ПРОТАЩИВАТЬ!\n\nПриведи друзей!", reply_markup=back_to_rademka_keyboard())
+        return await c.message.edit_text("😕 НЕКОГО ПРОТАЩИВАТЬ!\n\nПриведи друзей!", reply_markup=back_kb("rademka"))
     
     t = random.choice(tg)
     pid, tn = t.get("user_id"), t.get("nickname","Неизвестно")
@@ -230,12 +230,13 @@ async def rademka_confirm(c: types.CallbackQuery):
     await save_patsan(t)
     await save_rademka_fight(winner_id=uid if suc else tid, loser_id=tid if suc else uid, money_taken=0)
     
-    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard())
+    await c.message.edit_text(txt, reply_markup=back_kb("rademka"))
     await c.answer()
 
 @router.callback_query(F.data == "rademka_stats")
 async def rademka_stats(c: types.CallbackQuery):
     try:
+        from db_manager import get_connection
         cn = await get_connection()
         cur = await cn.execute('SELECT COUNT(*) as tf, SUM(CASE WHEN winner_id=? THEN 1 ELSE 0 END) as w, SUM(CASE WHEN loser_id=? THEN 1 ELSE 0 END) as l FROM rademka_fights WHERE winner_id=? OR loser_id=?', (c.from_user.id,)*4)
         s = await cur.fetchone()
@@ -261,12 +262,13 @@ async def rademka_stats(c: types.CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка статистики: {e}")
         txt = f"📊 СТАТИСТИКА РАДёмОК\n\nБаза готовится...\n\nСистема учится считать!"
-    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard())
+    await c.message.edit_text(txt, reply_markup=back_kb("rademka"))
     await c.answer()
 
 @router.callback_query(F.data == "rademka_top")
 async def rademka_top(c: types.CallbackQuery):
     try:
+        from db_manager import get_connection
         cn = await get_connection()
         cur = await cn.execute('SELECT u.nickname, u.user_id, u.gofra, u.cable_power, COUNT(CASE WHEN rf.winner_id=u.user_id THEN 1 END) as w, COUNT(CASE WHEN rf.loser_id=u.user_id THEN 1 END) as l FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id OR u.user_id=rf.loser_id GROUP BY u.user_id, u.nickname, u.gofra, u.cable_power HAVING w>0 ORDER BY w DESC LIMIT 10')
         tp = await cur.fetchall()
@@ -288,7 +290,7 @@ async def rademka_top(c: types.CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка топа: {e}")
         txt = f"🥇 ТОП РАДёмЩИКОВ\n\nРейтинг формируется...\n\nМеста скоро будут!"
-    await c.message.edit_text(txt, reply_markup=back_to_rademka_keyboard())
+    await c.message.edit_text(txt, reply_markup=back_kb("rademka"))
     await c.answer()
 
 @ignore_not_modified_error
