@@ -52,15 +52,12 @@ def validate_nickname(nickname):
 
 @router.message(Command("nickname"))
 async def cmd_nickname_handler(m: types.Message, state: FSMContext):
-    await cmd_nickname(m, state)
-
-async def cmd_nickname(message: types.Message, state: FSMContext = None):
-    p = await get_patsan(message.from_user.id)
+    p = await get_patsan(m.from_user.id)
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
-    await message.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+    await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
 @router.callback_query(F.data == "nickname_menu")
-async def nickname_menu(c: types.CallbackQuery, state: FSMContext):
+async def nickname_menu(c: types.CallbackQuery):
     await c.answer()
     p = await get_patsan(c.from_user.id)
     cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
@@ -98,7 +95,8 @@ async def top_reputation(c: types.CallbackQuery):
 async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     p = await get_patsan(c.from_user.id)
     
-    if await state.get_state() == NicknameChange.waiting_for_nickname.state:
+    current_state = await state.get_state()
+    if current_state == NicknameChange.waiting_for_nickname:
         await c.answer("Ты уже в процессе смены ника!", show_alert=True)
         return
     
@@ -122,7 +120,7 @@ async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     await state.set_state(NicknameChange.waiting_for_nickname)
     await c.answer("Введи новый ник в чат")
 
-# ОБРАБОТЧИК ВВОДА НИКА - ВАЖНО!
+# ОБРАБОТЧИК ВВОДА НИКА
 @router.message(NicknameChange.waiting_for_nickname)
 async def process_nickname_input(message: types.Message, state: FSMContext):
     nn = message.text.strip()
@@ -146,7 +144,7 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
     if not current_state:
         return await m.answer("Нечего отменять.", reply_markup=main_keyboard())
     
-    if current_state == NicknameChange.waiting_for_nickname.state:
+    if current_state == NicknameChange.waiting_for_nickname:
         await state.clear()
         await m.answer("Смена ника отменена.", reply_markup=main_keyboard())
     else:
@@ -298,7 +296,7 @@ async def rademka_top(c: types.CallbackQuery):
         cur = await cn.execute('SELECT u.nickname, u.user_id, u.gofra_mm, u.cable_mm, COUNT(CASE WHEN rf.winner_id=u.user_id THEN 1 END) as w, COUNT(CASE WHEN rf.loser_id=u.user_id THEN 1 END) as l FROM users u LEFT JOIN rademka_fights rf ON u.user_id=rf.winner_id OR u.user_id=rf.loser_id GROUP BY u.user_id, u.nickname, u.gofra_mm, u.cable_mm HAVING w>0 ORDER BY w DESC LIMIT 10')
         tp = await cur.fetchall()
         if tp:
-            mds, txt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], "🥇 ТОП РАДЁМЩИКОВ\n\n"
+            mds, txt = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"], "🥇 ТОП РАДёМЩИКОВ\n\n"
             for i, p in enumerate(tp):
                 if i>=len(mds): 
                     break
@@ -329,4 +327,4 @@ async def back_to_main(c: types.CallbackQuery):
         logger.error(f"Ошибка главного: {e}")
         await c.message.edit_text("Главное меню\n\nБот работает!", reply_markup=main_keyboard())
 
-__all__ = ["router", "process_nickname_input", "cmd_nickname", "cmd_rademka"]
+__all__ = ["router", "process_nickname_input", "cmd_nickname_handler", "cmd_rademka"]
