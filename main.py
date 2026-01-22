@@ -87,6 +87,8 @@ async def set_bot_commands(bot: Bot):
     group_commands = [
         BotCommand(command="start", description="🚀 Активировать в чате"),
         BotCommand(command="gdavka", description="🐍 Давить змия в чате"),
+        BotCommand(command="grademka", description="👊 Радёмка в чате"),
+        BotCommand(command="fight", description="⚔️ Протащить игрока (ответом)"),
         BotCommand(command="gtop", description="🏆 Топ этого чата"),
         BotCommand(command="gstats", description="📊 Статистика чата"),
         BotCommand(command="gme", description="📈 Мой вклад в чат"),
@@ -95,6 +97,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="davka", description="🐍 Давить (личное)"),
         BotCommand(command="profile", description="📊 Профиль (личное)"),
         BotCommand(command="top", description="🏆 Топ (личное)"),
+        BotCommand(command="rademka", description="👊 Радёмка (личная)"),
     ]
     
     await bot.set_my_commands(private_commands, scope=BotCommandScopeAllPrivateChats())
