@@ -27,7 +27,7 @@ async def main():
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
         
-        dp.include_router(router)  # Подключаем один общий роутер
+        dp.include_router(router)
         
         logger.info("Бот запускается...")
         await dp.start_polling(bot)
