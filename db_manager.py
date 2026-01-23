@@ -33,7 +33,8 @@ async def ensure_storage_dirs():
 async def init_db():
     """Инициализирует базу данных с необходимыми таблицами."""
     await ensure_storage_dirs()
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -102,6 +103,8 @@ async def init_db():
         await check_and_update_db_version(conn)
 
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def check_and_update_db_version(conn: aiosqlite.Connection):
     """Проверяет версию базы данных и применяет необходимые миграции."""
