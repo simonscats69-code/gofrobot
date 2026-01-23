@@ -6,7 +6,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from db_manager import init_bot, shutdown
+from db_manager import init_db, shutdown
 from dotenv import load_dotenv
 from handlers import router
 
@@ -113,7 +113,7 @@ async def main():
         logger.info(f"📁 Рабочая директория: {os.getcwd()}")
         logger.info(f"📂 Содержимое: {os.listdir('.')}")
 
-        await init_bot()
+        await init_db()
 
         BOT_TOKEN = os.getenv("BOT_TOKEN")
         if not BOT_TOKEN:
