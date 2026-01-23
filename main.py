@@ -6,7 +6,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from db_manager import init_db, shutdown
+from db_manager import init_db
 from dotenv import load_dotenv
 from handlers import router
 
@@ -134,7 +134,6 @@ async def main():
         logger.error(f"Ошибка при запуске бота: {e}", exc_info=True)
 
     finally:
-        await shutdown()
         gc.collect()
         logger.info("Бот остановлен")
 
