@@ -159,6 +159,7 @@ async def apply_migration_v2(conn: aiosqlite.Connection):
 
     except Exception as e:
         logger.error(f"Ошибка при миграции v2: {e}")
+        raise
 
 async def repair_database():
     """Функция для ремонта и восстановления базы данных."""
