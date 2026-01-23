@@ -49,17 +49,20 @@ MENUS = {
 
 def mk(menu: str, back: str = None, cols: int = 2) -> InlineKeyboardMarkup:
     if menu not in MENUS: return main_kb()
-    
+
     items = MENUS[menu]
+    if not items:
+        return main_kb()
+
     btns, row = [], []
-    
+
     for i, (text, cb) in enumerate(items, 1):
         row.append(Btn(text=text, callback_data=cb))
         if i % cols == 0:
             btns.append(row)
             row = []
     if row: btns.append(row)
-    
+
     if back: btns.append([Btn(text="⬅️ Назад", callback_data=back)])
     return InlineKeyboardMarkup(inline_keyboard=btns)
 
