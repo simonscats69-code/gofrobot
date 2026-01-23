@@ -10,7 +10,7 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     await message.answer(
         f"НУ ЧЁ, ПАЦАН? 👊\n\n"
@@ -25,7 +25,7 @@ async def cmd_start(message: types.Message):
 @router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     regen_info = calculate_atm_regen_time(patsan)
     
@@ -56,7 +56,7 @@ async def cmd_top(message: types.Message):
 @router.message(Command("gofra"))
 async def cmd_gofra(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     text = f"🏗️ ИНФОРМАЦИЯ О ГОФРЕ\n\n"
     text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
@@ -67,7 +67,7 @@ async def cmd_gofra(message: types.Message):
     
     if gofra_info.get('next_threshold'):
         progress = gofra_info['progress']
-        next_gofra = get_gofra_info(gofra_info['next_threshold'])
+        next_gofra = await get_gofra_info(gofra_info['next_threshold'])
         text += f"Следующая гофра:\n"
         text += f"{gofra_info['emoji']} → {next_gofra['emoji']}\n"
         text += f"{next_gofra['name']} (от {next_gofra['length_display']})\n"
@@ -99,7 +99,7 @@ async def cmd_cable(message: types.Message):
 async def cmd_atm(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
     regen_info = calculate_atm_regen_time(patsan)
-    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     text = f"🌡️ СОСТОЯНИЕ АТМОСФЕР\n\n"
     text += f"🌀 Текущий запас: {patsan.get('atm_count', 0)}/12\n\n"
@@ -117,7 +117,7 @@ async def cmd_atm(message: types.Message):
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     await message.answer(
         f"Главное меню\n"
