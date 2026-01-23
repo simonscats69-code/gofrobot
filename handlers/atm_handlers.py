@@ -1,7 +1,20 @@
 from aiogram import Router, types, F
+from aiogram.exceptions import TelegramBadRequest
 from db_manager import get_patsan, calculate_atm_regen_time, get_gofra_info
 from keyboards import back_to_profile_keyboard
 import time
+
+def ignore_not_modified_error(func):
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                if len(args) > 0 and hasattr(args[0], 'callback_query'):
+                    await args[0].callback_query.answer()
+                return
+            raise
+    return wrapper
 
 router = Router()
 
@@ -19,6 +32,7 @@ def pb(c, t, l=10):
     f = int((c / t) * l) if t > 0 else 0
     return "█" * f + "░" * (l - f)
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "atm_regen_time")
 async def atm_regen_time_info(callback: types.CallbackQuery):
     try:
@@ -56,6 +70,7 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "atm_max_info")
 async def atm_max_info(callback: types.CallbackQuery):
     try:
@@ -93,6 +108,7 @@ async def atm_max_info(callback: types.CallbackQuery):
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "atm_boosters")
 async def atm_boosters_info(callback: types.CallbackQuery):
     try:

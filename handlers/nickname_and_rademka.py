@@ -56,6 +56,7 @@ async def cmd_nickname_handler(m: types.Message, state: FSMContext):
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
     await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "nickname_menu")
 async def nickname_menu(c: types.CallbackQuery):
     await c.answer()
@@ -63,6 +64,7 @@ async def nickname_menu(c: types.CallbackQuery):
     cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
     await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {cst}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "my_reputation")
 async def my_reputation(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
@@ -70,6 +72,7 @@ async def my_reputation(c: types.CallbackQuery):
     await c.message.edit_text(f"⭐ МОЯ РЕПУТАЦИЯ\n\n{gofra_info['emoji']} Звание: {gofra_info['name']}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nКак повысить?\n• Дави змия при полных атмосферах\n• Отправляй змия в коричневую страну\n• Участвуй в радёмках\n\nЧем больше гофра, тем больше уважения!", reply_markup=nickname_keyboard())
     await c.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "top_reputation")
 async def top_reputation(c: types.CallbackQuery):
     tp = await get_top_players(limit=10, sort_by="gofra")
@@ -91,6 +94,7 @@ async def top_reputation(c: types.CallbackQuery):
         await c.message.edit_text(txt, reply_markup=nickname_keyboard())
     await c.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "change_nickname")
 async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     p = await get_patsan(c.from_user.id)
@@ -176,6 +180,7 @@ async def callback_rademka(c: types.CallbackQuery):
     await c.message.edit_text(f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\n{fight_status}\n\nВыбери пацана!\nЗа успех: +0.2 мм к кабелю, +5-12 мм к гофре, публичное унижение\n\nРиски: публичный позор\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))} | 🔌 {format_length(p.get('cable_mm', 10.0))}", reply_markup=rademka_keyboard())
     await c.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "rademka_random")
 async def rademka_random(c: types.CallbackQuery):
     can_fight, fight_msg = await can_fight_pvp(c.from_user.id)
@@ -202,6 +207,7 @@ async def rademka_random(c: types.CallbackQuery):
     await c.message.edit_text(f"🎯 НАШЁЛ ЦЕЛЬ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n👤 Цель: {tn}\n{tgofra_info['emoji']} {tgofra_info['name']}\n🏗️ {tgofra_info['length_display']} | 🔌 {tcable}\n\n👤 Ты: {mgofra_info['emoji']} {mgofra_info['name']}\n🏗️ {mgofra_info['length_display']} | 🔌 {mcable}\n🎯 Шанс: {chance}%\n\nНаграда: +0.2 мм к кабелю, +5-12 мм к гофре\nРиск: позор\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid))
     await c.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data.startswith("rademka_confirm_"))
 async def rademka_confirm(c: types.CallbackQuery):
     uid = c.from_user.id
@@ -256,6 +262,7 @@ async def rademka_confirm(c: types.CallbackQuery):
     await c.message.edit_text(txt, reply_markup=back_kb("rademka"))
     await c.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "rademka_stats")
 async def rademka_stats(c: types.CallbackQuery):
     try:
@@ -288,6 +295,7 @@ async def rademka_stats(c: types.CallbackQuery):
     await c.message.edit_text(txt, reply_markup=back_kb("rademka"))
     await c.answer()
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "rademka_top")
 async def rademka_top(c: types.CallbackQuery):
     try:
@@ -323,7 +331,7 @@ async def back_to_main(c: types.CallbackQuery):
         p = await get_patsan(c.from_user.id)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
         await c.message.edit_text(f"Главное меню\n{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {gofra_info['length_display']} | 🔌 {format_length(p.get('cable_mm', 10.0))}\n\n🌀 Атмосферы: {p.get('atm_count',0)}/12\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nВыбери действие:", reply_markup=main_keyboard())
-    except Exception as e: 
+    except Exception as e:
         logger.error(f"Ошибка главного: {e}")
         await c.message.edit_text("Главное меню\n\nБот работает!", reply_markup=main_keyboard())
 

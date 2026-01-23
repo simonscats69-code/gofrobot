@@ -17,6 +17,7 @@ def ignore_not_modified_error(func):
             raise
     return wrapper
 
+@ignore_not_modified_error
 @router.callback_query(F.data == "top")
 async def callback_top_menu(callback: types.CallbackQuery):
     await callback.message.edit_text(
