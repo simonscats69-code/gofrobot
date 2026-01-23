@@ -18,11 +18,13 @@ class NicknameChange(StatesGroup):
 
 def ignore_not_modified_error(func):
     async def wrapper(*args, **kwargs):
-        try: 
-            return await func(*args, **kwargs)
+        try:
+            # Filter out unexpected kwargs that might be passed by aiogram
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k in ['callback', 'message', 'state', 'dispatcher', 'event', 'data']}
+            return await func(*args, **filtered_kwargs)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
-                if args and hasattr(args[0], 'callback_query'):
+                if len(args) > 0 and hasattr(args[0], 'callback_query'):
                     await args[0].callback_query.answer()
                 return
             raise
