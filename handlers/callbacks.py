@@ -509,6 +509,230 @@ async def handle_atm_status_callback(callback: types.CallbackQuery):
         logger.error(f"Error in atm status callback: {e}")
         await callback.answer("❌ Ошибка загрузки информации об атмосферах", show_alert=True)
 
+@router.callback_query(F.data == "profile")
+async def handle_profile_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        text = f"📊 ТВОЙ ПРОФИЛЬ\n\n"
+        text += f"🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n"
+        text += f"🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n"
+        text += f"🌀 Атмосферы: {p.get('atm_count', 0)}/12\n"
+        text += f"🐍 Змий: {p.get('zmiy_grams', 0.0):.0f}г\n\n"
+        text += f"📈 Прогресс:\n"
+        text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
+        text += f"⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}\n"
+        text += f"⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=profile_extended_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=profile_extended_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in profile callback: {e}")
+        await callback.answer("❌ Ошибка загрузки профиля", show_alert=True)
+
+@router.callback_query(F.data == "gofra_progress")
+async def handle_gofra_progress_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        text = f"📈 ПРОГРЕСС ГОФРЫ\n\n"
+        text += f"🏗️ Текущая гофра: {gofra_info['length_display']}\n"
+        text += f"{gofra_info['emoji']} {gofra_info['name']}\n\n"
+
+        if gofra_info.get('next_threshold'):
+            current_gofra = p.get('gofra_mm', 10.0)
+            next_threshold = gofra_info['next_threshold']
+            progress = (current_gofra - gofra_info['threshold']) / (next_threshold - gofra_info['threshold'])
+            progress_percent = progress * 100
+
+            next_gofra = get_gofra_info(next_threshold)
+
+            text += f"🎯 Следующая гофра:\n"
+            text += f"{next_gofra['emoji']} {next_gofra['name']}\n"
+            text += f"📏 Требуется: {next_gofra['length_display']}\n"
+            text += f"📊 Прогресс: [{'█' * int(progress_percent/10)}{'░' * (10 - int(progress_percent/10))}] {progress_percent:.1f}%\n\n"
+            text += f"💪 Осталось: {next_threshold - current_gofra:.1f} мм"
+        else:
+            text += "🎉 Ты достиг максимального уровня гофры!\n"
+            text += "🏆 Коричневый бог - это ты!"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=gofra_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=gofra_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in gofra progress callback: {e}")
+        await callback.answer("❌ Ошибка загрузки прогресса гофры", show_alert=True)
+
+@router.callback_query(F.data == "gofra_speed")
+async def handle_gofra_speed_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        text = f"⚡ СКОРОСТЬ ВОССТАНОВЛЕНИЯ АТМОСФЕР\n\n"
+        text += f"🏗️ Твоя гофра: {gofra_info['length_display']}\n"
+        text += f"{gofra_info['emoji']} {gofra_info['name']}\n\n"
+        text += f"📊 Скорость восстановления:\n"
+        text += f"• Базовая: 1 атмосфера за 2 часа\n"
+        text += f"• Твой множитель: x{gofra_info['atm_speed']:.2f}\n"
+        text += f"• Фактическая: 1 атмосфера за {ft(7200 / gofra_info['atm_speed'])}\n\n"
+        text += f"💡 Как ускорить:\n"
+        text += f"• Повышай гофру (дави змия при 12 атмосферах)\n"
+        text += f"• Чем выше гофра, тем быстрее восстанавливаются атмосферы\n"
+        text += f"• Максимальный множитель: x2.0 (Коричневый бог)"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=gofra_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=gofra_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in gofra speed callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о скорости", show_alert=True)
+
+@router.callback_query(F.data == "gofra_next")
+async def handle_gofra_next_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        text = f"🎯 СЛЕДУЮЩАЯ ГОФРА\n\n"
+
+        if gofra_info.get('next_threshold'):
+            current_gofra = p.get('gofra_mm', 10.0)
+            next_threshold = gofra_info['next_threshold']
+            next_gofra = get_gofra_info(next_threshold)
+
+            text += f"🏗️ Текущая гофра: {gofra_info['length_display']}\n"
+            text += f"{gofra_info['emoji']} {gofra_info['name']}\n\n"
+            text += f"📈 Следующая гофра:\n"
+            text += f"{next_gofra['emoji']} {next_gofra['name']}\n"
+            text += f"📏 Требуется: {next_gofra['length_display']}\n\n"
+            text += f"📊 Преимущества:\n"
+            text += f"• Скорость атмосфер: x{next_gofra['atm_speed']:.2f} (текущая: x{gofra_info['atm_speed']:.2f})\n"
+            text += f"• Вес змия: {next_gofra['min_grams']}-{next_gofra['max_grams']}г (текущий: {gofra_info['min_grams']}-{gofra_info['max_grams']}г)\n\n"
+            text += f"💪 Как получить:\n"
+            text += f"• Дави змия при 12 атмосферах\n"
+            text += f"• Получай опыт: 0.02 мм за 1 грамм змия\n"
+            text += f"• Нужно ещё: {next_threshold - current_gofra:.1f} мм"
+        else:
+            text += "🎉 Ты достиг максимального уровня!\n"
+            text += "🏆 Коричневый бог - это ты!\n"
+            text += "📊 Больше нет уровней гофры"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=gofra_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=gofra_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in gofra next callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о следующей гофре", show_alert=True)
+
+@router.callback_query(F.data == "cable_power_info")
+async def handle_cable_power_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+
+        text = f"💪 СИЛА КАБЕЛЯ\n\n"
+        text += f"🔌 Длина кабеля: {format_length(p.get('cable_mm', 10.0))}\n"
+        text += f"⚔️ Бонус в PvP: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n\n"
+        text += f"📊 Как влияет на PvP:\n"
+        text += f"• Каждый 1 мм кабеля = +0.02% к шансу победы\n"
+        text += f"• Твой бонус: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n"
+        text += f"• Максимальный бонус: +20% (1000 мм кабеля)\n\n"
+        text += f"💡 Как прокачать:\n"
+        text += f"• Дави змия: +0.2 мм за 1 кг змия\n"
+        text += f"• Побеждай в радёмках: +0.2 мм за победу\n"
+        text += f"• Участвуй в PvP боях"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=cable_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=cable_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in cable power callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о силе кабеля", show_alert=True)
+
+@router.callback_query(F.data == "cable_pvp_info")
+async def handle_cable_pvp_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+
+        text = f"⚔️ КАБЕЛЬ В PVP\n\n"
+        text += f"🔌 Твой кабель: {format_length(p.get('cable_mm', 10.0))}\n"
+        text += f"💪 Бонус к шансу победы: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n\n"
+        text += f"📊 Формула PvP:\n"
+        text += f"• Базовый шанс: 50%\n"
+        text += f"• Бонус от гофры: +2% за каждые 10 мм разницы\n"
+        text += f"• Бонус от кабеля: +0.2% за каждый 1 мм разницы\n"
+        text += f"• Общий шанс: от 10% до 90%\n\n"
+        text += f"💡 Стратегия:\n"
+        text += f"• Прокачивай кабель для увеличения шанса\n"
+        text += f"• Выбирай противников с меньшим кабелем\n"
+        text += f"• Победы дают +0.2 мм к кабелю"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=cable_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=cable_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in cable pvp callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о PvP", show_alert=True)
+
+@router.callback_query(F.data == "cable_upgrade_info")
+async def handle_cable_upgrade_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+
+        text = f"📈 ПРОКАЧКА КАБЕЛЯ\n\n"
+        text += f"🔌 Текущая длина: {format_length(p.get('cable_mm', 10.0))}\n\n"
+        text += f"📊 Способы прокачки:\n"
+        text += f"1️⃣ Давка змия:\n"
+        text += f"   • +0.2 мм за 1 кг змия\n"
+        text += f"   • Твой прогресс: {p.get('total_zmiy_grams', 0)/1000:.1f} кг\n"
+        text += f"   • Кабель от давки: +{(p.get('total_zmiy_grams', 0)/1000 * 0.2):.1f} мм\n\n"
+        text += f"2️⃣ Победы в PvP:\n"
+        text += f"   • +0.2 мм за каждую победу\n"
+        text += f"   • Участвуй в радёмках\n"
+        text += f"   • Выбирай слабых противников\n\n"
+        text += f"💡 Советы:\n"
+        text += f"• Дави больше змия для быстрой прокачки\n"
+        text += f"• Участвуй в PvP для дополнительного бонуса\n"
+        text += f"• Следи за прогрессом в профиле"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=cable_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=cable_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in cable upgrade callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о прокачке", show_alert=True)
+
 @router.callback_query(F.data.startswith("chat_"))
 async def handle_chat_callbacks(callback: types.CallbackQuery):
     action = callback.data.replace("chat_", "")
