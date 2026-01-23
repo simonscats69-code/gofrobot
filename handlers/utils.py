@@ -34,8 +34,13 @@ def ignore_not_modified_error(func):
     """
     async def wrapper(*args, **kwargs):
         try:
-            # Filter out unexpected kwargs that might be passed by aiogram
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k in ['callback', 'message', 'state', 'dispatcher', 'event', 'data']}
+            # Only pass kwargs that the function can actually accept
+            import inspect
+            sig = inspect.signature(func)
+            filtered_kwargs = {
+                k: v for k, v in kwargs.items()
+                if k in sig.parameters
+            }
             return await func(*args, **filtered_kwargs)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
