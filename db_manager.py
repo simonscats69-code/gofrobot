@@ -634,22 +634,21 @@ async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
     """Изменяет никнейм пользователя."""
     try:
         conn = await get_connection()
-        try:
-            # Проверяем, не используется ли этот никнейм уже
-            cursor = await conn.execute("SELECT user_id FROM users WHERE nickname = ? AND user_id != ?", (new_nickname, user_id))
-            existing = await cursor.fetchone()
-            if existing:
-                return False, "Этот никнейм уже используется"
+        # Проверяем, не используется ли этот никнейм уже
+        cursor = await conn.execute("SELECT user_id FROM users WHERE nickname = ? AND user_id != ?", (new_nickname, user_id))
+        existing = await cursor.fetchone()
+        if existing:
+            return False, "Этот никнейм уже используется"
 
-            await conn.execute("UPDATE users SET nickname = ?, updated_at = ? WHERE user_id = ?",
-                             (new_nickname, int(time.time()), user_id))
-            await conn.commit()
-            return True, "Никнейм успешно изменен"
-        finally:
-            await conn.close()
+        await conn.execute("UPDATE users SET nickname = ?, updated_at = ? WHERE user_id = ?",
+                         (new_nickname, int(time.time()), user_id))
+        await conn.commit()
+        return True, "Никнейм успешно изменен"
     except Exception as e:
         logger.error(f"Ошибка при изменении никнейма: {e}")
         return False, f"Ошибка при изменении никнейма: {e}"
+    finally:
+        await conn.close()
 
 async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[str, Any]]:
     """Получает топ игроков по указанному критерию."""
