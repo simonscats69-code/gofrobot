@@ -306,7 +306,8 @@ async def restore_all_data(backup_data: dict):
     logger.info("🔄 Восстановление данных из резервной копии...")
 
     try:
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             # Восстанавливаем пользователей
             if backup_data.get('users'):
                 for user in backup_data['users']:
@@ -422,7 +423,8 @@ async def optimize_database():
     logger.info("⚡ Оптимизация базы данных...")
 
     try:
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             # Включаем WAL режим для лучшей производительности
             await conn.execute("PRAGMA journal_mode=WAL")
             await conn.execute("PRAGMA synchronous=NORMAL")
@@ -583,7 +585,8 @@ async def full_system_repair():
 # Остальные существующие функции из оригинального файла
 async def get_patsan(user_id: int) -> Dict[str, Any]:
     """Получает данные пользователя из базы данных."""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
         if row:
@@ -595,10 +598,13 @@ async def get_patsan(user_id: int) -> Dict[str, Any]:
             """, (user_id,))
             await conn.commit()
             return await get_patsan(user_id)
+    finally:
+        await conn.close()
 
 async def save_patsan(patsan_data: Dict[str, Any]):
     """Сохраняет данные пользователя в базу данных."""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         await conn.execute("""
             INSERT OR REPLACE INTO users (
                 user_id, nickname, gofra_mm, cable_mm, atm_count,
@@ -621,11 +627,14 @@ async def save_patsan(patsan_data: Dict[str, Any]):
             int(time.time())
         ))
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
     """Изменяет никнейм пользователя."""
     try:
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             # Проверяем, не используется ли этот никнейм уже
             cursor = await conn.execute("SELECT user_id FROM users WHERE nickname = ? AND user_id != ?", (new_nickname, user_id))
             existing = await cursor.fetchone()
@@ -636,26 +645,34 @@ async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
                              (new_nickname, int(time.time()), user_id))
             await conn.commit()
             return True, "Никнейм успешно изменен"
+        finally:
+            await conn.close()
     except Exception as e:
         logger.error(f"Ошибка при изменении никнейма: {e}")
         return False, f"Ошибка при изменении никнейма: {e}"
 
 async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[str, Any]]:
     """Получает топ игроков по указанному критерию."""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         query = f"SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, atm_count FROM users ORDER BY {sort_by} DESC LIMIT ?"
         cursor = await conn.execute(query, (limit,))
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+    finally:
+        await conn.close()
 
 async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0):
     """Сохраняет результат боя радёмки."""
-    async with await get_connection() as conn:
+    conn = await get_connection()
+    try:
         await conn.execute("""
             INSERT INTO rademka_fights (winner_id, loser_id, created_at)
             VALUES (?, ?, ?)
         """, (winner_id, loser_id, int(time.time())))
         await conn.commit()
+    finally:
+        await conn.close()
 
 async def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
     """Возвращает информацию о гофре на основе её длины."""
@@ -826,7 +843,8 @@ async def can_fight_pvp(user_id: int) -> Tuple[bool, str]:
 
     if current_time - last_fight < 3600:
         # Проверяем количество боёв за последний час
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             cursor = await conn.execute("""
                 SELECT COUNT(*) FROM rademka_fights
                 WHERE (winner_id = ? OR loser_id = ?) AND created_at > ?
@@ -837,6 +855,8 @@ async def can_fight_pvp(user_id: int) -> Tuple[bool, str]:
                 remaining_time = 3600 - (current_time - last_fight)
                 minutes = remaining_time // 60
                 return False, f"Лимит боёв: 10/час. Подожди {minutes} минут"
+        finally:
+            await conn.close()
 
     return True, "Можно драться"
 
@@ -869,29 +889,36 @@ class ChatManager:
     @staticmethod
     async def register_chat(chat_id: int, chat_title: str, chat_type: str):
         """Регистрирует чат в системе."""
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             await conn.execute("""
                 INSERT OR IGNORE INTO chat_stats (
                     chat_id, chat_title, chat_type
                 ) VALUES (?, ?, ?)
             """, (chat_id, chat_title, chat_type))
             await conn.commit()
+        finally:
+            await conn.close()
 
     @staticmethod
     async def update_chat_activity(chat_id: int):
         """Обновляет время последней активности в чате."""
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             await conn.execute("""
                 UPDATE chat_stats
                 SET last_activity = ?, active_players = active_players + 1
                 WHERE chat_id = ?
             """, (int(time.time()), chat_id))
             await conn.commit()
+        finally:
+            await conn.close()
 
     @staticmethod
     async def get_chat_stats(chat_id: int) -> Dict[str, Any]:
         """Получает статистику чата."""
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             cursor = await conn.execute("""
                 SELECT * FROM chat_stats WHERE chat_id = ?
             """, (chat_id,))
@@ -910,11 +937,14 @@ class ChatManager:
                     'last_activity': 0,
                     'created_at': int(time.time())
                 }
+        finally:
+            await conn.close()
 
     @staticmethod
     async def update_user_chat_stats(user_id: int, chat_id: int, zmiy_grams: float):
         """Обновляет статистику пользователя в чате."""
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             # Обновляем или создаем запись для пользователя в чате
             await conn.execute("""
                 INSERT OR IGNORE INTO user_chat_stats (
@@ -952,22 +982,28 @@ class ChatManager:
                 """, (chat_id,))
 
             await conn.commit()
+        finally:
+            await conn.close()
 
     @staticmethod
     async def get_user_total_in_chat(chat_id: int, user_id: int) -> float:
         """Получает общее количество змия, которое пользователь выдавил в чате."""
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             cursor = await conn.execute("""
                 SELECT total_zmiy_grams FROM user_chat_stats
                 WHERE chat_id = ? AND user_id = ?
             """, (chat_id, user_id))
             row = await cursor.fetchone()
             return row[0] if row else 0.0
+        finally:
+            await conn.close()
 
     @staticmethod
     async def get_chat_top(chat_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Получает топ игроков в чате."""
-        async with await get_connection() as conn:
+        conn = await get_connection()
+        try:
             cursor = await conn.execute("""
                 SELECT u.user_id, u.nickname, u.gofra_mm, u.cable_mm, uc.total_zmiy_grams,
                        RANK() OVER (ORDER BY uc.total_zmiy_grams DESC) as rank
@@ -979,3 +1015,5 @@ class ChatManager:
             """, (chat_id, limit))
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+        finally:
+            await conn.close()
