@@ -112,27 +112,27 @@ async def main():
         logger.info("🚀 Запуск бота на bothost.ru")
         logger.info(f"📁 Рабочая директория: {os.getcwd()}")
         logger.info(f"📂 Содержимое: {os.listdir('.')}")
-        
+
         await init_bot()
-        
+
         BOT_TOKEN = os.getenv("BOT_TOKEN")
         if not BOT_TOKEN:
             logger.error("BOT_TOKEN не найден в переменных окружения")
-            return
-        
+            raise ValueError("BOT_TOKEN не найден в переменных окружения")
+
         bot = Bot(token=BOT_TOKEN)
         dp = Dispatcher(storage=MemoryStorage())
-        
+
         await set_bot_commands(bot)
-        
+
         dp.include_router(router)
-        
+
         logger.info("Бот запускается...")
         await dp.start_polling(bot)
-        
+
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}", exc_info=True)
-        
+
     finally:
         await shutdown()
         gc.collect()
