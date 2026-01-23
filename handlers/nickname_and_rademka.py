@@ -56,8 +56,8 @@ async def cmd_nickname_handler(m: types.Message, state: FSMContext):
     c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
     await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "nickname_menu")
+@ignore_not_modified_error
 async def nickname_menu(c: types.CallbackQuery):
     await c.answer()
     p = await get_patsan(c.from_user.id)

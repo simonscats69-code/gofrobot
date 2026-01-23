@@ -32,8 +32,8 @@ def pb(c, t, l=10):
     f = int((c / t) * l) if t > 0 else 0
     return "█" * f + "░" * (l - f)
 
-@ignore_not_modified_error
 @router.callback_query(F.data == "atm_regen_time")
+@ignore_not_modified_error
 async def atm_regen_time_info(callback: types.CallbackQuery):
     try:
         await callback.answer()
