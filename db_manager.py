@@ -770,17 +770,16 @@ async def can_fight_pvp(user_id):
 
 async def change_nickname(uid, nick):
     async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
-        async with conn.execute('SELECT nickname_changed FROM users WHERE user_id=?', (uid,)) as c:
+        async with conn.execute('SELECT * FROM users WHERE user_id=?', (uid,)) as c:
             u = await c.fetchone()
             if not u: 
                 return False, "Нет юзера"
-            if not u["nickname_changed"]:
-                await conn.execute('UPDATE users SET nickname=?, nickname_changed=1 WHERE user_id=?', (nick, uid))
-                await conn.commit()
-                await user_manager.get_user(uid, True)
-                return True, "Ник изменён! (бесплатно)"
-            else:
-                return False, "Ник уже менялся! Больше нельзя."
+
+            # Убрано ограничение на смену ника
+            await conn.execute('UPDATE users SET nickname=? WHERE user_id=?', (nick, uid))
+            await conn.commit()
+            await user_manager.get_user(uid, True)
+            return True, "Ник изменён!"
 
 async def get_top_players(limit=10, sort_by="gofra"):
     return await user_manager.get_top_fast(limit, sort_by)

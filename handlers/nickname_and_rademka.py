@@ -55,16 +55,14 @@ def validate_nickname(nickname):
 @router.message(Command("nickname"))
 async def cmd_nickname_handler(m: types.Message, state: FSMContext):
     p = await get_patsan(m.from_user.id)
-    c = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
-    await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {c}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+    await m.answer(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
 @router.callback_query(F.data == "nickname_menu")
 @ignore_not_modified_error
 async def nickname_menu(c: types.CallbackQuery):
     await c.answer()
     p = await get_patsan(c.from_user.id)
-    cst = 'Бесплатно (первый раз)' if not p.get('nickname_changed', False) else 'Больше нельзя'
-    await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n💸 Смена ника: {cst}\n\nВыбери действие:", reply_markup=nickname_keyboard())
+    await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "my_reputation")
@@ -100,28 +98,20 @@ async def top_reputation(c: types.CallbackQuery):
 @router.callback_query(F.data == "change_nickname")
 async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     p = await get_patsan(c.from_user.id)
-    
+
     current_state = await state.get_state()
     if current_state == NicknameChange.waiting_for_nickname:
         await c.answer("Ты уже в процессе смены ника!", show_alert=True)
         return
-    
-    nc = p.get("nickname_changed", False)
+
     txt = f"✏️ СМЕНА НИКА\n\nТвой текущий ник: {p.get('nickname','Неизвестно')}\n"
-    
-    if nc:
-        txt += f"❌ Ты уже менял ник.\nБольше нельзя сменить ник.\n"
-        await c.answer(txt, show_alert=True)
-        return
-    else:
-        txt += f"🎁 Первая смена - БЕСПЛАТНО!\n\n"
-        txt += f"Правила ника:\n"
-        txt += f"• 3-20 символов\n"
-        txt += f"• Буквы, цифры, пробелы, дефисы, подчёркивания\n"
-        txt += f"• Без запрещённых слов (admin, бот и т.д.)\n"
-        txt += f"• Без лишних пробелов\n\n"
-        txt += f"Напиши новый ник в чат:"
-    
+    txt += f"Правила ника:\n"
+    txt += f"• 3-20 символов\n"
+    txt += f"• Буквы, цифры, пробелы, дефисы, подчёркивания\n"
+    txt += f"• Без запрещённых слов (admin, бот и т.д.)\n"
+    txt += f"• Без лишних пробелов\n\n"
+    txt += f"Напиши новый ник в чат:"
+
     await c.message.edit_text(txt, reply_markup=back_kb("nickname_menu"))
     await state.set_state(NicknameChange.waiting_for_nickname)
     await c.answer("Введи новый ник в чат")
@@ -130,18 +120,18 @@ async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
 @router.message(NicknameChange.waiting_for_nickname)
 async def process_nickname_input(message: types.Message, state: FSMContext):
     nn = message.text.strip()
-    
+
     is_valid, error_msg = validate_nickname(nn)
     if not is_valid:
         await message.answer(f"❌ {error_msg}\n\nПопробуй другой ник:", reply_markup=back_kb("nickname_menu"))
         return
-    
+
     ok, msg = await change_nickname(message.from_user.id, nn)
     if ok:
-        await message.answer(f"✅ {msg}\nТеперь ты: {nn}", reply_markup=main_keyboard())
+        await message.answer(f"✅ Ник изменён!\nТеперь ты: {nn}", reply_markup=main_keyboard())
     else:
         await message.answer(f"❌ {msg}\nПопробуй другой:", reply_markup=main_keyboard())
-    
+
     await state.clear()
 
 @router.message(Command("cancel"))
