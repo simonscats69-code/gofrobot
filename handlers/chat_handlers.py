@@ -15,6 +15,7 @@ from db_manager import (
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight
 )
 from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard
+from handlers.utils import ft
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -363,7 +364,7 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
         await message_obj.answer("❌ Ошибка загрузки статистики.", reply_markup=get_chat_menu_keyboard())
 
 @router.callback_query(F.data.startswith("chat_"))
-async def handle_chat_callbacks(callback: types.CallbackQuery, dispatcher=None):
+async def handle_chat_callbacks(callback: types.CallbackQuery):
     action = callback.data.replace("chat_", "")
     chat_id = callback.message.chat.id
     user_id = callback.from_user.id
@@ -399,7 +400,7 @@ async def handle_chat_callbacks(callback: types.CallbackQuery, dispatcher=None):
         await callback.answer("❌ Ошибка, попробуй позже", show_alert=True)
 
 @router.callback_query(F.data.startswith("chat_fight_"))
-async def handle_chat_fight(callback: types.CallbackQuery, dispatcher=None):
+async def handle_chat_fight(callback: types.CallbackQuery):
     try:
         target_id = int(callback.data.replace("chat_fight_", ""))
         attacker_id = callback.from_user.id

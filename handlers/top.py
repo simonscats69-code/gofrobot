@@ -2,26 +2,13 @@ from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from db_manager import get_top_players, get_gofra_info, format_length
 from keyboards import main_keyboard, top_sort_keyboard
+from handlers.utils import ignore_not_modified_error
 
 router = Router()
 
-def ignore_not_modified_error(func):
-    async def wrapper(*args, **kwargs):
-        try:
-            # Filter out unexpected kwargs that might be passed by aiogram
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k in ['callback', 'message', 'state', 'dispatcher', 'event', 'data']}
-            return await func(*args, **filtered_kwargs)
-        except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                if len(args) > 0 and hasattr(args[0], 'callback_query'):
-                    await args[0].callback_query.answer()
-                return
-            raise
-    return wrapper
-
 @router.callback_query(F.data == "top")
 @ignore_not_modified_error
-async def callback_top_menu(callback: types.CallbackQuery, dispatcher=None):
+async def callback_top_menu(callback: types.CallbackQuery):
     await callback.message.edit_text(
         "🏆 ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА\n\n"
         "Выбери, по какому показателю сортировать рейтинг:",

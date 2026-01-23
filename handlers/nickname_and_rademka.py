@@ -9,25 +9,13 @@ import re
 import logging
 from db_manager import get_patsan, change_nickname, save_patsan, save_rademka_fight, get_top_players, get_gofra_info, calculate_pvp_chance, can_fight_pvp, format_length
 from keyboards import main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_kb
+from handlers.utils import ignore_not_modified_error
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 class NicknameChange(StatesGroup):
     waiting_for_nickname = State()
-
-def ignore_not_modified_error(func):
-    async def wrapper(*args, **kwargs):
-        try:
-            # Pass all kwargs to the function, let it handle what it needs
-            return await func(*args, **kwargs)
-        except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                if len(args) > 0 and hasattr(args[0], 'callback_query'):
-                    await args[0].callback_query.answer()
-                return
-            raise
-    return wrapper
 
 def validate_nickname(nickname):
     if len(nickname) < 3 or len(nickname) > 20:
@@ -58,14 +46,14 @@ async def cmd_nickname_handler(m: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "nickname_menu")
 @ignore_not_modified_error
-async def nickname_menu(c: types.CallbackQuery, dispatcher=None):
+async def nickname_menu(c: types.CallbackQuery):
     await c.answer()
     p = await get_patsan(c.from_user.id)
     await c.message.edit_text(f"🏷️ НИКНЕЙМ И РЕПУТАЦИЯ\n\n🔤 Твой ник: {p.get('nickname','Неизвестно')}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n\nВыбери действие:", reply_markup=nickname_keyboard())
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "my_reputation")
-async def my_reputation(c: types.CallbackQuery, dispatcher=None):
+async def my_reputation(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     await c.message.edit_text(f"⭐ МОЯ РЕПУТАЦИЯ\n\n{gofra_info['emoji']} Звание: {gofra_info['name']}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nКак повысить?\n• Дави змия при полных атмосферах\n• Отправляй змия в коричневую страну\n• Участвуй в радёмках\n\nЧем больше гофра, тем больше уважения!", reply_markup=nickname_keyboard())
@@ -73,7 +61,7 @@ async def my_reputation(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "top_reputation")
-async def top_reputation(c: types.CallbackQuery, dispatcher=None):
+async def top_reputation(c: types.CallbackQuery):
     tp = await get_top_players(limit=10, sort_by="gofra")
     if not tp: 
         await c.message.edit_text("🥇 ТОП ГОФРЫ\n\nПока никого нет в топе!\nБудь первым!\n\nСлава ждёт!", reply_markup=nickname_keyboard())
@@ -95,7 +83,7 @@ async def top_reputation(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "change_nickname")
-async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext, dispatcher=None):
+async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     p = await get_patsan(c.from_user.id)
 
     current_state = await state.get_state()
@@ -161,7 +149,7 @@ async def cmd_rademka_handler(m: types.Message):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
-async def callback_rademka(c: types.CallbackQuery, dispatcher=None):
+async def callback_rademka(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
@@ -173,7 +161,7 @@ async def callback_rademka(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka_random")
-async def rademka_random(c: types.CallbackQuery, dispatcher=None):
+async def rademka_random(c: types.CallbackQuery):
     can_fight, fight_msg = await can_fight_pvp(c.from_user.id)
     if not can_fight:
         await c.answer(f"❌ {fight_msg}", show_alert=True)
@@ -200,7 +188,7 @@ async def rademka_random(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data.startswith("rademka_confirm_"))
-async def rademka_confirm(c: types.CallbackQuery, dispatcher=None):
+async def rademka_confirm(c: types.CallbackQuery):
     uid = c.from_user.id
     tid = int(c.data.replace("rademka_confirm_", ""))
     
@@ -255,7 +243,7 @@ async def rademka_confirm(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka_stats")
-async def rademka_stats(c: types.CallbackQuery, dispatcher=None):
+async def rademka_stats(c: types.CallbackQuery):
     try:
         from db_manager import get_connection
         cn = await get_connection()
@@ -288,7 +276,7 @@ async def rademka_stats(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka_top")
-async def rademka_top(c: types.CallbackQuery, dispatcher=None):
+async def rademka_top(c: types.CallbackQuery):
     try:
         from db_manager import get_connection
         cn = await get_connection()
@@ -317,7 +305,7 @@ async def rademka_top(c: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "back_main")
-async def back_to_main(c: types.CallbackQuery, dispatcher=None):
+async def back_to_main(c: types.CallbackQuery):
     try:
         p = await get_patsan(c.from_user.id)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))

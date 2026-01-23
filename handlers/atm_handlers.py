@@ -2,41 +2,19 @@ from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from db_manager import get_patsan, calculate_atm_regen_time, get_gofra_info
 from keyboards import back_to_profile_keyboard
+from handlers.utils import ignore_not_modified_error, ft
 import time
-
-def ignore_not_modified_error(func):
-    async def wrapper(*args, **kwargs):
-        try:
-            # Filter out unexpected kwargs that might be passed by aiogram
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k in ['callback', 'message', 'state', 'dispatcher', 'event', 'data']}
-            return await func(*args, **filtered_kwargs)
-        except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                if len(args) > 0 and hasattr(args[0], 'callback_query'):
-                    await args[0].callback_query.answer()
-                return
-            raise
-    return wrapper
 
 router = Router()
 
-def ft(s):
-    if s < 60: 
-        return f"{s}с"
-    m, h, d = s // 60, s // 3600, s // 86400
-    if d > 0: 
-        return f"{d}д {h%24}ч {m%60}м"
-    if h > 0: 
-        return f"{h}ч {m%60}м {s%60}с"
-    return f"{m}м {s%60}с"
-
 def pb(c, t, l=10):
+    """Create a progress bar string"""
     f = int((c / t) * l) if t > 0 else 0
     return "█" * f + "░" * (l - f)
 
 @router.callback_query(F.data == "atm_regen_time")
 @ignore_not_modified_error
-async def atm_regen_time_info(callback: types.CallbackQuery, dispatcher=None):
+async def atm_regen_time_info(callback: types.CallbackQuery):
     try:
         await callback.answer()
         user_id = callback.from_user.id
@@ -74,7 +52,7 @@ async def atm_regen_time_info(callback: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "atm_max_info")
-async def atm_max_info(callback: types.CallbackQuery, dispatcher=None):
+async def atm_max_info(callback: types.CallbackQuery):
     try:
         await callback.answer()
         user_id = callback.from_user.id
@@ -112,7 +90,7 @@ async def atm_max_info(callback: types.CallbackQuery, dispatcher=None):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "atm_boosters")
-async def atm_boosters_info(callback: types.CallbackQuery, dispatcher=None):
+async def atm_boosters_info(callback: types.CallbackQuery):
     try:
         await callback.answer()
         user_id = callback.from_user.id
