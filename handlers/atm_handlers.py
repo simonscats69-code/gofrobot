@@ -36,7 +36,7 @@ def pb(c, t, l=10):
 
 @router.callback_query(F.data == "atm_regen_time")
 @ignore_not_modified_error
-async def atm_regen_time_info(callback: types.CallbackQuery):
+async def atm_regen_time_info(callback: types.CallbackQuery, dispatcher=None):
     try:
         await callback.answer()
         user_id = callback.from_user.id
@@ -74,7 +74,7 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "atm_max_info")
-async def atm_max_info(callback: types.CallbackQuery):
+async def atm_max_info(callback: types.CallbackQuery, dispatcher=None):
     try:
         await callback.answer()
         user_id = callback.from_user.id
@@ -112,7 +112,7 @@ async def atm_max_info(callback: types.CallbackQuery):
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "atm_boosters")
-async def atm_boosters_info(callback: types.CallbackQuery):
+async def atm_boosters_info(callback: types.CallbackQuery, dispatcher=None):
     try:
         await callback.answer()
         user_id = callback.from_user.id

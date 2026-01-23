@@ -360,7 +360,7 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
         await message_obj.answer("❌ Ошибка загрузки статистики.", reply_markup=get_chat_menu_keyboard())
 
 @router.callback_query(F.data.startswith("chat_"))
-async def handle_chat_callbacks(callback: types.CallbackQuery):
+async def handle_chat_callbacks(callback: types.CallbackQuery, dispatcher=None):
     action = callback.data.replace("chat_", "")
     chat_id = callback.message.chat.id
     user_id = callback.from_user.id
@@ -396,7 +396,7 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка, попробуй позже", show_alert=True)
 
 @router.callback_query(F.data.startswith("chat_fight_"))
-async def handle_chat_fight(callback: types.CallbackQuery):
+async def handle_chat_fight(callback: types.CallbackQuery, dispatcher=None):
     try:
         target_id = int(callback.data.replace("chat_fight_", ""))
         attacker_id = callback.from_user.id

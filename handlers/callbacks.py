@@ -360,7 +360,7 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
         await message_obj.answer("❌ Ошибка загрузки статистики.", reply_markup=get_chat_menu_keyboard())
 
 @router.callback_query(F.data == "davka")
-async def handle_davka_callback(callback: types.CallbackQuery):
+async def handle_davka_callback(callback: types.CallbackQuery, dispatcher=None):
     try:
         user_id = callback.from_user.id
         success, p, res = await davka_zmiy(user_id)
@@ -390,7 +390,7 @@ async def handle_davka_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка при давке змия", show_alert=True)
 
 @router.callback_query(F.data == "uletet")
-async def handle_uletet_callback(callback: types.CallbackQuery):
+async def handle_uletet_callback(callback: types.CallbackQuery, dispatcher=None):
     try:
         user_id = callback.from_user.id
         success, p, res = await uletet_zmiy(user_id)
@@ -416,7 +416,7 @@ async def handle_uletet_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка при отправке змия", show_alert=True)
 
 @router.callback_query(F.data == "gofra_info")
-async def handle_gofra_info_callback(callback: types.CallbackQuery):
+async def handle_gofra_info_callback(callback: types.CallbackQuery, dispatcher=None):
     try:
         p = await get_patsan(callback.from_user.id)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
@@ -450,7 +450,7 @@ async def handle_gofra_info_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка загрузки информации о гофре", show_alert=True)
 
 @router.callback_query(F.data == "cable_info")
-async def handle_cable_info_callback(callback: types.CallbackQuery):
+async def handle_cable_info_callback(callback: types.CallbackQuery, dispatcher=None):
     try:
         p = await get_patsan(callback.from_user.id)
 
@@ -474,7 +474,7 @@ async def handle_cable_info_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка загрузки информации о кабеле", show_alert=True)
 
 @router.callback_query(F.data == "atm_status")
-async def handle_atm_status_callback(callback: types.CallbackQuery):
+async def handle_atm_status_callback(callback: types.CallbackQuery, dispatcher=None):
     try:
         p = await get_patsan(callback.from_user.id)
         regen_info = calculate_atm_regen_time(p)
@@ -509,7 +509,7 @@ async def handle_atm_status_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка загрузки информации об атмосферах", show_alert=True)
 
 @router.callback_query(F.data.startswith("chat_"))
-async def handle_chat_callbacks(callback: types.CallbackQuery):
+async def handle_chat_callbacks(callback: types.CallbackQuery, dispatcher=None):
     action = callback.data.replace("chat_", "")
     chat_id = callback.message.chat.id
     user_id = callback.from_user.id
@@ -545,7 +545,7 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка, попробуй позже", show_alert=True)
 
 @router.callback_query(F.data.startswith("chat_fight_"))
-async def handle_chat_fight(callback: types.CallbackQuery):
+async def handle_chat_fight(callback: types.CallbackQuery, dispatcher=None):
     try:
         target_id = int(callback.data.replace("chat_fight_", ""))
         attacker_id = callback.from_user.id

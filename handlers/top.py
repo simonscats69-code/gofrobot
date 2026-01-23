@@ -21,7 +21,7 @@ def ignore_not_modified_error(func):
 
 @router.callback_query(F.data == "top")
 @ignore_not_modified_error
-async def callback_top_menu(callback: types.CallbackQuery):
+async def callback_top_menu(callback: types.CallbackQuery, dispatcher=None):
     await callback.message.edit_text(
         "🏆 ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА\n\n"
         "Выбери, по какому показателю сортировать рейтинг:",
