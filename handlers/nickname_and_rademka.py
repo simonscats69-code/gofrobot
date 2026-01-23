@@ -31,23 +31,23 @@ def ignore_not_modified_error(func):
 def validate_nickname(nickname):
     if len(nickname) < 3 or len(nickname) > 20:
         return False, "Длина ника должна быть от 3 до 20 символов"
-    
-    banned_words = ["admin", "root", "support", "бот", "admin", "модератор", 
-                    "админ", "support", "help", "техподдержка"]
+
+    banned_words = ["admin", "root", "support", "бот", "модератор",
+                    "админ", "help", "техподдержка"]
     nickname_lower = nickname.lower()
     if any(word in nickname_lower for word in banned_words):
         return False, "Запрещённый ник"
-    
+
     pattern = r'^[a-zA-Zа-яА-ЯёЁ0-9_\- ]+$'
     if not re.match(pattern, nickname):
         return False, "Только буквы, цифры, пробелы, дефисы и подчёркивания"
-    
+
     if nickname.strip() != nickname:
         return False, "Убери пробелы в начале или конце"
-    
+
     if nickname.count('  ') > 0:
         return False, "Слишком много пробелов подряд"
-    
+
     return True, "OK"
 
 @router.message(Command("nickname"))
