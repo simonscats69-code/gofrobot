@@ -415,6 +415,9 @@ async def restore_all_data(backup_data: dict):
             await conn.commit()
             logger.info("✅ Данные восстановлены из резервной копии")
 
+        finally:
+            await conn.close()
+
     except Exception as e:
         logger.error(f"❌ Ошибка при восстановлении данных: {e}")
         raise
@@ -439,6 +442,9 @@ async def optimize_database():
             await conn.execute("VACUUM")
 
             logger.info("✅ База данных оптимизирована")
+
+        finally:
+            await conn.close()
 
     except Exception as e:
         logger.error(f"❌ Ошибка при оптимизации базы данных: {e}")
