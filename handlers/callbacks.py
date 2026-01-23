@@ -359,6 +359,155 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
         logger.error(f"Error getting user chat stats: {e}")
         await message_obj.answer("❌ Ошибка загрузки статистики.", reply_markup=get_chat_menu_keyboard())
 
+@router.callback_query(F.data == "davka")
+async def handle_davka_callback(callback: types.CallbackQuery):
+    try:
+        user_id = callback.from_user.id
+        success, p, res = await davka_zmiy(user_id)
+
+        if not success:
+            await callback.answer(res, show_alert=True)
+            return
+
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+        text = f"🐍 ДАВКА КОРИЧНЕВАГА!\n\n"
+        text += f"💩 Выдавил: {res['zmiy_grams']}г коричневага!\n"
+        text += f"🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
+        text += f"🔌 Кабель: {format_length(res['old_cable_mm'])} → {format_length(res['new_cable_mm'])}\n"
+        text += f"📈 Опыта: +{res['exp_gained_mm']:.1f} мм\n\n"
+        text += f"🌀 Атмосферы: {p.get('atm_count', 0)}/12\n"
+        text += f"🐍 Змий: {p.get('zmiy_grams', 0.0):.0f}г"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=main_keyboard())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=main_keyboard())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in davka callback: {e}")
+        await callback.answer("❌ Ошибка при давке змия", show_alert=True)
+
+@router.callback_query(F.data == "uletet")
+async def handle_uletet_callback(callback: types.CallbackQuery):
+    try:
+        user_id = callback.from_user.id
+        success, p, res = await uletet_zmiy(user_id)
+
+        if not success:
+            await callback.answer(res, show_alert=True)
+            return
+
+        text = f"✈️ ЗМИЙ ОТПРАВЛЕН!\n\n"
+        text += f"🐍 Отправлено: {res['zmiy_grams']:.0f}г коричневага!\n"
+        text += f"🌀 Атмосферы: {p.get('atm_count', 0)}/12\n"
+        text += f"🐍 Змий: {p.get('zmiy_grams', 0.0):.0f}г"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=main_keyboard())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=main_keyboard())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in uletet callback: {e}")
+        await callback.answer("❌ Ошибка при отправке змия", show_alert=True)
+
+@router.callback_query(F.data == "gofra_info")
+async def handle_gofra_info_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        text = f"🏗️ ТВОЯ ГОФРА\n\n"
+        text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
+        text += f"📏 Длина: {gofra_info['length_display']}\n\n"
+        text += f"Характеристики:\n"
+        text += f"⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}\n"
+        text += f"⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г\n\n"
+
+        if gofra_info.get('next_threshold'):
+            progress = gofra_info['progress']
+            next_gofra = get_gofra_info(gofra_info['next_threshold'])
+            text += f"Следующая гофра:\n"
+            text += f"{gofra_info['emoji']} → {next_gofra['emoji']}\n"
+            text += f"{next_gofra['name']}\n"
+            text += f"📈 Прогресс: {progress*100:.1f}%"
+        else:
+            text += "🎉 Максимальный уровень гофры!"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=gofra_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=gofra_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in gofra info callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о гофре", show_alert=True)
+
+@router.callback_query(F.data == "cable_info")
+async def handle_cable_info_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+
+        text = f"🔌 ТВОЙ КАБЕЛЬ\n\n"
+        text += f"💪 Длина: {format_length(p.get('cable_mm', 10.0))}\n"
+        text += f"⚔️ Бонус в PvP: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n\n"
+        text += f"Как прокачать:\n"
+        text += f"• Каждые 2кг змия = +0.2 мм\n"
+        text += f"• Победы в радёмках = +0.2 мм\n\n"
+        text += f"📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=cable_info_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=cable_info_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in cable info callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации о кабеле", show_alert=True)
+
+@router.callback_query(F.data == "atm_status")
+async def handle_atm_status_callback(callback: types.CallbackQuery):
+    try:
+        p = await get_patsan(callback.from_user.id)
+        regen_info = calculate_atm_regen_time(p)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        def ft(s):
+            if s < 60: return f"{s}с"
+            m, h, d = s // 60, s // 3600, s // 86400
+            if d > 0: return f"{d}д {h%24}ч {m%60}м"
+            if h > 0: return f"{h}ч {m%60}м {s%60}с"
+            return f"{m}м {s%60}с"
+
+        text = f"🌡️ ТВОИ АТМОСФЕРЫ\n\n"
+        text += f"🌀 Текущий запас: {p.get('atm_count', 0)}/12\n\n"
+        text += f"Восстановление:\n"
+        text += f"⏱️ 1 атмосфера: {ft(regen_info['per_atm'])}\n"
+        text += f"🕐 До полного: {ft(regen_info['total'])}\n"
+        text += f"📈 Осталось: {regen_info['needed']} атм.\n\n"
+        text += f"Влияние гофры:\n"
+        text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
+        text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=atm_status_kb())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=atm_status_kb())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in atm status callback: {e}")
+        await callback.answer("❌ Ошибка загрузки информации об атмосферах", show_alert=True)
+
 @router.callback_query(F.data.startswith("chat_"))
 async def handle_chat_callbacks(callback: types.CallbackQuery):
     action = callback.data.replace("chat_", "")
