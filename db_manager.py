@@ -22,7 +22,13 @@ _db_connection = None
 async def get_connection() -> aiosqlite.Connection:
     """Создает и возвращает соединение с базой данных."""
     await ensure_storage_dirs()
-    return await aiosqlite.connect(DB_PATH)
+    conn = await aiosqlite.connect(DB_PATH)
+    # Включаем WAL режим для лучшей производительности
+    await conn.execute("PRAGMA journal_mode=WAL")
+    await conn.execute("PRAGMA synchronous=NORMAL")
+    await conn.execute("PRAGMA temp_store=MEMORY")
+    await conn.execute("PRAGMA cache_size=-20000")  # 20MB cache
+    return conn
 
 async def ensure_storage_dirs():
     """Убедиться, что все необходимые директории существуют."""
