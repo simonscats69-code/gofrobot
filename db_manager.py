@@ -597,7 +597,12 @@ async def get_patsan(user_id: int) -> Dict[str, Any]:
         cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
         if row:
-            return dict(row)
+            # Получаем имена колонок
+            cursor = await conn.execute("PRAGMA table_info(users)")
+            columns = await cursor.fetchall()
+            column_names = [col[1] for col in columns]
+            # Создаем словарь из результата
+            return dict(zip(column_names, row))
         else:
             # Создаем нового пользователя, если его нет в базе
             await conn.execute("""
