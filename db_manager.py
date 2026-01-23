@@ -161,7 +161,6 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 winner_id INTEGER, 
                 loser_id INTEGER, 
-                money_taken INTEGER DEFAULT 0,
                 created_at INTEGER DEFAULT (strftime('%s','now'))
             );
             CREATE INDEX IF NOT EXISTS idx_win ON rademka_fights(winner_id);
@@ -784,12 +783,12 @@ async def change_nickname(uid, nick):
 async def get_top_players(limit=10, sort_by="gofra"):
     return await user_manager.get_top_fast(limit, sort_by)
 
-async def save_rademka_fight(win, lose, money=0):
+async def save_rademka_fight(win, lose):
     async with aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT, check_same_thread=False) as conn:
         await conn.execute('''
-            INSERT INTO rademka_fights (winner_id, loser_id, money_taken) 
-            VALUES (?,?,?)
-        ''', (win, lose, money))
+            INSERT INTO rademka_fights (winner_id, loser_id)
+            VALUES (?,?)
+        ''', (win, lose))
         await conn.commit()
 
 async def get_connection():

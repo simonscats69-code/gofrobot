@@ -465,7 +465,7 @@ async def handle_chat_fight(callback: types.CallbackQuery):
             winner_nick = target.get('nickname', 'Неизвестно')
             loser_nick = attacker.get('nickname', callback.from_user.first_name)
         
-        await save_rademka_fight(winner_id=winner_id, loser_id=loser_id, money_taken=0)
+        await save_rademka_fight(winner_id=winner_id, loser_id=loser_id)
         
         if success:
             result_text = f"🎉 РАДЁМКА ЗАВЕРШЕНА!\n\n"

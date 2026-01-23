@@ -249,7 +249,7 @@ async def rademka_confirm(c: types.CallbackQuery):
     
     await save_patsan(a)
     await save_patsan(t)
-    await save_rademka_fight(winner_id=uid if suc else tid, loser_id=tid if suc else uid, money_taken=0)
+    await save_rademka_fight(winner_id=uid if suc else tid, loser_id=tid if suc else uid)
     
     await c.message.edit_text(txt, reply_markup=back_kb("rademka"))
     await c.answer()
