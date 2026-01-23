@@ -619,10 +619,10 @@ def get_gofra_info(gofra_value_mm):
     if current_index < len(thresholds) - 1:
         next_threshold = thresholds[current_index + 1]
         current_info["next_threshold"] = next_threshold
-        current_info["progress"] = (gofra_value_mm - current_info["threshold"]) / (next_threshold - current_info["threshold"])
+        current_info["progress"] = (gofra_value_mm - current_info["threshold"]) / (next_threshold - current_info["threshold"]) if (next_threshold - current_info["threshold"]) > 0 else 0
     else:
         current_info["next_threshold"] = 100000.0
-        current_info["progress"] = (gofra_value_mm - current_info["threshold"]) / (100000.0 - current_info["threshold"])
+        current_info["progress"] = (gofra_value_mm - current_info["threshold"]) / (100000.0 - current_info["threshold"]) if (100000.0 - current_info["threshold"]) > 0 else 0
     
     current_info["length_mm"] = gofra_value_mm
     current_info["length_display"] = format_length(gofra_value_mm)
