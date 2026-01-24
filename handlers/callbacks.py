@@ -367,7 +367,8 @@ async def handle_davka_callback(callback: types.CallbackQuery):
         success, p, res = await davka_zmiy(user_id)
 
         if not success:
-            await callback.answer(res, show_alert=True)
+            error_msg = res.get('error', 'Ошибка при давке змия')
+            await callback.answer(error_msg, show_alert=True)
             return
 
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
@@ -397,7 +398,8 @@ async def handle_uletet_callback(callback: types.CallbackQuery):
         success, p, res = await uletet_zmiy(user_id)
 
         if not success:
-            await callback.answer(res, show_alert=True)
+            error_msg = res.get('error', 'Ошибка при отправке змия')
+            await callback.answer(error_msg, show_alert=True)
             return
 
         text = f"✈️ ЗМИЙ ОТПРАВЛЕН!\n\n"
@@ -478,7 +480,7 @@ async def handle_cable_info_callback(callback: types.CallbackQuery):
 async def handle_atm_status_callback(callback: types.CallbackQuery):
     try:
         p = await get_patsan(callback.from_user.id)
-        regen_info = calculate_atm_regen_time(p)
+        regen_info = await calculate_atm_regen_time(p)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
 
         def ft(s):
@@ -526,9 +528,9 @@ async def handle_profile_callback(callback: types.CallbackQuery):
         text += f"⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г"
 
         try:
-            await callback.message.edit_text(text, reply_markup=profile_extended_kb())
+            await callback.message.edit_text(text, reply_markup=main_keyboard())
         except TelegramBadRequest:
-            await callback.message.answer(text, reply_markup=profile_extended_kb())
+            await callback.message.answer(text, reply_markup=main_keyboard())
 
         await callback.answer()
 

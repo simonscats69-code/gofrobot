@@ -249,14 +249,14 @@ async def rademka_stats(c: types.CallbackQuery):
         cn = await get_connection()
         cur = await cn.execute('SELECT COUNT(*) as tf, SUM(CASE WHEN winner_id=? THEN 1 ELSE 0 END) as w, SUM(CASE WHEN loser_id=? THEN 1 ELSE 0 END) as l FROM rademka_fights WHERE winner_id=? OR loser_id=?', (c.from_user.id,)*4)
         s = await cur.fetchone()
-        if s and s.get("tf") and s["tf"]>0:
-            t, w, l = s["tf"], s.get("w",0) or 0, s.get("l",0) or 0
-            wr = (s.get("w",0)/s["tf"]*100) if s["tf"]>0 else 0
+        if s and s[0] and s[0] > 0:
+            t, w, l = s[0], s[1] or 0, s[2] or 0
+            wr = (w / t * 100) if t > 0 else 0
             
-            cur2 = await cn.execute('SELECT COUNT(*) as hour_fights FROM rademka_fights WHERE (winner_id=? OR loser_id=?) AND created_at > ?', 
+            cur2 = await cn.execute('SELECT COUNT(*) as hour_fights FROM rademka_fights WHERE (winner_id=? OR loser_id=?) AND created_at > ?',
                                    (c.from_user.id, c.from_user.id, int(time.time()) - 3600))
             hour_row = await cur2.fetchone()
-            hour_fights = hour_row['hour_fights'] if hour_row else 0
+            hour_fights = hour_row[0] if hour_row else 0
             
             txt = f"📊 СТАТИСТИКА РАДЁМОК\n\n"
             txt += f"🎲 Всего: {t}\n"
