@@ -743,19 +743,24 @@ def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
         "atm_speed": current_level["atm_speed"],
         "min_grams": current_level["min_grams"],
         "max_grams": current_level["max_grams"],
-        "length_display": f"{gofra_mm:.1f} мм",
+        "length_display": f"{gofra_mm/10:.1f} см",
+        "width_display": f"{gofra_mm:.1f} см",
         "progress": progress,
         "next_threshold": next_level["threshold"] if next_level else None
     }
 
 def format_length(mm: float) -> str:
-    """Форматирует длину в удобочитаемый вид."""
-    if mm < 1000:
-        return f"{mm:.1f} мм"
-    elif mm < 10000:
-        return f"{mm/1000:.2f} м"
+    """Форматирует длину в удобочитаемый вид (сантиметры)."""
+    # Convert millimeters to centimeters (10 mm = 1 cm)
+    cm = mm / 10.0
+    if cm < 10:
+        return f"{cm:.1f} см"
+    elif cm < 100:
+        return f"{cm:.1f} см"
+    elif cm < 1000:
+        return f"{cm/10:.1f} см"
     else:
-        return f"{mm/1000:.1f} м"
+        return f"{cm/100:.1f} м"
 
 async def calculate_atm_regen_time(patsan: Dict[str, Any]) -> Dict[str, Any]:
     """Вычисляет время восстановления атмосфер."""
@@ -770,11 +775,14 @@ async def calculate_atm_regen_time(patsan: Dict[str, Any]) -> Dict[str, Any]:
     needed_atm = max_atm - current_atm
 
     total_time = needed_atm * actual_time_per_atm
+    time_to_next_atm = actual_time_per_atm if current_atm < max_atm else 0
 
     return {
         'per_atm': actual_time_per_atm,
         'total': total_time,
-        'needed': needed_atm
+        'needed': needed_atm,
+        'time_to_next_atm': time_to_next_atm,
+        'time_to_one_atm': actual_time_per_atm
     }
 
 async def davka_zmiy(user_id: int, chat_id: int = None) -> Tuple[bool, Dict[str, Any], Dict[str, Any]]:

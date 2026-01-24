@@ -19,30 +19,31 @@ async def atm_regen_time_info(callback: types.CallbackQuery):
         await callback.answer()
         user_id = callback.from_user.id
         patsan = await get_patsan(user_id)
-        
+
         atm_count = patsan.get('atm_count', 0)
         max_atm = 12
-        
-        regen_info = calculate_atm_regen_time(patsan)
+
+        regen_info = await calculate_atm_regen_time(patsan)
         gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
-        
+
         text = (
             f"⏱️ ВРЕМЯ ВОССТАНОВЛЕНИЯ АТМОСФЕР\n\n"
             f"Текущее состояние:\n"
             f"🌀 Атмосферы: [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
-            f"📈 Восстановить: {regen_info['needed']} шт.\n\n"
+            f"📈 Нужно восстановить: {regen_info['needed']} шт.\n\n"
+            f"Точный таймер:\n"
+            f"🕒 До следующей атмосферы: {ft(regen_info['time_to_next_atm'])}\n"
+            f"🕐 До полного восстановления: {ft(regen_info['total'])}\n\n"
             f"Скорость восстановления:\n"
             f"• Базовая: 1 атм. за 2 часа (7200с)\n"
             f"• С учётом гофрошки ({gofra_info['name']}): x{gofra_info['atm_speed']:.2f}\n"
-            f"• 1 атм. за: {ft(regen_info['per_atm'])}\n\n"
-            f"Полное восстановление:\n"
-            f"🕐 Примерное время: {ft(regen_info['total'])}\n\n"
+            f"• 1 атм. за: {ft(regen_info['time_to_one_atm'])}\n\n"
             f"Как ускорить:\n"
             f"• Повышай гофрошку - ускоряет восстановление\n"
             f"• Дави змия при полных 12 атмосферах\n"
             f"• Больше опыт → выше гофрошка → быстрее атмосферы"
         )
-        
+
         await callback.message.edit_text(
             text,
             reply_markup=back_to_profile_keyboard()

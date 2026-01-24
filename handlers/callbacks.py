@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 @router.message(Command("start", "gofra", "gofrastart"))
 async def group_start(message: types.Message):
     chat = message.chat
-    
+
     await ChatManager.register_chat(
         chat_id=chat.id,
         chat_title=chat.title if hasattr(chat, 'title') else "",
         chat_type=chat.type
     )
-    
+
     await message.answer(
-        f"👋 Приветствуем в гофроцентрале, {chat.title if hasattr(chat, 'title') else 'чатик'}!\n\n"
+        f"👋 Саламчик пополамчик родные! Приветствуем в гофроцентрале, {chat.title if hasattr(chat, 'title') else 'чатик'}!\n\n"
         f"Я бот для давки коричневага и прокачки гофрошки.\n\n"
         f"В чате доступно:\n"
         f"🐍 Общая статистика\n"
@@ -460,6 +460,7 @@ async def handle_cable_info_callback(callback: types.CallbackQuery):
         text = f"🔌 ТВОЙ КАБЕЛЬ\n\n"
         text += f"💪 Длина: {format_length(p.get('cable_mm', 10.0))}\n"
         text += f"⚔️ Бонус в PvP: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n\n"
+        text += f"А у тебя пацанчик с гофроцентрала кишка как кабель силовой висит на {format_length(p.get('cable_mm', 10.0))}!\n\n"
         text += f"Как прокачать:\n"
         text += f"• Каждые 2кг змия = +0.2 мм\n"
         text += f"• Победы в радёмках = +0.2 мм\n\n"
@@ -483,19 +484,14 @@ async def handle_atm_status_callback(callback: types.CallbackQuery):
         regen_info = await calculate_atm_regen_time(p)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
 
-        def ft(s):
-            if s < 60: return f"{s}с"
-            m, h, d = s // 60, s // 3600, s // 86400
-            if d > 0: return f"{d}д {h%24}ч {m%60}м"
-            if h > 0: return f"{h}ч {m%60}м {s%60}с"
-            return f"{m}м {s%60}с"
-
         text = f"🌡️ ТВОИ АТМОСФЕРЫ\n\n"
         text += f"🌀 Текущий запас: {p.get('atm_count', 0)}/12\n\n"
+        text += f"Точный таймер:\n"
+        text += f"🕒 До следующей атмосферы: {ft(regen_info['time_to_next_atm'])}\n"
+        text += f"🕐 До полного восстановления: {ft(regen_info['total'])}\n\n"
         text += f"Восстановление:\n"
-        text += f"⏱️ 1 атмосфера: {ft(regen_info['per_atm'])}\n"
-        text += f"🕐 До полного: {ft(regen_info['total'])}\n"
-        text += f"📈 Осталось: {regen_info['needed']} атм.\n\n"
+        text += f"⏱️ 1 атмосфера: {ft(regen_info['time_to_one_atm'])}\n"
+        text += f"📈 Нужно восстановить: {regen_info['needed']} атм.\n\n"
         text += f"Влияние гофрошки:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}"

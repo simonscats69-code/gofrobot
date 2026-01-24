@@ -58,7 +58,7 @@ async def cmd_gofra(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
     gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
-    text = f"🏗️ ИНФОРМАЦИЯ О ГОФРЕ\n\n"
+    text = f"🏗️ ИНФОРМАЦИЯ О ГОФРОШКЕ\n\n"
     text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
     text += f"📊 Длина гофрошки: {gofra_info['length_display']}\n\n"
     text += f"Характеристики:\n"

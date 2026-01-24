@@ -3,40 +3,40 @@ from typing import List, Optional
 
 MENUS = {
     "main": [
-        ("🐍 Давить коричневага", "davka"), 
+        ("🐍 Давить коричневага", "davka"),
         ("✈️ Отправить змия", "uletet"),
         ("🌡️ Атмосферы", "atm_status"),
-        ("👊 Радёмка", "rademka"), 
-        ("🏆 Топ", "top"), 
+        ("👊 Радёмка", "rademka"),
+        ("🏆 Топ", "top"),
         ("📊 Профиль", "profile"),
         ("👤 Никнейм", "nickname_menu")
     ],
-    
+
     "nickname": [
         ("📝 Изменить ник", "change_nickname"),
         ("🔄 Обновить", "nickname_menu")
     ],
-    
+
     "rad": [
-        ("🎯 Случайная цель", "rademka_random"), 
-        ("📊 Статистика", "rademka_stats"), 
+        ("🎯 Случайная цель", "rademka_random"),
+        ("📊 Статистика", "rademka_stats"),
         ("👑 Топ", "rademka_top")
     ],
-    
+
     "gofra": [
         ("📈 Прогресс гофрошки", "gofra_progress"),
         ("⚡ Скорость атмосфер", "gofra_speed"),
         ("📊 Следующая гофрошка", "gofra_next"),
         ("⬅️ Назад", "back_main")
     ],
-    
+
     "cable": [
         ("💪 Сила кабеля", "cable_power_info"),
         ("⚔️ Урон в PvP", "cable_pvp_info"),
         ("📈 Прокачка", "cable_upgrade_info"),
         ("⬅️ Назад", "back_main")
     ],
-    
+
     "top": [
         ("🏗️ По гофрошке", "top_gofra"),
         ("🔌 По кабелю", "top_cable"),
@@ -135,11 +135,11 @@ def chat_menu_keyboard():
         ],
         [
             Btn(text="👤 Мой вклад", callback_data="chat_me"),
-            Btn(text="🏗️ Моя гофрошка", callback_data="chat_gofra")
+            Btn(text="📊 Профиль", callback_data="chat_profile")
         ],
         [
-            Btn(text="🔌 Мой кабель", callback_data="chat_cable"),
-            Btn(text="🌡️ Атмосферы", callback_data="chat_atm")
+            Btn(text="🌡️ Атмосферы", callback_data="chat_atm"),
+            Btn(text="⏱️ Таймер", callback_data="chat_atm_regen")
         ],
         [
             Btn(text="🆘 Помощь", callback_data="chat_help"),

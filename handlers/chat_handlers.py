@@ -31,8 +31,8 @@ async def group_start(message: types.Message):
     )
 
     await message.answer(
-        f"👋 Приветствуем в гофроцентрале, {chat.title if hasattr(chat, 'title') else 'чатик'}!\n\n"
-        f"Я бот для давки коричневага и прокачки гофры.\n\n"
+        f"👋 Саламчик пополамчик родные! Приветствуем в гофроцентрале, {chat.title if hasattr(chat, 'title') else 'чатик'}!\n\n"
+        f"Я бот для давки коричневага и прокачки гофрошки.\n\n"
         f"В чате доступно:\n"
         f"🐍 Общая статистика\n"
         f"🏆 Топ участников\n"
@@ -180,8 +180,8 @@ async def fight_command(message: types.Message, command: CommandObject):
     text += f"🏗️ {format_length(target_data.get('gofra_mm', 10.0))} | 🔌 {format_length(target_data.get('cable_mm', 10.0))}\n\n"
 
     text += f"🎯 Шанс успеха: {chance}%\n"
-    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n"
-    text += f"💀 Риск: публичный позор при проигрыше\n\n"
+        text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n"
+        text += f"💀 Риск: публичный позор при проигрыше\n\n"
 
     text += f"Подтверждаешь радёмку?"
 
@@ -384,6 +384,10 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
             await show_user_cable_callback(callback, user_id)
         elif action == "atm":
             await show_user_atm_callback(callback, user_id)
+        elif action == "profile":
+            await show_user_profile_callback(callback, user_id)
+        elif action == "atm_regen":
+            await show_user_atm_regen_callback(callback, user_id)
         elif action == "rademka":
             await show_rademka_callback(callback, user_id, chat_id)
         elif action == "help":
@@ -782,6 +786,75 @@ async def show_user_atm_callback(callback: types.CallbackQuery, user_id: int):
     except Exception as e:
         logger.error(f"Error in chat callback atm: {e}")
         await callback.answer("❌ Ошибка загрузки информации", show_alert=True)
+
+async def show_user_profile_callback(callback: types.CallbackQuery, user_id: int):
+    try:
+        p = await get_patsan(user_id)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        text = f"📊 ТВОЙ ПРОФИЛЬ\n\n"
+        text += f"🏗️ Гофра: {gofra_info['width_display']}\n"
+        text += f"🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n"
+        text += f"🌀 Атмосферы: {p.get('atm_count', 0)}/12\n"
+        text += f"🐍 Змий: {p.get('zmiy_grams', 0.0):.0f}г\n\n"
+        text += f"📈 Прогресс:\n"
+        text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
+        text += f"⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}\n"
+        text += f"⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in chat callback profile: {e}")
+        await callback.answer("❌ Ошибка загрузки профиля", show_alert=True)
+
+async def show_user_atm_regen_callback(callback: types.CallbackQuery, user_id: int):
+    try:
+        p = await get_patsan(user_id)
+        regen_info = calculate_atm_regen_time(p)
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        def ft(s):
+            if s < 60: return f"{s}с"
+            m, h, d = s // 60, s // 3600, s // 86400
+            if d > 0: return f"{d}д {h%24}ч {m%60}м"
+            if h > 0: return f"{h}ч {m%60}м {s%60}с"
+            return f"{m}м {s%60}с"
+
+        atm_count = p.get('atm_count', 0)
+        max_atm = 12
+
+        text = f"⏱️ ТОЧНЫЙ ТАЙМЕР ВОССТАНОВЛЕНИЯ\n\n"
+        text += f"Текущее состояние:\n"
+        text += f"🌀 Атмосферы: {atm_count}/{max_atm}\n"
+        text += f"📈 Нужно восстановить: {regen_info['needed']} шт.\n\n"
+        text += f"Точный таймер:\n"
+        text += f"🕒 До следующей атмосферы: {ft(regen_info['time_to_next_atm'])}\n"
+        text += f"🕐 До полного восстановления: {ft(regen_info['total'])}\n\n"
+        text += f"Скорость восстановления:\n"
+        text += f"• Базовая: 1 атм. за 2 часа (7200с)\n"
+        text += f"• С учётом гофрошки ({gofra_info['name']}): x{gofra_info['atm_speed']:.2f}\n"
+        text += f"• 1 атм. за: {ft(regen_info['time_to_one_atm'])}\n\n"
+        text += f"Как ускорить:\n"
+        text += f"• Повышай гофрошку - ускоряет восстановление\n"
+        text += f"• Дави змия при полных 12 атмосферах\n"
+        text += f"• Больше опыт → выше гофрошка → быстрее атмосферы"
+
+        try:
+            await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
+
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"Error in chat callback atm regen: {e}")
+        await callback.answer("❌ Ошибка загрузки таймера", show_alert=True)
 
 async def show_rademka_callback(callback: types.CallbackQuery, user_id: int, chat_id: int):
     try:
