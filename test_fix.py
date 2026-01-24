@@ -21,6 +21,7 @@ async def test_davka_callback_error_handling():
 
     # Создаем mock callback
     callback = AsyncMock(spec=CallbackQuery)
+    callback.from_user = MagicMock()
     callback.from_user.id = 123
     callback.answer = AsyncMock()
 
@@ -53,6 +54,7 @@ async def test_uletet_callback_error_handling():
 
     # Создаем mock callback
     callback = AsyncMock(spec=CallbackQuery)
+    callback.from_user = MagicMock()
     callback.from_user.id = 123
     callback.answer = AsyncMock()
 
@@ -85,7 +87,9 @@ async def test_atm_status_callback_await():
 
     # Создаем mock callback
     callback = AsyncMock(spec=CallbackQuery)
+    callback.from_user = MagicMock()
     callback.from_user.id = 123
+    callback.message = MagicMock()
     callback.message.edit_text = AsyncMock()
     callback.answer = AsyncMock()
 
@@ -118,45 +122,62 @@ async def test_profile_callback_keyboard():
 
     # Создаем mock callback
     callback = AsyncMock(spec=CallbackQuery)
+    callback.from_user = MagicMock()
     callback.from_user.id = 123
+    callback.message = MagicMock()
     callback.message.edit_text = AsyncMock()
     callback.answer = AsyncMock()
 
     # Мокаем функции
-    mock_patsan = {'atm_count': 5, 'gofra_mm': 15.0, 'cable_mm': 10.0, 'zmiy_grams': 1000.0}
+    mock_patsan = {'atm_count': 5, 'gofra_mm': 15.0, 'cable_mm': 10.0, 'zmiy_grams': 1000.0, 'total_zmiy_grams': 0}
     mock_gofra_info = {
         'emoji': '🐍',
         'name': 'Коричневый бог',
         'atm_speed': 2.0,
         'min_grams': 100,
-        'max_grams': 500
+        'max_grams': 500,
+        'length_display': '15.0 мм'
     }
 
-    with patch('handlers.callbacks.get_patsan', new_callable=AsyncMock) as mock_get_patsan, \
-         patch('handlers.callbacks.get_gofra_info') as mock_gofra_info, \
-         patch('handlers.callbacks.main_keyboard') as mock_main_keyboard:
+    # Прямое тестирование без сложных моков
+    try:
+        # Импортируем функции напрямую
+        from handlers.callbacks import handle_profile_callback
+        from db_manager import get_patsan, get_gofra_info, format_length
+        from keyboards import main_keyboard
 
-        mock_get_patsan.return_value = mock_patsan
-        mock_gofra_info.return_value = mock_gofra_info
-        mock_main_keyboard.return_value = "main_keyboard_mock"
+        # Мокаем только необходимые части
+        with patch('handlers.callbacks.format_length', return_value="15.0 мм"), \
+             patch('db_manager.format_length', return_value="15.0 мм"), \
+             patch('handlers.callbacks.get_patsan', new_callable=AsyncMock) as mock_get_patsan, \
+             patch('handlers.callbacks.get_gofra_info') as mock_gofra_info, \
+             patch('handlers.callbacks.main_keyboard') as mock_main_keyboard:
 
-        try:
-            await handle_profile_callback(callback)
-            # Проверяем, что edit_text был вызван с правильной клавиатурой
-            call_args = callback.message.edit_text.call_args
-            if call_args:
-                kwargs = call_args[1]
-                keyboard = kwargs.get('reply_markup')
-                print(f"✅ Используемая клавиатура: {keyboard}")
-                # Проверяем, что это не profile_extended_kb (которая не существует)
-                assert keyboard == "main_keyboard_mock", f"Ожидалась main_keyboard, получено {keyboard}"
-                print("✅ Тест пройден: profile callback использует существующую клавиатуру")
-            else:
-                print("❌ Ошибка: edit_text не был вызван")
+            mock_get_patsan.return_value = mock_patsan
+            mock_gofra_info.return_value = mock_gofra_info
+            mock_main_keyboard.return_value = "main_keyboard_mock"
+
+            try:
+                await handle_profile_callback(callback)
+                # Проверяем, что edit_text был вызван с правильной клавиатурой
+                call_args = callback.message.edit_text.call_args
+                if call_args:
+                    kwargs = call_args[1]
+                    keyboard = kwargs.get('reply_markup')
+                    print(f"✅ Используемая клавиатура: {keyboard}")
+                    # Проверяем, что это не profile_extended_kb (которая не существует)
+                    assert keyboard == "main_keyboard_mock", f"Ожидалась main_keyboard, получено {keyboard}"
+                    print("✅ Тест пройден: profile callback использует существующую клавиатуру")
+                else:
+                    print("❌ Ошибка: edit_text не был вызван")
+                    return False
+            except Exception as e:
+                print(f"❌ Ошибка в тесте: {e}")
                 return False
-        except Exception as e:
-            print(f"❌ Ошибка в тесте: {e}")
-            return False
+
+    except Exception as e:
+        print(f"❌ Ошибка в тесте: {e}")
+        return False
 
     return True
 
@@ -166,7 +187,9 @@ async def test_rademka_stats_tuple_handling():
 
     # Создаем mock callback
     callback = AsyncMock(spec=CallbackQuery)
+    callback.from_user = MagicMock()
     callback.from_user.id = 123
+    callback.message = MagicMock()
     callback.message.edit_text = AsyncMock()
     callback.answer = AsyncMock()
 
@@ -177,7 +200,7 @@ async def test_rademka_stats_tuple_handling():
     mock_cursor2 = AsyncMock()
     mock_cursor2.fetchone.return_value = (2,)  # (hour_fights,) как кортеж
 
-    with patch('handlers.nickname_and_rademka.get_connection', new_callable=AsyncMock) as mock_get_conn, \
+    with patch('db_manager.get_connection', new_callable=AsyncMock) as mock_get_conn, \
          patch('handlers.nickname_and_rademka.back_kb') as mock_back_kb:
 
         mock_conn = AsyncMock()
