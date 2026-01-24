@@ -29,7 +29,7 @@ async def group_start(message: types.Message):
     
     await message.answer(
         f"👋 Приветствуем в гофроцентрале, {chat.title if hasattr(chat, 'title') else 'чатик'}!\n\n"
-        f"Я бот для давки коричневага и прокачки гофры.\n\n"
+        f"Я бот для давки коричневага и прокачки гофрошки.\n\n"
         f"В чате доступно:\n"
         f"🐍 Общая статистика\n"
         f"🏆 Топ участников\n"
@@ -101,7 +101,7 @@ async def group_rademka_command(message: types.Message):
     text = f"👊 РАДЁМКА В ЧАТЕ\n\n"
     text += f"{fight_status}\n\n"
     text += f"Выбери пацана из участников чата!\n"
-    text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофре\n\n"
+    text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n\n"
     
     try:
         chat_stats = await ChatManager.get_chat_stats(message.chat.id)
@@ -177,7 +177,7 @@ async def fight_command(message: types.Message, command: CommandObject):
     text += f"🏗️ {format_length(target_data.get('gofra_mm', 10.0))} | 🔌 {format_length(target_data.get('cable_mm', 10.0))}\n\n"
     
     text += f"🎯 Шанс успеха: {chance}%\n"
-    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофре\n"
+    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n"
     text += f"💀 Риск: публичный позор при проигрыше\n\n"
     
     text += f"Подтверждаешь радёмку?"
@@ -432,12 +432,12 @@ async def handle_gofra_info_callback(callback: types.CallbackQuery):
         if gofra_info.get('next_threshold'):
             progress = gofra_info['progress']
             next_gofra = get_gofra_info(gofra_info['next_threshold'])
-            text += f"Следующая гофра:\n"
+            text += f"Следующая гофрошка:\n"
             text += f"{gofra_info['emoji']} → {next_gofra['emoji']}\n"
             text += f"{next_gofra['name']}\n"
             text += f"📈 Прогресс: {progress*100:.1f}%"
         else:
-            text += "🎉 Максимальный уровень гофры!"
+            text += "🎉 Максимальный уровень гофрошки!"
 
         try:
             await callback.message.edit_text(text, reply_markup=gofra_info_kb())
@@ -448,7 +448,7 @@ async def handle_gofra_info_callback(callback: types.CallbackQuery):
 
     except Exception as e:
         logger.error(f"Error in gofra info callback: {e}")
-        await callback.answer("❌ Ошибка загрузки информации о гофре", show_alert=True)
+        await callback.answer("❌ Ошибка загрузки информации о гофрошке", show_alert=True)
 
 @router.callback_query(F.data == "cable_info")
 async def handle_cable_info_callback(callback: types.CallbackQuery):
@@ -494,7 +494,7 @@ async def handle_atm_status_callback(callback: types.CallbackQuery):
         text += f"⏱️ 1 атмосфера: {ft(regen_info['per_atm'])}\n"
         text += f"🕐 До полного: {ft(regen_info['total'])}\n"
         text += f"📈 Осталось: {regen_info['needed']} атм.\n\n"
-        text += f"Влияние гофры:\n"
+        text += f"Влияние гофрошки:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}"
 
@@ -543,7 +543,7 @@ async def handle_gofra_progress_callback(callback: types.CallbackQuery):
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
 
         text = f"📈 ПРОГРЕСС ГОФРЫ\n\n"
-        text += f"🏗️ Текущая гофра: {gofra_info['length_display']}\n"
+        text += f"🏗️ Текущая гофрошка: {gofra_info['length_display']}\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n\n"
 
         if gofra_info.get('next_threshold'):
@@ -554,13 +554,13 @@ async def handle_gofra_progress_callback(callback: types.CallbackQuery):
 
             next_gofra = get_gofra_info(next_threshold)
 
-            text += f"🎯 Следующая гофра:\n"
+            text += f"🎯 Следующая гофрошка:\n"
             text += f"{next_gofra['emoji']} {next_gofra['name']}\n"
             text += f"📏 Требуется: {next_gofra['length_display']}\n"
             text += f"📊 Прогресс: [{'█' * int(progress_percent/10)}{'░' * (10 - int(progress_percent/10))}] {progress_percent:.1f}%\n\n"
             text += f"💪 Осталось: {next_threshold - current_gofra:.1f} мм"
         else:
-            text += "🎉 Ты достиг максимального уровня гофры!\n"
+            text += "🎉 Ты достиг максимального уровня гофрошки!\n"
             text += "🏆 Коричневый бог - это ты!"
 
         try:
@@ -572,7 +572,7 @@ async def handle_gofra_progress_callback(callback: types.CallbackQuery):
 
     except Exception as e:
         logger.error(f"Error in gofra progress callback: {e}")
-        await callback.answer("❌ Ошибка загрузки прогресса гофры", show_alert=True)
+        await callback.answer("❌ Ошибка загрузки прогресса гофрошки", show_alert=True)
 
 @router.callback_query(F.data == "gofra_speed")
 async def handle_gofra_speed_callback(callback: types.CallbackQuery):
@@ -581,15 +581,15 @@ async def handle_gofra_speed_callback(callback: types.CallbackQuery):
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
 
         text = f"⚡ СКОРОСТЬ ВОССТАНОВЛЕНИЯ АТМОСФЕР\n\n"
-        text += f"🏗️ Твоя гофра: {gofra_info['length_display']}\n"
+        text += f"🏗️ Твоя гофрошка: {gofra_info['length_display']}\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n\n"
         text += f"📊 Скорость восстановления:\n"
         text += f"• Базовая: 1 атмосфера за 2 часа\n"
         text += f"• Твой множитель: x{gofra_info['atm_speed']:.2f}\n"
         text += f"• Фактическая: 1 атмосфера за {ft(7200 / gofra_info['atm_speed'])}\n\n"
         text += f"💡 Как ускорить:\n"
-        text += f"• Повышай гофру (дави змия при 12 атмосферах)\n"
-        text += f"• Чем выше гофра, тем быстрее восстанавливаются атмосферы\n"
+        text += f"• Повышай гофрошку (дави змия при 12 атмосферах)\n"
+        text += f"• Чем выше гофрошка, тем быстрее восстанавливаются атмосферы\n"
         text += f"• Максимальный множитель: x2.0 (Коричневый бог)"
 
         try:
@@ -616,9 +616,9 @@ async def handle_gofra_next_callback(callback: types.CallbackQuery):
             next_threshold = gofra_info['next_threshold']
             next_gofra = get_gofra_info(next_threshold)
 
-            text += f"🏗️ Текущая гофра: {gofra_info['length_display']}\n"
+            text += f"🏗️ Текущая гофрошка: {gofra_info['length_display']}\n"
             text += f"{gofra_info['emoji']} {gofra_info['name']}\n\n"
-            text += f"📈 Следующая гофра:\n"
+            text += f"📈 Следующая гофрошка:\n"
             text += f"{next_gofra['emoji']} {next_gofra['name']}\n"
             text += f"📏 Требуется: {next_gofra['length_display']}\n\n"
             text += f"📊 Преимущества:\n"
@@ -631,7 +631,7 @@ async def handle_gofra_next_callback(callback: types.CallbackQuery):
         else:
             text += "🎉 Ты достиг максимального уровня!\n"
             text += "🏆 Коричневый бог - это ты!\n"
-            text += "📊 Больше нет уровней гофры"
+            text += "📊 Больше нет уровней гофрошки"
 
         try:
             await callback.message.edit_text(text, reply_markup=gofra_info_kb())
@@ -642,7 +642,7 @@ async def handle_gofra_next_callback(callback: types.CallbackQuery):
 
     except Exception as e:
         logger.error(f"Error in gofra next callback: {e}")
-        await callback.answer("❌ Ошибка загрузки информации о следующей гофре", show_alert=True)
+        await callback.answer("❌ Ошибка загрузки информации о следующей гофрошке", show_alert=True)
 
 @router.callback_query(F.data == "cable_power_info")
 async def handle_cable_power_callback(callback: types.CallbackQuery):
@@ -682,7 +682,7 @@ async def handle_cable_pvp_callback(callback: types.CallbackQuery):
         text += f"💪 Бонус к шансу победы: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n\n"
         text += f"📊 Формула PvP:\n"
         text += f"• Базовый шанс: 50%\n"
-        text += f"• Бонус от гофры: +2% за каждые 10 мм разницы\n"
+        text += f"• Бонус от гофрошки: +2% за каждые 10 мм разницы\n"
         text += f"• Бонус от кабеля: +0.2% за каждый 1 мм разницы\n"
         text += f"• Общий шанс: от 10% до 90%\n\n"
         text += f"💡 Стратегия:\n"
@@ -1078,12 +1078,12 @@ async def show_user_gofra_callback(callback: types.CallbackQuery, user_id: int):
         if gofra_info.get('next_threshold'):
             progress = gofra_info['progress']
             next_gofra = get_gofra_info(gofra_info['next_threshold'])
-            text += f"Следующая гофра:\n"
+            text += f"Следующая гофрошка:\n"
             text += f"{gofra_info['emoji']} → {next_gofra['emoji']}\n"
             text += f"{next_gofra['name']}\n"
             text += f"📈 Прогресс: {progress*100:.1f}%"
         else:
-            text += "🎉 Максимальный уровень гофры!"
+            text += "🎉 Максимальный уровень гофрошки!"
         
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
@@ -1138,7 +1138,7 @@ async def show_user_atm_callback(callback: types.CallbackQuery, user_id: int):
         text += f"⏱️ 1 атмосфера: {ft(regen_info['per_atm'])}\n"
         text += f"🕐 До полного: {ft(regen_info['total'])}\n"
         text += f"📈 Осталось: {regen_info['needed']} атм.\n\n"
-        text += f"Влияние гофры:\n"
+        text += f"Влияние гофрошки:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}"
         
@@ -1164,7 +1164,7 @@ async def show_rademka_callback(callback: types.CallbackQuery, user_id: int, cha
         text = f"👊 РАДЁМКА (PvP)\n\n"
         text += f"{fight_status}\n\n"
         text += f"Выбери пацана из участников чата!\n"
-        text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофре\n\n"
+        text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n\n"
         
         try:
             chat_stats = await ChatManager.get_chat_stats(chat_id)
@@ -1242,18 +1242,18 @@ async def show_chat_menu_callback(callback: types.CallbackQuery):
     
     await callback.answer()
 
-@router.message(F.text.contains("гофра") | F.text.contains("змий") | F.text.contains("давка"))
+@router.message(F.text.contains("гофрошка") | F.text.contains("змий") | F.text.contains("давка"))
 async def group_keywords(message: types.Message):
     text_lower = message.text.lower()
     
     responses = []
     
-    if "гофра" in text_lower:
+    if "гофрошка" in text_lower:
         responses.extend([
-            "Гофра - это жизнь! 🏗️",
-            "Чем больше гофра, тем тяжелее змий! 💪",
-            "Моя гофра уже {length} см! А твоя? 🏗️",
-            "Без гофры и змий не выдавишь! ⚡"
+            "Гофрошка - это жизнь! 🏗️",
+            "Чем больше гофрошка, тем тяжелее змий! 💪",
+            "Моя гофрошка уже {length} см! А твоя? 🏗️",
+            "Без гофрошки и змий не выдавишь! ⚡"
         ])
 
     if "змий" in text_lower or "зме" in text_lower:

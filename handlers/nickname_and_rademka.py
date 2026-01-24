@@ -55,8 +55,8 @@ async def nickname_menu(c: types.CallbackQuery):
 @router.callback_query(F.data == "my_reputation")
 async def my_reputation(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
-    gofra_info = await get_gofra_info(p.get('gofra_mm', 10.0))
-    await c.message.edit_text(f"⭐ МОЯ РЕПУТАЦИЯ\n\n{gofra_info['emoji']} Звание: {gofra_info['name']}\n🏗️ Гофра: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nКак повысить?\n• Дави змия при полных атмосферах\n• Отправляй змия в коричневую страну\n• Участвуй в радёмках\n\nЧем больше гофра, тем больше уважения!", reply_markup=nickname_keyboard())
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+    await c.message.edit_text(f"⭐ МОЯ РЕПУТАЦИЯ\n\n{gofra_info['emoji']} Звание: {gofra_info['name']}\n🏗️ Гофрошка: {format_length(p.get('gofra_mm', 10.0))}\n🔌 Кабель: {format_length(p.get('cable_mm', 10.0))}\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nКак повысить?\n• Дави змия при полных атмосферах\n• Отправляй змия в коричневую страну\n• Участвуй в радёмках\n\nЧем больше гофрошка, тем больше уважения!", reply_markup=nickname_keyboard())
     await c.answer()
 
 @ignore_not_modified_error
@@ -70,7 +70,7 @@ async def top_reputation(c: types.CallbackQuery):
         for i, p in enumerate(tp):
             md = mds[i] if i<len(mds) else f"{i+1}."
             nn = p.get("nickname", f"Пацан_{p.get('user_id','?')}")[:12]+("..." if len(p.get('nickname',''))>15 else "")
-            gi = await get_gofra_info(p.get('gofra_mm', 10.0))
+            gi = get_gofra_info(p.get('gofra_mm', 10.0))
             txt += f"{md} {nn} - {gi['emoji']} {gi['name']} ({gi['length_display']})\n"
         uid = c.from_user.id
         for i, p in enumerate(tp):
@@ -135,12 +135,12 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
 
 async def cmd_rademka(m: types.Message):
     p = await get_patsan(m.from_user.id)
-    gofra_info = await get_gofra_info(p.get('gofra_mm', 10.0))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     can_fight, fight_msg = await can_fight_pvp(m.from_user.id)
     fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
     
-    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +0.2 мм к кабелю\n• +5-12 мм к гофре\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))}\n🔌 {format_length(p.get('cable_mm', 10.0))}"
+    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +0.2 мм к кабелю\n• +5-12 мм к гофрошке\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))}\n🔌 {format_length(p.get('cable_mm', 10.0))}"
     await m.answer(txt, reply_markup=rademka_keyboard())
 
 @router.message(Command("rademka"))
@@ -151,12 +151,12 @@ async def cmd_rademka_handler(m: types.Message):
 @router.callback_query(F.data == "rademka")
 async def callback_rademka(c: types.CallbackQuery):
     p = await get_patsan(c.from_user.id)
-    gofra_info = await get_gofra_info(p.get('gofra_mm', 10.0))
+    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
     
     can_fight, fight_msg = await can_fight_pvp(c.from_user.id)
     fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
     
-    await c.message.edit_text(f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\n{fight_status}\n\nВыбери пацана!\nЗа успех: +0.2 мм к кабелю, +5-12 мм к гофре, публичное унижение\n\nРиски: публичный позор\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))} | 🔌 {format_length(p.get('cable_mm', 10.0))}", reply_markup=rademka_keyboard())
+    await c.message.edit_text(f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\n{fight_status}\n\nВыбери пацана!\nЗа успех: +0.2 мм к кабелю, +5-12 мм к гофрошке, публичное унижение\n\nРиски: публичный позор\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))} | 🔌 {format_length(p.get('cable_mm', 10.0))}", reply_markup=rademka_keyboard())
     await c.answer()
 
 @ignore_not_modified_error
@@ -174,16 +174,16 @@ async def rademka_random(c: types.CallbackQuery):
     
     t = random.choice(tg)
     pid, tn = t.get("user_id"), t.get("nickname","Неизвестно")
-    tgofra_info = await get_gofra_info(t.get("gofra_mm", 10.0))
+    tgofra_info = get_gofra_info(t.get("gofra_mm", 10.0))
     tcable = format_length(t.get("cable_mm", 10.0))
     
     p = await get_patsan(c.from_user.id)
-    mgofra_info = await get_gofra_info(p.get("gofra_mm", 10.0))
+    mgofra_info = get_gofra_info(p.get("gofra_mm", 10.0))
     mcable = format_length(p.get("cable_mm", 10.0))
     
     chance = calculate_pvp_chance(p, t)
     
-    await c.message.edit_text(f"🎯 НАШЁЛ ЦЕЛЬ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n👤 Цель: {tn}\n{tgofra_info['emoji']} {tgofra_info['name']}\n🏗️ {tgofra_info['length_display']} | 🔌 {tcable}\n\n👤 Ты: {mgofra_info['emoji']} {mgofra_info['name']}\n🏗️ {mgofra_info['length_display']} | 🔌 {mcable}\n🎯 Шанс: {chance}%\n\nНаграда: +0.2 мм к кабелю, +5-12 мм к гофре\nРиск: позор\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid))
+    await c.message.edit_text(f"🎯 НАШЁЛ ЦЕЛЬ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n👤 Цель: {tn}\n{tgofra_info['emoji']} {tgofra_info['name']}\n🏗️ {tgofra_info['length_display']} | 🔌 {tcable}\n\n👤 Ты: {mgofra_info['emoji']} {mgofra_info['name']}\n🏗️ {mgofra_info['length_display']} | 🔌 {mcable}\n🎯 Шанс: {chance}%\n\nНаграда: +0.2 мм к кабелю, +5-12 мм к гофрошке\nРиск: позор\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid))
     await c.answer()
 
 @ignore_not_modified_error
@@ -225,7 +225,7 @@ async def rademka_confirm(c: types.CallbackQuery):
         txt = f"✅ УСПЕХ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ! ТЫ ПРОТАЩИЛ!\n\n"
         txt += f"Ты унизил {t.get('nickname','Неизвестно')}!\n"
         txt += f"🔌 Кабель: +{cable_gain_mm:.1f} мм (теперь {format_length(a['cable_mm'])})\n"
-        txt += f"🏗️ Гофра: +{gofra_gain_mm:.1f} мм (теперь {format_length(a['gofra_mm'])})\n"
+        txt += f"🏗️ Гофрошка: +{gofra_gain_mm:.1f} мм (теперь {format_length(a['gofra_mm'])})\n"
         txt += f"🎯 Шанс был: {chance}%\n"
         txt += "Он теперь боится!"
     else:
@@ -288,7 +288,7 @@ async def rademka_top(c: types.CallbackQuery):
                 if i>=len(mds): 
                     break
                 md, nn, w, l, gofra_mm, cable_mm = mds[i], p.get("nickname","Неизвестно"), p.get("w",0) or 0, p.get("l",0) or 0, p.get("gofra_mm",10.0), p.get("cable_mm",10.0)
-                gofra_info = await get_gofra_info(gofra_mm)
+                gofra_info = get_gofra_info(gofra_mm)
                 if len(nn)>15:
                     nn=nn[:12]+"..."
                 win_rate = 0 if w+l==0 else (w/(w+l)*100)
@@ -308,7 +308,7 @@ async def rademka_top(c: types.CallbackQuery):
 async def back_to_main(c: types.CallbackQuery):
     try:
         p = await get_patsan(c.from_user.id)
-        gofra_info = await get_gofra_info(p.get('gofra_mm', 10.0))
+        gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
         await c.message.edit_text(f"Главное меню\n{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {gofra_info['length_display']} | 🔌 {format_length(p.get('cable_mm', 10.0))}\n\n🌀 Атмосферы: {p.get('atm_count',0)}/12\n🐍 Змий: {p.get('zmiy_grams',0):.0f}г\n\nВыбери действие:", reply_markup=main_keyboard())
     except Exception as e:
         logger.error(f"Ошибка главного: {e}")

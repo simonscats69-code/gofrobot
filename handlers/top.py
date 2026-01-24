@@ -21,7 +21,7 @@ async def show_top(callback: types.CallbackQuery):
     sort_type = callback.data.replace("top_", "")
     
     sort_map = {
-        "gofra": ("гофре", "🏗️", "gofra"),
+        "gofra": ("гофрошке", "🏗️", "gofra"),
         "cable": ("кабелю", "🔌", "cable_power"),
         "zmiy": ("змию", "🐍", "zmiy_grams"),
         "atm": ("атмосферам", "🌀", "atm_count")

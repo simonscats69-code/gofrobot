@@ -10,8 +10,8 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
-    
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+
     await message.answer(
         f"НУ ЧЁ, ПАЦАН? 👊\n\n"
         f"Добро пожаловать на гофроцентрал, {patsan.get('nickname', 'Пацанчик')}!\n"
@@ -25,7 +25,7 @@ async def cmd_start(message: types.Message):
 @router.message(Command("profile"))
 async def cmd_profile(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     regen_info = calculate_atm_regen_time(patsan)
     
@@ -56,26 +56,26 @@ async def cmd_top(message: types.Message):
 @router.message(Command("gofra"))
 async def cmd_gofra(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     text = f"🏗️ ИНФОРМАЦИЯ О ГОФРЕ\n\n"
     text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
-    text += f"📊 Длина гофры: {gofra_info['length_display']}\n\n"
+    text += f"📊 Длина гофрошки: {gofra_info['length_display']}\n\n"
     text += f"Характеристики:\n"
     text += f"⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}\n"
     text += f"⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г\n\n"
     
     if gofra_info.get('next_threshold'):
         progress = gofra_info['progress']
-        next_gofra = await get_gofra_info(gofra_info['next_threshold'])
-        text += f"Следующая гофра:\n"
+        next_gofra = get_gofra_info(gofra_info['next_threshold'])
+        text += f"Следующая гофрошка:\n"
         text += f"{gofra_info['emoji']} → {next_gofra['emoji']}\n"
         text += f"{next_gofra['name']} (от {next_gofra['length_display']})\n"
         text += f"📈 Прогресс: {progress*100:.1f}%\n"
         text += f"⚡ Новая скорость: x{next_gofra['atm_speed']:.2f}\n"
         text += f"⚖️ Новый вес: {next_gofra['min_grams']}-{next_gofra['max_grams']}г"
     else:
-        text += "🎉 Максимальный уровень гофры!"
+        text += "🎉 Максимальный уровень гофрошки!"
     
     await message.answer(text, reply_markup=gofra_info_kb())
 
@@ -99,7 +99,7 @@ async def cmd_cable(message: types.Message):
 async def cmd_atm(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
     regen_info = calculate_atm_regen_time(patsan)
-    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     text = f"🌡️ СОСТОЯНИЕ АТМОСФЕР\n\n"
     text += f"🌀 Текущий запас: {patsan.get('atm_count', 0)}/12\n\n"
@@ -107,7 +107,7 @@ async def cmd_atm(message: types.Message):
     text += f"⏱️ 1 атмосфера: {regen_info['per_atm']:.0f}сек\n"
     text += f"🕐 До полного: {regen_info['total']:.0f}сек\n"
     text += f"📈 Осталось: {regen_info['needed']} атмосфер\n\n"
-    text += f"Влияние гофры:\n"
+    text += f"Влияние гофрошки:\n"
     text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
     text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}\n\n"
     text += f"Полные 12 атмосфер нужны для давки!"
@@ -117,7 +117,7 @@ async def cmd_atm(message: types.Message):
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    gofra_info = await get_gofra_info(patsan.get('gofra_mm', 10.0))
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     await message.answer(
         f"Главное меню\n"
@@ -135,7 +135,7 @@ async def cmd_help(message: types.Message):
         "📋 Основные команды:\n"
         "/start - Запуск бота\n"
         "/profile - Профиль игрока\n"
-        "/gofra - Информация о гофре\n"
+        "/gofra - Информация о гофрошке\n"
         "/cable - Информация о кабеле\n"
         "/atm - Состояние атмосфер\n"
         "/top - Топ игроков\n"
@@ -145,8 +145,8 @@ async def cmd_help(message: types.Message):
         "• ✈️ Отправить змия - в коричневую страну\n"
         "• 👊 Радёмка (PvP)\n"
         "• 👤 Никнейм и репутация\n\n"
-        "🏗️ Система гофры (в мм/см):\n"
-        "• Чем длиннее гофра, тем тяжелее змий\n"
+        "🏗️ Система гофрошки (в мм/см):\n"
+        "• Чем длиннее гофрошка, тем тяжелее змий\n"
         "• Быстрее атмосферы\n"
         "• Медленная прогрессия (0.02 мм/г змия)\n\n"
         "🔌 Силовой кабель (в мм/см):\n"
@@ -155,7 +155,7 @@ async def cmd_help(message: types.Message):
         "⏱️ Атмосферы:\n"
         "• Восстанавливаются автоматически\n"
         "• Нужны все 12 для давки\n"
-        "• Скорость зависит от гофры"
+        "• Скорость зависит от гофрошки"
     )
     
     await message.answer(help_text, reply_markup=main_keyboard())
@@ -167,7 +167,7 @@ async def cmd_version(message: types.Message):
         "📊 Информация о системе:\n"
         "• 🏗️ Гофра измеряется в мм\n"
         "• 🔌 Кабель измеряется в мм\n"
-        "• 🐍 Вес змия зависит от гофры\n\n"
+        "• 🐍 Вес змия зависит от гофрошки\n\n"
         "👥 Функции:\n"
         "• /chat_top - топ участников чата\n"
         "• /chat_stats - статистика чата\n"

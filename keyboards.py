@@ -5,8 +5,6 @@ MENUS = {
     "main": [
         ("🐍 Давить коричневага", "davka"), 
         ("✈️ Отправить змия", "uletet"),
-        ("🏗️ Моя гофра", "gofra_info"), 
-        ("🔌 Мой кабель", "cable_info"),
         ("🌡️ Атмосферы", "atm_status"),
         ("👊 Радёмка", "rademka"), 
         ("🏆 Топ", "top"), 
@@ -26,9 +24,9 @@ MENUS = {
     ],
     
     "gofra": [
-        ("📈 Прогресс гофры", "gofra_progress"),
+        ("📈 Прогресс гофрошки", "gofra_progress"),
         ("⚡ Скорость атмосфер", "gofra_speed"),
-        ("📊 Следующая гофра", "gofra_next"),
+        ("📊 Следующая гофрошка", "gofra_next"),
         ("⬅️ Назад", "back_main")
     ],
     
@@ -40,7 +38,7 @@ MENUS = {
     ],
     
     "top": [
-        ("🏗️ По гофре", "top_gofra"), 
+        ("🏗️ По гофрошке", "top_gofra"),
         ("🔌 По кабелю", "top_cable"),
         ("🐍 По змию", "top_zmiy"),
         ("🌡️ По атмосферам", "top_atm")
@@ -88,7 +86,8 @@ profile_extended_keyboard = lambda: mk("gofra", "profile", 1)
 def atm_status_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [Btn(text="⏱️ Время восстановления", callback_data="atm_regen_time")],
-        [Btn(text="⚡ Скорость гофры", callback_data="gofra_speed")],
+        [Btn(text="📊 Максимум атмосфер", callback_data="atm_max_info")],
+        [Btn(text="⚡ Ускорение", callback_data="atm_boosters")],
         [Btn(text="⬅️ В профиль", callback_data="profile")]
     ])
 
@@ -110,8 +109,8 @@ def cable_info_kb():
 
 def profile_extended_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="🏗️ Гофра", callback_data="gofra_info")],
-        [Btn(text="🔌 Кабель", callback_data="cable_info")],
+        [Btn(text="🏗️ Моя гофрошка", callback_data="gofra_info")],
+        [Btn(text="🔌 Мой кабель", callback_data="cable_info")],
         [Btn(text="🌡️ Атмосферы", callback_data="atm_status")],
         [Btn(text="⬅️ Главное меню", callback_data="back_main")]
     ])
@@ -136,7 +135,7 @@ def chat_menu_keyboard():
         ],
         [
             Btn(text="👤 Мой вклад", callback_data="chat_me"),
-            Btn(text="🏗️ Моя гофра", callback_data="chat_gofra")
+            Btn(text="🏗️ Моя гофрошка", callback_data="chat_gofra")
         ],
         [
             Btn(text="🔌 Мой кабель", callback_data="chat_cable"),

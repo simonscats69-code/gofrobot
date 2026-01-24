@@ -73,7 +73,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="davka", description="🐍 Давить коричневага"),
         BotCommand(command="uletet", description="✈️ Отправить змия"),
         BotCommand(command="profile", description="📊 Профиль игрока"),
-        BotCommand(command="gofra", description="🏗️ Инфо о гофре"),
+        BotCommand(command="gofra", description="🏗️ Инфо о гофрошке"),
         BotCommand(command="cable", description="🔌 Инфо о кабеле"),
         BotCommand(command="atm", description="🌡️ Состояние атмосфер"),
         BotCommand(command="top", description="🏆 Топ игроков"),

@@ -33,15 +33,15 @@ BALANCE = {
 
 # Gofra Levels Configuration
 GOFRY_MM = {
-    10.0: {"name": "Новая гофра", "emoji": "🆕", "min_grams": 30, "max_grams": 100, "atm_speed": 1.0},
+    10.0: {"name": "Новая гофрошка", "emoji": "🆕", "min_grams": 30, "max_grams": 100, "atm_speed": 1.0},
     50.0: {"name": "Слегка разъезжена", "emoji": "🔄", "min_grams": 45, "max_grams": 120, "atm_speed": 1.1},
-    150.0: {"name": "Рабочая гофра", "emoji": "⚙️", "min_grams": 60, "max_grams": 150, "atm_speed": 1.2},
+    150.0: {"name": "Рабочая гофрошка", "emoji": "⚙️", "min_grams": 60, "max_grams": 150, "atm_speed": 1.2},
     300.0: {"name": "Разъезжена хорошо", "emoji": "🔥", "min_grams": 80, "max_grams": 190, "atm_speed": 1.3},
-    600.0: {"name": "Заезженная гофра", "emoji": "🏎️", "min_grams": 110, "max_grams": 250, "atm_speed": 1.4},
-    1200.0: {"name": "Убитая гофра", "emoji": "💀", "min_grams": 150, "max_grams": 320, "atm_speed": 1.5},
-    2500.0: {"name": "Легендарная гофра", "emoji": "👑", "min_grams": 200, "max_grams": 420, "atm_speed": 1.6},
-    5000.0: {"name": "Царь-гофра", "emoji": "🐉", "min_grams": 270, "max_grams": 550, "atm_speed": 1.7},
-    10000.0: {"name": "БОГ ГОФРЫ", "emoji": "👁️‍🗨️", "min_grams": 350, "max_grams": 700, "atm_speed": 1.8},
+    600.0: {"name": "Заезженная гофрошка", "emoji": "🏎️", "min_grams": 110, "max_grams": 250, "atm_speed": 1.4},
+    1200.0: {"name": "Убитая гофрошка", "emoji": "💀", "min_grams": 150, "max_grams": 320, "atm_speed": 1.5},
+    2500.0: {"name": "Легендарная гофрошка", "emoji": "👑", "min_grams": 200, "max_grams": 420, "atm_speed": 1.6},
+    5000.0: {"name": "Царь-гофрошка", "emoji": "🐉", "min_grams": 270, "max_grams": 550, "atm_speed": 1.7},
+    10000.0: {"name": "БОГ ГОФРОШКИ", "emoji": "👁️‍🗨️", "min_grams": 350, "max_grams": 700, "atm_speed": 1.8},
     20000.0: {"name": "ВСЕЛЕННАЯ ГОФРА", "emoji": "🌌", "min_grams": 450, "max_grams": 900, "atm_speed": 2.0},
 }
 

@@ -104,7 +104,7 @@ async def group_rademka_command(message: types.Message):
     text = f"👊 РАДЁМКА В ЧАТЕ\n\n"
     text += f"{fight_status}\n\n"
     text += f"Выбери пацана из участников чата!\n"
-    text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофре\n\n"
+    text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n\n"
 
     try:
         chat_stats = await ChatManager.get_chat_stats(message.chat.id)
@@ -180,7 +180,7 @@ async def fight_command(message: types.Message, command: CommandObject):
     text += f"🏗️ {format_length(target_data.get('gofra_mm', 10.0))} | 🔌 {format_length(target_data.get('cable_mm', 10.0))}\n\n"
 
     text += f"🎯 Шанс успеха: {chance}%\n"
-    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофре\n"
+    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n"
     text += f"💀 Риск: публичный позор при проигрыше\n\n"
 
     text += f"Подтверждаешь радёмку?"
@@ -708,12 +708,12 @@ async def show_user_gofra_callback(callback: types.CallbackQuery, user_id: int):
         if gofra_info.get('next_threshold'):
             progress = gofra_info['progress']
             next_gofra = get_gofra_info(gofra_info['next_threshold'])
-            text += f"Следующая гофра:\n"
+            text += f"Следующая гофрошка:\n"
             text += f"{gofra_info['emoji']} → {next_gofra['emoji']}\n"
             text += f"{next_gofra['name']}\n"
             text += f"📈 Прогресс: {progress*100:.1f}%"
         else:
-            text += "🎉 Максимальный уровень гофры!"
+            text += "🎉 Максимальный уровень гофрошки!"
 
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
@@ -768,7 +768,7 @@ async def show_user_atm_callback(callback: types.CallbackQuery, user_id: int):
         text += f"⏱️ 1 атмосфера: {ft(regen_info['per_atm'])}\n"
         text += f"🕐 До полного: {ft(regen_info['total'])}\n"
         text += f"📈 Осталось: {regen_info['needed']} атм.\n\n"
-        text += f"Влияние гофры:\n"
+        text += f"Влияние гофрошки:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}"
 
@@ -794,7 +794,7 @@ async def show_rademka_callback(callback: types.CallbackQuery, user_id: int, cha
         text = f"👊 РАДЁМКА (PvP)\n\n"
         text += f"{fight_status}\n\n"
         text += f"Выбери пацана из участников чата!\n"
-        text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофре\n\n"
+        text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n\n"
 
         try:
             chat_stats = await ChatManager.get_chat_stats(chat_id)
@@ -872,18 +872,18 @@ async def show_chat_menu_callback(callback: types.CallbackQuery):
 
     await callback.answer()
 
-@router.message(F.text.contains("гофра") | F.text.contains("змий") | F.text.contains("давка"))
+@router.message(F.text.contains("гофрошка") | F.text.contains("змий") | F.text.contains("давка"))
 async def group_keywords(message: types.Message):
     text_lower = message.text.lower()
 
     responses = []
 
-    if "гофра" in text_lower:
+    if "гофрошка" in text_lower:
         responses.extend([
-            "Гофра - это жизнь! 🏗️",
-            "Чем больше гофра, тем тяжелее змий! 💪",
-            "Моя гофра уже {length} см! А твоя? 🏗️",
-            "Без гофры и змий не выдавишь! ⚡"
+            "Гофрошка - это жизнь! 🏗️",
+            "Чем больше гофрошка, тем тяжелее змий! 💪",
+            "Моя гофрошка уже {length} см! А твоя? 🏗️",
+            "Без гофрошки и змий не выдавишь! ⚡"
         ])
 
     if "змий" in text_lower or "зме" in text_lower:

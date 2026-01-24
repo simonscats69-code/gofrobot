@@ -2,7 +2,7 @@
 Utility functions for testing
 """
 import pytest
-from db_manager import get_patsan, davka_zmiy, uletet_zmiy
+from db_manager import get_patsan, davka_zmiy, uletet_zmiy, save_patsan
 from cache_manager import get_gofra_info_optimized
 
 @pytest.mark.asyncio
@@ -10,7 +10,11 @@ async def test_davka_zmiy_function():
     """Test the davka_zmiy function"""
     # Create test user
     test_user_id = 999999
-    await get_patsan(test_user_id)
+    user = await get_patsan(test_user_id)
+
+    # Set atm to 12 for davka
+    user["atm_count"] = 12
+    await save_patsan(user)
 
     # Test successful davka
     success, user, result = await davka_zmiy(test_user_id)
@@ -54,6 +58,10 @@ async def test_gofra_progression():
 
     # Do multiple davka actions
     for i in range(5):
+        # Set atm to 12 for davka
+        initial_user["atm_count"] = 12
+        await save_patsan(initial_user)
+
         success, user, _ = await davka_zmiy(test_user_id)
         assert success
         assert user["gofra_mm"] >= initial_gofra
@@ -74,13 +82,14 @@ async def test_atm_regen():
     # Set atm to 0
     user["atm_count"] = 0
     user["last_update"] = 0
+    await save_patsan(user)
 
     # Wait a bit (simulate time passing)
     import time
     time.sleep(0.1)
 
     # Get user again (should trigger regeneration)
-    user2 = await get_patsan(test_user_id, force=True)
+    user2 = await get_patsan(test_user_id)
 
     # ATM should start regenerating
     assert user2["atm_count"] >= 0

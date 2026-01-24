@@ -669,7 +669,17 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
         query = f"SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, atm_count FROM users ORDER BY {sort_by} DESC LIMIT ?"
         cursor = await conn.execute(query, (limit,))
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+
+        # Получаем имена колонок
+        cursor = await conn.execute("PRAGMA table_info(users)")
+        columns = await cursor.fetchall()
+        column_names = [col[1] for col in columns]
+
+        # Преобразуем строки в словари
+        result = []
+        for row in rows:
+            result.append(dict(zip(column_names, row)))
+        return result
     finally:
         await conn.close()
 
@@ -685,8 +695,8 @@ async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0
     finally:
         await conn.close()
 
-async def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
-    """Возвращает информацию о гофре на основе её длины."""
+def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
+    """Возвращает информацию о гофрошке на основе её длины."""
     gofra_levels = [
         {"threshold": 10.0, "name": "Новичок", "emoji": "🐣", "atm_speed": 1.0, "min_grams": 50, "max_grams": 100},
         {"threshold": 50.0, "name": "Ученик", "emoji": "👶", "atm_speed": 1.1, "min_grams": 100, "max_grams": 200},
@@ -695,12 +705,12 @@ async def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
         {"threshold": 600.0, "name": "Эксперт", "emoji": "👨‍💼", "atm_speed": 1.4, "min_grams": 400, "max_grams": 500},
         {"threshold": 1200.0, "name": "Гуру", "emoji": "🧙", "atm_speed": 1.5, "min_grams": 500, "max_grams": 600},
         {"threshold": 2500.0, "name": "Легенда", "emoji": "🏆", "atm_speed": 1.6, "min_grams": 600, "max_grams": 700},
-        {"threshold": 5000.0, "name": "Бог гофры", "emoji": "👑", "atm_speed": 1.7, "min_grams": 700, "max_grams": 800},
+        {"threshold": 5000.0, "name": "Бог гофрошки", "emoji": "👑", "atm_speed": 1.7, "min_grams": 700, "max_grams": 800},
         {"threshold": 10000.0, "name": "Гофроцентрал", "emoji": "🏗️", "atm_speed": 1.8, "min_grams": 800, "max_grams": 900},
         {"threshold": 20000.0, "name": "Коричневый бог", "emoji": "💩", "atm_speed": 2.0, "min_grams": 900, "max_grams": 1000}
     ]
 
-    # Находим текущий уровень гофры
+    # Находим текущий уровень гофрошки
     current_level = None
     next_level = None
 
@@ -876,7 +886,7 @@ async def calculate_pvp_chance(attacker: Dict[str, Any], defender: Dict[str, Any
     # Базовый шанс
     base_chance = 50.0
 
-    # Влияние гофры
+    # Влияние гофрошки
     attacker_gofra = attacker.get('gofra_mm', 10.0)
     defender_gofra = defender.get('gofra_mm', 10.0)
     gofra_diff = attacker_gofra - defender_gofra
