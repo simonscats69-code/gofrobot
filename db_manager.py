@@ -707,7 +707,7 @@ def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
         {"threshold": 2500.0, "name": "Легенда", "emoji": "🏆", "atm_speed": 1.6, "min_grams": 600, "max_grams": 700},
         {"threshold": 5000.0, "name": "Бог гофрошки", "emoji": "👑", "atm_speed": 1.7, "min_grams": 700, "max_grams": 800},
         {"threshold": 10000.0, "name": "Гофроцентрал", "emoji": "🏗️", "atm_speed": 1.8, "min_grams": 800, "max_grams": 900},
-        {"threshold": 20000.0, "name": "Коричневый бог", "emoji": "💩", "atm_speed": 2.0, "min_grams": 900, "max_grams": 1000}
+        {"threshold": 20000.0, "name": "Коричневый бог", "emoji": "💩", "atm_speed": 2.0, "min_grams": 900, "max_grams": 1100}
     ]
 
     # Находим текущий уровень гофрошки
@@ -803,11 +803,16 @@ async def davka_zmiy(user_id: int, chat_id: int = None) -> Tuple[bool, Dict[str,
         old_gofra_mm = patsan.get('gofra_mm', 10.0)
         old_cable_mm = patsan.get('cable_mm', 10.0)
 
-        # Получаем опыт за змия (0.02 мм за 1 грамм)
-        exp_gained_mm = zmiy_grams * 0.02
+        # Получаем опыт за змия (0.025 мм за 1 грамм - для достижения 70-100 мм за месяц)
+        exp_gained_mm = zmiy_grams * 0.025
 
         new_gofra_mm = old_gofra_mm + exp_gained_mm
-        new_cable_mm = old_cable_mm + (zmiy_grams / 1000) * 0.2  # 0.2 мм за 1 кг
+        new_cable_mm = old_cable_mm + (zmiy_grams / 1000) * 150.0  # 150.0 мм за 1 кг - для достижения 300-500 мм за месяц
+
+        # Специальное сообщение для килограммовых змеев
+        special_message = None
+        if zmiy_grams > 1000:
+            special_message = "КИЛОГРАММ ГОВНА ЗА ДВАДЦАТЬ ПЯТЬ СЕКУНД"
 
         # Сбрасываем атмосферы
         patsan['atm_count'] = 0

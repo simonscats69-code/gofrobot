@@ -101,7 +101,7 @@ async def group_rademka_command(message: types.Message):
     text = f"👊 РАДЁМКА В ЧАТЕ\n\n"
     text += f"{fight_status}\n\n"
     text += f"Выбери пацана из участников чата!\n"
-    text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n\n"
+    text += f"За победу: +5-10 мм к кабелю, +2 мм к гофрошке\n\n"
     
     try:
         chat_stats = await ChatManager.get_chat_stats(message.chat.id)
@@ -177,7 +177,7 @@ async def fight_command(message: types.Message, command: CommandObject):
     text += f"🏗️ {format_length(target_data.get('gofra_mm', 10.0))} | 🔌 {format_length(target_data.get('cable_mm', 10.0))}\n\n"
     
     text += f"🎯 Шанс успеха: {chance}%\n"
-    text += f"🏆 Награда за победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n"
+    text += f"🏆 Награда за победу: +5-10 мм к кабелю, +2 мм к гофрошке\n"
     text += f"💀 Риск: публичный позор при проигрыше\n\n"
     
     text += f"Подтверждаешь радёмку?"
@@ -342,7 +342,7 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
             if rank > 1:
                 prev_player = top_players[rank-2]
                 diff = user_total - prev_player['total_zmiy_grams']
-                text += f"📈 До #{rank-1}: +{diff/1000:.1f} кг\n"
+                text += f"� До #{rank-1}: +{diff/1000:.1f} кг\n"
             
             if rank < len(top_players):
                 next_player = top_players[rank]
