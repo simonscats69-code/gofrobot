@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Глобальные переменные для базы данных
 DB_PATH = "storage/bot_database.db"
 BACKUP_DIR = "storage/backups"
-DATABASE_VERSION = 2
+DATABASE_VERSION = 3
 
 # Глобальное соединение для избежания проблем с потоками
 _db_connection = None
@@ -41,7 +41,7 @@ async def init_db():
             nickname TEXT DEFAULT 'Неизвестно',
             gofra_mm REAL DEFAULT 10.0,
             cable_mm REAL DEFAULT 10.0,
-            atm_count INTEGER DEFAULT 0,
+            atm_count INTEGER DEFAULT 12,
             zmiy_grams REAL DEFAULT 0.0,
             total_zmiy_grams REAL DEFAULT 0.0,
             cable_power INTEGER DEFAULT 2,
@@ -129,6 +129,10 @@ async def check_and_update_db_version(conn: aiosqlite.Connection):
         await apply_migration_v2(conn)
         current_version = 2
 
+    if current_version < 3:
+        await apply_migration_v3(conn)
+        current_version = 3
+
     # Обновляем версию в базе
     await conn.execute("INSERT OR REPLACE INTO database_version (version) VALUES (?)", (DATABASE_VERSION,))
 
@@ -159,6 +163,24 @@ async def apply_migration_v2(conn: aiosqlite.Connection):
 
     except Exception as e:
         logger.error(f"Ошибка при миграции v2: {e}")
+        raise
+
+async def apply_migration_v3(conn: aiosqlite.Connection):
+    """Миграция для версии 3 - исправление начальных атмосфер."""
+    logger.info("Применение миграции v3...")
+
+    try:
+        # Обновляем всех пользователей с 0 атмосферами до 12
+        cursor = await conn.execute("UPDATE users SET atm_count = 12 WHERE atm_count = 0")
+        update_count = cursor.rowcount
+        logger.info(f"Обновлено {update_count} пользователей с 0 атмосферами до 12")
+
+        # Обновляем DEFAULT значение для будущих пользователей
+        # Note: В SQLite нельзя изменить DEFAULT значение существующего столбца через ALTER TABLE
+        # Поэтому мы просто документируем, что новые пользователи должны иметь 12 атмосфер
+
+    except Exception as e:
+        logger.error(f"Ошибка при миграции v3: {e}")
         raise
 
 async def repair_database():

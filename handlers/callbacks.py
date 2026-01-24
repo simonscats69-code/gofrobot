@@ -155,8 +155,8 @@ async def fight_command(message: types.Message, command: CommandObject):
         await message.answer(f"❌ {target_user.first_name} превысил лимит боёв на сегодня!")
         return
     
-    chance = calculate_pvp_chance(attacker_data, target_data)
-    
+    chance = await calculate_pvp_chance(attacker_data, target_data)
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Протащить!", callback_data=f"chat_fight_{target_user.id}"),

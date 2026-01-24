@@ -181,8 +181,8 @@ async def rademka_random(c: types.CallbackQuery):
     mgofra_info = get_gofra_info(p.get("gofra_mm", 10.0))
     mcable = format_length(p.get("cable_mm", 10.0))
     
-    chance = calculate_pvp_chance(p, t)
-    
+    chance = await calculate_pvp_chance(p, t)
+
     await c.message.edit_text(f"🎯 НАШЁЛ ЦЕЛЬ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n👤 Цель: {tn}\n{tgofra_info['emoji']} {tgofra_info['name']}\n🏗️ {tgofra_info['length_display']} | 🔌 {tcable}\n\n👤 Ты: {mgofra_info['emoji']} {mgofra_info['name']}\n🏗️ {mgofra_info['length_display']} | 🔌 {mcable}\n🎯 Шанс: {chance}%\n\nНаграда: +0.2 мм к кабелю, +5-12 мм к гофрошке\nРиск: позор\n\nПротащить?", reply_markup=rademka_fight_keyboard(pid))
     await c.answer()
 
@@ -203,7 +203,7 @@ async def rademka_confirm(c: types.CallbackQuery):
     if not a or not t: 
         return await c.answer("Ошибка: пацан не найден!", show_alert=True)
     
-    chance = calculate_pvp_chance(a, t)
+    chance = await calculate_pvp_chance(a, t)
     suc = random.random() < (chance/100)
     
     if suc:
