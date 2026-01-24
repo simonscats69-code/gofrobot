@@ -11,6 +11,20 @@ import sqlite3
 
 logger = logging.getLogger(__name__)
 
+# Импортируем функцию форматирования времени
+def ft(s):
+    """
+    Format time duration in seconds to human-readable format
+    """
+    if s < 60:
+        return f"{s}с"
+    m, h, d = s // 60, s // 3600, s // 86400
+    if d > 0:
+        return f"{d}д {h%24}ч {m%60}м"
+    if h > 0:
+        return f"{h}ч {m%60}м {s%60}с"
+    return f"{m}м {s%60}с"
+
 # Глобальные переменные для базы данных
 DB_PATH = "storage/bot_database.db"
 BACKUP_DIR = "storage/backups"
@@ -877,7 +891,8 @@ async def uletet_zmiy(user_id: int) -> Tuple[bool, Dict[str, Any], Dict[str, Any
 
         zmiy_grams = patsan.get('zmiy_grams', 0)
         patsan['zmiy_grams'] = 0
-        patsan['atm_count'] = 12  # Восстанавливаем атмосферы
+        # Удаляем восстановление атмосфер - это было багом
+        # patsan['atm_count'] = 12  # Восстанавливаем атмосферы
 
         await save_patsan(patsan)
 
@@ -938,6 +953,37 @@ async def calculate_pvp_chance(attacker: Dict[str, Any], defender: Dict[str, Any
 
     # Ограничиваем шанс от 10% до 90%
     return max(10.0, min(90.0, total_chance))
+
+async def calculate_davka_cooldown(patsan: Dict[str, Any]) -> Dict[str, Any]:
+    """Вычисляет время до следующей давки змия."""
+    current_time = int(time.time())
+    last_davka = patsan.get('last_davka', 0)
+
+    # Если никогда не давил, то можно давить сразу
+    if last_davka == 0:
+        return {
+            'can_davka': True,
+            'time_until_next': 0,
+            'formatted_time': "Можно давить"
+        }
+
+    # Время между давками - 24 часа (86400 секунд)
+    cooldown_seconds = 86400
+    time_since_last_davka = current_time - last_davka
+
+    if time_since_last_davka >= cooldown_seconds:
+        return {
+            'can_davka': True,
+            'time_until_next': 0,
+            'formatted_time': "Можно давить"
+        }
+    else:
+        remaining_time = cooldown_seconds - time_since_last_davka
+        return {
+            'can_davka': False,
+            'time_until_next': remaining_time,
+            'formatted_time': ft(remaining_time)
+        }
 
 class ChatManager:
     """Менеджер для работы со статистикой чатов."""

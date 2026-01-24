@@ -5,9 +5,8 @@ MENUS = {
     "main": [
         ("🐍 Давить коричневага", "davka"),
         ("✈️ Отправить змия", "uletet"),
-        ("🌡️ Атмосферы", "atm_status"),
-        ("👊 Радёмка", "rademka"),
-        ("🏆 Топ", "top"),
+        ("👊 Радёмка (PvP)", "rademka"),
+        ("🏆 Топ игроков", "top"),
         ("📊 Профиль", "profile"),
         ("👤 Никнейм", "nickname_menu")
     ],
@@ -42,6 +41,13 @@ MENUS = {
         ("🔌 По кабелю", "top_cable"),
         ("🐍 По змию", "top_zmiy"),
         ("🌡️ По атмосферам", "top_atm")
+    ],
+
+    "profile": [
+        ("🏗️ Моя гофрошка", "gofra_info"),
+        ("🔌 Мой кабель", "cable_info"),
+        ("🌡️ Атмосферы", "atm_status"),
+        ("⬅️ Назад", "back_main")
     ]
 }
 
@@ -81,12 +87,12 @@ top_sort_keyboard = top_kb
 back_to_main_keyboard = lambda: back_kb("back_main")
 back_to_profile_keyboard = lambda: back_kb("profile")
 back_to_rademka_keyboard = lambda: back_kb("rademka")
-profile_extended_keyboard = lambda: mk("gofra", "profile", 1)
+profile_extended_keyboard = lambda: mk("profile", "back_main", 1)
 
 def atm_status_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [Btn(text="⏱️ Время восстановления", callback_data="atm_regen_time")],
-        [Btn(text="📊 Максимум атмосфер", callback_data="atm_max_info")],
+        [Btn(text="� Максимум атмосфер", callback_data="atm_max_info")],
         [Btn(text="⚡ Ускорение", callback_data="atm_boosters")],
         [Btn(text="⬅️ В профиль", callback_data="profile")]
     ])

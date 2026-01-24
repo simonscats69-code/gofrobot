@@ -7,9 +7,10 @@ import time
 import random
 import logging
 from db_manager import (
-    get_patsan, davka_zmiy, uletet_zmiy, get_gofra_info, 
+    get_patsan, davka_zmiy, uletet_zmiy, get_gofra_info,
     format_length, ChatManager, calculate_atm_regen_time,
-    calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight
+    calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight,
+    calculate_davka_cooldown
 )
 from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard
 from handlers.utils import ft
@@ -372,13 +373,22 @@ async def handle_davka_callback(callback: types.CallbackQuery):
             return
 
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
+
+        # Calculate cooldown for next davka
+        cooldown_info = await calculate_davka_cooldown(p)
+
         text = f"🐍 ДАВКА КОРИЧНЕВАГА!\n\n"
         text += f"💩 Выдавил: {res['zmiy_grams']}г коричневага!\n"
         text += f"🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
         text += f"🔌 Кабель: {format_length(res['old_cable_mm'])} → {format_length(res['new_cable_mm'])}\n"
         text += f"📈 Опыта: +{res['exp_gained_mm']:.1f} мм\n\n"
         text += f"🌀 Атмосферы: {p.get('atm_count', 0)}/12\n"
-        text += f"🐍 Змий: {p.get('zmiy_grams', 0.0):.0f}г"
+        text += f"🐍 Змий: {p.get('zmiy_grams', 0.0):.0f}г\n\n"
+
+        # Add precise timer information
+        text += f"⏱️ ТОЧНЫЙ ТАЙМЕР ДО СЛЕДУЮЩЕЙ ДАВКИ:\n"
+        text += f"🕒 Следующая давка через: {cooldown_info['formatted_time']}\n"
+        text += f"📅 Точное время: {cooldown_info['time_until_next']} секунд"
 
         try:
             await callback.message.edit_text(text, reply_markup=main_keyboard())
