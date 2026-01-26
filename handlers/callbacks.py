@@ -12,11 +12,64 @@ from db_manager import (
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight,
     calculate_davka_cooldown
 )
-from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard
-from handlers.utils import ft
+from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+# ========== UTILITIES FROM utils.py ==========
+def ft(s):
+    """
+    Format time duration in seconds to human-readable format
+
+    Args:
+        s: seconds
+
+    Returns:
+        str: formatted time string
+    """
+    if s < 60:
+        return f"{s}с"
+    m, h, d = s // 60, s // 3600, s // 86400
+    if d > 0:
+        return f"{d}д {h%24}ч {m%60}м"
+    if h > 0:
+        return f"{h}ч {m%60}м {s%60}с"
+    return f"{m}м {s%60}с"
+
+def ignore_not_modified_error(func):
+    """
+    Decorator to ignore TelegramBadRequest errors when message is not modified
+
+    Args:
+        func: function to wrap
+
+    Returns:
+        wrapper function
+    """
+    async def wrapper(*args, **kwargs):
+        try:
+            # Only pass kwargs that the function can actually accept
+            import inspect
+            sig = inspect.signature(func)
+            filtered_kwargs = {
+                k: v for k, v in kwargs.items()
+                if k in sig.parameters
+            }
+            return await func(*args, **filtered_kwargs)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                if len(args) > 0 and hasattr(args[0], 'callback_query'):
+                    await args[0].callback_query.answer()
+                return
+            raise
+    return wrapper
+
+def pb(c, t, l=10):
+    """Create a progress bar string"""
+    f = int((c / t) * l) if t > 0 else 0
+    return "█" * f + "░" * (l - f)
+# ========== END OF UTILITIES ==========
 
 @router.message(Command("start", "gofra", "gofrastart"))
 async def group_start(message: types.Message):
@@ -86,30 +139,30 @@ async def group_davka_command(message: types.Message):
 @router.message(Command("grademka", "g_rademka", "chatrademka"))
 async def group_rademka_command(message: types.Message):
     chat = message.chat
-    
+
     await ChatManager.register_chat(
         chat_id=chat.id,
         chat_title=chat.title if hasattr(chat, 'title') else "",
         chat_type=chat.type
     )
-    
+
     p = await get_patsan(message.from_user.id)
     gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
-    
+
     can_fight, fight_msg = await can_fight_pvp(message.from_user.id)
     fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
-    
+
     text = f"👊 РАДЁМКА В ЧАТЕ\n\n"
     text += f"{fight_status}\n\n"
     text += f"Выбери пацана из участников чата!\n"
     text += f"За победу: +5-10 мм к кабелю, +2 мм к гофрошке\n\n"
-    
+
     try:
         chat_stats = await ChatManager.get_chat_stats(message.chat.id)
         if chat_stats['total_players'] > 1:
             top_players = await ChatManager.get_chat_top(message.chat.id, limit=20)
             opponents = [p for p in top_players if p['user_id'] != message.from_user.id]
-            
+
             if opponents:
                 text += f"🎯 Доступные цели ({len(opponents)}):\n"
                 for i, opp in enumerate(opponents[:5], 1):
@@ -125,7 +178,7 @@ async def group_rademka_command(message: types.Message):
     except Exception as e:
         logger.error(f"Error getting chat players: {e}")
         text += "\nОшибка загрузки списка игроков"
-    
+
     await message.answer(text, reply_markup=get_chat_menu_keyboard())
 
 @router.message(Command("fight", "протащить", "радёмка"))
@@ -133,29 +186,29 @@ async def fight_command(message: types.Message, command: CommandObject):
     if not message.reply_to_message:
         await message.answer("❌ Ответь на сообщение игрока, которого хочешь протащить!")
         return
-    
+
     target_user = message.reply_to_message.from_user
     if target_user.id == message.from_user.id:
         await message.answer("❌ Нельзя драться с самим собой!")
         return
-    
+
     target_data = await get_patsan(target_user.id)
     attacker_data = await get_patsan(message.from_user.id)
-    
+
     if not target_data:
         await message.answer(f"❌ {target_user.first_name} ещё не зарегистрирован в боте!")
         return
-    
+
     can_fight, fight_msg = await can_fight_pvp(message.from_user.id)
     if not can_fight:
         await message.answer(f"❌ {fight_msg}")
         return
-    
+
     can_target_fight, target_fight_msg = await can_fight_pvp(target_user.id)
     if not can_target_fight:
         await message.answer(f"❌ {target_user.first_name} превысил лимит боёв на сегодня!")
         return
-    
+
     chance = await calculate_pvp_chance(attacker_data, target_data)
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -164,25 +217,25 @@ async def fight_command(message: types.Message, command: CommandObject):
             InlineKeyboardButton(text="❌ Отмена", callback_data="chat_menu")
         ]
     ])
-    
+
     gofra_info_att = get_gofra_info(attacker_data.get('gofra_mm', 10.0))
     gofra_info_tar = get_gofra_info(target_data.get('gofra_mm', 10.0))
-    
+
     text = f"👊 ЗАПРОС НА РАДЁМКУ!\n\n"
     text += f"🗡️ Атакующий: {message.from_user.first_name}\n"
     text += f"{gofra_info_att['emoji']} {gofra_info_att['name']}\n"
     text += f"🏗️ {format_length(attacker_data.get('gofra_mm', 10.0))} | 🔌 {format_length(attacker_data.get('cable_mm', 10.0))}\n\n"
-    
+
     text += f"🛡️ Цель: {target_user.first_name}\n"
     text += f"{gofra_info_tar['emoji']} {gofra_info_tar['name']}\n"
     text += f"🏗️ {format_length(target_data.get('gofra_mm', 10.0))} | 🔌 {format_length(target_data.get('cable_mm', 10.0))}\n\n"
-    
+
     text += f"🎯 Шанс успеха: {chance}%\n"
     text += f"🏆 Награда за победу: +5-10 мм к кабелю, +2 мм к гофрошке\n"
     text += f"💀 Риск: публичный позор при проигрыше\n\n"
-    
+
     text += f"Подтверждаешь радёмку?"
-    
+
     await message.answer(text, reply_markup=keyboard)
 
 @router.message(Command("gme", "g_me", "chatme"))
@@ -192,7 +245,7 @@ async def my_chat_stats_command(message: types.Message):
 async def show_chat_top_message(chat_id, message_obj):
     try:
         top_players = await ChatManager.get_chat_top(chat_id, limit=10)
-        
+
         if not top_players:
             await message_obj.answer(
                 "📊 ТОП ЧАТА ПУСТ!\n\n"
@@ -201,31 +254,31 @@ async def show_chat_top_message(chat_id, message_obj):
                 reply_markup=get_chat_menu_keyboard()
             )
             return
-        
+
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        
+
         text = f"🏆 ТОП ЧАТА:\n\n"
-        
+
         for i, player in enumerate(top_players):
             medal = medals[i] if i < len(medals) else f"{i+1}."
             nickname = player.get('nickname', f'Игрок_{player.get("user_id")}')
             if len(nickname) > 20:
                 nickname = nickname[:17] + "..."
-            
+
             total_kg = player['total_zmiy_grams'] / 1000
-            
+
             text += f"{medal} {nickname}\n"
             text += f"   🐍 {total_kg:.1f} кг змия | #{player['rank']}\n\n"
-        
+
         stats = await ChatManager.get_chat_stats(chat_id)
         text += f"📈 Статистика чата:\n"
         text += f"• Участников: {stats['total_players']}\n"
         text += f"• Всего змия: {stats['total_zmiy_all']/1000:.1f} кг\n"
         text += f"• Всего давок: {stats['total_davki_all']}\n"
         text += f"• Активных: {stats['active_players']}"
-        
+
         await message_obj.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
     except Exception as e:
         logger.error(f"Error getting chat top: {e}")
         await message_obj.answer("❌ Ошибка загрузки топа чата.", reply_markup=get_chat_menu_keyboard())
@@ -233,28 +286,28 @@ async def show_chat_top_message(chat_id, message_obj):
 async def show_chat_stats_message(chat_id, message_obj):
     try:
         stats = await ChatManager.get_chat_stats(chat_id)
-        
+
         if stats['last_activity'] > 0:
             last_active = time.strftime('%d.%m.%Y %H:%M', time.localtime(stats['last_activity']))
         else:
             last_active = "никогда"
-        
+
         text = f"📊 СТАТИСТИКА ЧАТА\n\n"
         text += f"👥 Участников: {stats['total_players']}\n"
         text += f"🔥 Активных: {stats['active_players']}\n\n"
-        
+
         text += f"🐍 Змий добыто:\n"
         text += f"• Всего: {stats['total_zmiy_all']/1000:.1f} кг\n"
         text += f"• На игрока: {stats['total_zmiy_all']/max(1, stats['total_players'])/1000:.1f} кг\n\n"
-        
+
         text += f"⚡ Давок сделано:\n"
         text += f"• Всего: {stats['total_davki_all']}\n"
         text += f"• На игрока: {stats['total_davki_all']/max(1, stats['total_players']):.0f}\n\n"
-        
+
         text += f"⏱️ Последняя активность: {last_active}"
-        
+
         await message_obj.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
     except Exception as e:
         logger.error(f"Error getting chat stats: {e}")
         await message_obj.answer("❌ Ошибка загрузки статистики.", reply_markup=get_chat_menu_keyboard())
@@ -265,47 +318,47 @@ async def process_chat_davka_message(user_id, chat_id, message_obj):
         chat_title=message_obj.chat.title if hasattr(message_obj.chat, 'title') else "",
         chat_type=message_obj.chat.type
     )
-    
+
     try:
         success, p, res = await davka_zmiy(user_id, chat_id)
-        
+
         if not success:
             await message_obj.answer(res, reply_markup=get_chat_menu_keyboard())
             return
-        
+
         await ChatManager.update_chat_activity(chat_id)
-        
+
         user_total = await ChatManager.get_user_total_in_chat(chat_id, user_id)
         top_players = await ChatManager.get_chat_top(chat_id, limit=50)
-        
+
         rank = None
         for i, player in enumerate(top_players, 1):
             if player['user_id'] == user_id:
                 rank = i
                 break
-        
+
         davka_texts = [
             f"🐍 {message_obj.from_user.first_name} ЗАВАРВАРИЛ ДВАНАШКУ!\n\n",
             f"🐍 {message_obj.from_user.first_name} ВЫДАВИЛ КОРИЧНЕВАГА!\n\n",
             f"🐍 {message_obj.from_user.first_name} ОТЖАЛ ЗМИЯ!\n\n"
         ]
-        
+
         text = random.choice(davka_texts)
         text += f"💩 Выдавил: {res['zmiy_grams']}г коричневага!\n"
         text += f"🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
         text += f"🔌 Кабель: {format_length(res['old_cable_mm'])} → {format_length(res['new_cable_mm'])}\n"
         text += f"📈 Опыта: +{res['exp_gained_mm']:.1f} мм\n\n"
-        
+
         text += f"📊 В этом чате:\n"
         text += f"• Всего змия: {user_total/1000:.1f} кг\n"
         if rank:
             text += f"• Место в топе: #{rank}\n"
-        
+
         if rank == 1:
             text += "\n🏆 ЛИДЕР ЧАТА! 🏆\n"
-        
+
         await message_obj.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
     except Exception as e:
         logger.error(f"Error in group davka: {e}")
         await message_obj.answer("❌ Ошибка при давке змия.", reply_markup=get_chat_menu_keyboard())
@@ -313,7 +366,7 @@ async def process_chat_davka_message(user_id, chat_id, message_obj):
 async def show_user_chat_stats_message(user_id, chat_id, message_obj):
     try:
         user_total = await ChatManager.get_user_total_in_chat(chat_id, user_id)
-        
+
         if user_total == 0:
             await message_obj.answer(
                 f"📊 Твоя статистика в этом чате:\n\n"
@@ -322,41 +375,41 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
                 reply_markup=get_chat_menu_keyboard()
             )
             return
-        
+
         top_players = await ChatManager.get_chat_top(chat_id, limit=50)
         rank = None
         total_in_chat = 0
-        
+
         for i, player in enumerate(top_players, 1):
             total_in_chat += 1
             if player['user_id'] == user_id:
                 rank = i
-        
+
         stats = await ChatManager.get_chat_stats(chat_id)
-        
+
         text = f"📊 ТВОЯ СТАТИСТИКА В ЧАТЕ\n\n"
         text += f"🐍 Всего змия: {user_total/1000:.1f} кг\n"
-        
+
         if rank:
             text += f"🏆 Место в топе: #{rank} из {total_in_chat}\n"
-            
+
             if rank > 1:
                 prev_player = top_players[rank-2]
                 diff = user_total - prev_player['total_zmiy_grams']
-                text += f"� До #{rank-1}: +{diff/1000:.1f} кг\n"
-            
+                text += f"📈 До #{rank-1}: +{diff/1000:.1f} кг\n"
+
             if rank < len(top_players):
                 next_player = top_players[rank]
                 diff = next_player['total_zmiy_grams'] - user_total
                 text += f"📉 До #{rank+1}: -{diff/1000:.1f} кг\n"
-        
+
         text += f"\n📊 Статистика чата:\n"
         text += f"• Всего участников: {stats['total_players']}\n"
         text += f"• Общий вес змия: {stats['total_zmiy_all']/1000:.1f} кг\n"
         text += f"• Твой вклад: {(user_total/stats['total_zmiy_all']*100):.1f}%"
-        
+
         await message_obj.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
     except Exception as e:
         logger.error(f"Error getting user chat stats: {e}")
         await message_obj.answer("❌ Ошибка загрузки статистики.", reply_markup=get_chat_menu_keyboard())
@@ -473,7 +526,7 @@ async def handle_cable_info_callback(callback: types.CallbackQuery):
         text += f"А у тебя пацанчик с гофроцентрала кишка как кабель силовой висит на {format_length(p.get('cable_mm', 10.0))}!\n\n"
         text += f"Как прокачать:\n"
         text += f"• Каждые 2кг змия = +0.2 мм\n"
-        text += f"• Победы в радёмках = +0.2 мм\n\n"
+        text += f"• Победы в радёмках дают +0.2 мм\n\n"
         text += f"📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г"
 
         try:
@@ -746,7 +799,7 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
     action = callback.data.replace("chat_", "")
     chat_id = callback.message.chat.id
     user_id = callback.from_user.id
-    
+
     try:
         if action == "davka":
             await process_chat_davka_callback(callback, user_id, chat_id)
@@ -772,7 +825,7 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
             await callback.answer("Используй команду /fight в ответ на сообщение игрока", show_alert=True)
         else:
             await callback.answer("❌ Неизвестное действие", show_alert=True)
-    
+
     except Exception as e:
         logger.error(f"Error in chat callback {action}: {e}")
         await callback.answer("❌ Ошибка, попробуй позже", show_alert=True)
@@ -782,73 +835,73 @@ async def handle_chat_fight(callback: types.CallbackQuery):
     try:
         target_id = int(callback.data.replace("chat_fight_", ""))
         attacker_id = callback.from_user.id
-        
+
         if attacker_id == target_id:
             await callback.answer("❌ Нельзя драться с самим собой!", show_alert=True)
             return
-        
+
         can_fight, fight_msg = await can_fight_pvp(attacker_id)
         if not can_fight:
             await callback.answer(f"❌ {fight_msg}", show_alert=True)
             return
-        
+
         attacker = await get_patsan(attacker_id)
         target = await get_patsan(target_id)
-        
+
         if not attacker or not target:
             await callback.answer("❌ Ошибка: игрок не найден!", show_alert=True)
             return
-        
+
         chance = await calculate_pvp_chance(attacker, target)
         success = random.random() < (chance / 100)
-        
+
         winner_id = attacker_id if success else target_id
         loser_id = target_id if success else attacker_id
-        
+
         winner = await get_patsan(winner_id)
         loser = await get_patsan(loser_id)
-        
+
         if success:
             cable_gain_mm = 0.2
             attacker["cable_mm"] = attacker.get("cable_mm", 10.0) + cable_gain_mm
-            
+
             level_diff = target.get("gofra_mm", 10.0) - attacker.get("gofra_mm", 10.0)
             if level_diff > 0:
                 gofra_gain_mm = 12.0 + min(level_diff / 100, 8.0)
             else:
                 gofra_gain_mm = max(5.0, 12.0 + level_diff / 200)
-            
+
             gofra_gain_mm = round(gofra_gain_mm, 2)
             attacker["gofra_mm"] = attacker.get("gofra_mm", 10.0) + gofra_gain_mm
-            
+
             attacker["cable_power"] = int(attacker["cable_mm"] / 5)
             attacker["gofra"] = int(attacker["gofra_mm"] / 10)
-            
+
             await save_patsan(attacker)
             winner_nick = attacker.get('nickname', callback.from_user.first_name)
             loser_nick = target.get('nickname', 'Неизвестно')
         else:
             cable_gain_mm = 0.1
             target["cable_mm"] = target.get("cable_mm", 10.0) + cable_gain_mm
-            
+
             level_diff = attacker.get("gofra_mm", 10.0) - target.get("gofra_mm", 10.0)
             if level_diff > 0:
                 gofra_gain_mm = 6.0 + min(level_diff / 200, 4.0)
             else:
                 gofra_gain_mm = max(2.5, 6.0 + level_diff / 400)
-            
+
             gofra_gain_mm = round(gofra_gain_mm, 2)
             target["gofra_mm"] = target.get("gofra_mm", 10.0) + gofra_gain_mm
-            
+
             target["cable_power"] = int(target["cable_mm"] / 5)
             target["gofra"] = int(target["gofra_mm"] / 10)
-            
+
             await save_patsan(target)
             winner_nick = target.get('nickname', 'Неизвестно')
             loser_nick = attacker.get('nickname', callback.from_user.first_name)
-        
+
         await save_rademka_fight(winner_id=winner_id, loser_id=loser_id, money_taken=0)
-        
+
         if success:
             result_text = f"🎉 РАДЁМКА ЗАВЕРШЕНА!\n\n"
             result_text += f"🏆 ПОБЕДИТЕЛЬ: {callback.from_user.first_name}\n"
@@ -865,14 +918,14 @@ async def handle_chat_fight(callback: types.CallbackQuery):
             result_text += f"{callback.from_user.first_name} был унижен публично!\n"
             result_text += f"🎯 Шанс был: {chance}%\n\n"
             result_text += f"Теперь {callback.from_user.first_name} моет туалеты на гофроцентрале!"
-        
+
         try:
             await callback.message.edit_text(result_text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(result_text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
         try:
             await callback.message.bot.send_message(
                 chat_id=callback.message.chat.id,
@@ -880,7 +933,7 @@ async def handle_chat_fight(callback: types.CallbackQuery):
             )
         except:
             pass
-            
+
     except Exception as e:
         logger.error(f"Error in chat fight: {e}", exc_info=True)
         await callback.answer("❌ Ошибка в радёмке!", show_alert=True)
@@ -891,88 +944,88 @@ async def process_chat_davka_callback(callback: types.CallbackQuery, user_id: in
         chat_title=callback.message.chat.title if hasattr(callback.message.chat, 'title') else "",
         chat_type=callback.message.chat.type
     )
-    
+
     success, p, res = await davka_zmiy(user_id, chat_id)
-    
+
     if not success:
         await callback.answer(res, show_alert=True)
         return
-    
+
     await ChatManager.update_chat_activity(chat_id)
-    
+
     user_total = await ChatManager.get_user_total_in_chat(chat_id, user_id)
     top_players = await ChatManager.get_chat_top(chat_id, limit=50)
-    
+
     rank = None
     for i, player in enumerate(top_players, 1):
         if player['user_id'] == user_id:
             rank = i
             break
-    
+
     davka_texts = [
         f"🐍 {callback.from_user.first_name} ЗАВАРВАРИЛ ДВАНАШКУ!\n\n",
         f"🐍 {callback.from_user.first_name} ВЫДАВИЛ КОРИЧНЕВАГА!\n\n",
         f"🐍 {callback.from_user.first_name} ОТЖАЛ ЗМИЯ!\n\n"
     ]
-    
+
     text = random.choice(davka_texts)
     text += f"💩 Выдавил: {res['zmiy_grams']}г коричневага!\n"
-    text += f"🏗️ Гофra: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
+    text += f"🏗️ Гофра: {format_length(res['old_gofra_mm'])} → {format_length(res['new_gofra_mm'])}\n"
     text += f"🔌 Кабель: {format_length(res['old_cable_mm'])} → {format_length(res['new_cable_mm'])}\n"
     text += f"📈 Опыта: +{res['exp_gained_mm']:.1f} мм\n\n"
-    
+
     text += f"📊 В этом чате:\n"
     text += f"• Всего змия: {user_total/1000:.1f} кг\n"
     if rank:
         text += f"• Место в топе: #{rank}\n"
-    
+
     if rank == 1:
         text += "\n🏆 ЛИДЕР ЧАТА! 🏆\n"
-    
+
     try:
         await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
     except TelegramBadRequest:
         await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-    
+
     await callback.answer()
 
 async def show_chat_top_callback(callback: types.CallbackQuery, chat_id: int):
     try:
         top_players = await ChatManager.get_chat_top(chat_id, limit=10)
-        
+
         if not top_players:
             await callback.answer("📊 Топ чата пуст! Будь первым!", show_alert=True)
             return
-        
+
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        
+
         text = f"🏆 ТОП ЧАТА:\n\n"
-        
+
         for i, player in enumerate(top_players):
             medal = medals[i] if i < len(medals) else f"{i+1}."
             nickname = player.get('nickname', f'Игрок_{player.get("user_id")}')
             if len(nickname) > 20:
                 nickname = nickname[:17] + "..."
-            
+
             total_kg = player['total_zmiy_grams'] / 1000
-            
+
             text += f"{medal} {nickname}\n"
             text += f"   🐍 {total_kg:.1f} кг змия | #{player['rank']}\n\n"
-        
+
         stats = await ChatManager.get_chat_stats(chat_id)
         text += f"📈 Статистика чата:\n"
         text += f"• Участников: {stats['total_players']}\n"
         text += f"• Всего змия: {stats['total_zmiy_all']/1000:.1f} кг\n"
         text += f"• Всего давок: {stats['total_davki_all']}\n"
         text += f"• Активных: {stats['active_players']}"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback top: {e}")
         await callback.answer("❌ Ошибка загрузки топа", show_alert=True)
@@ -980,33 +1033,33 @@ async def show_chat_top_callback(callback: types.CallbackQuery, chat_id: int):
 async def show_chat_stats_callback(callback: types.CallbackQuery, chat_id: int):
     try:
         stats = await ChatManager.get_chat_stats(chat_id)
-        
+
         if stats['last_activity'] > 0:
             last_active = time.strftime('%d.%m.%Y %H:%M', time.localtime(stats['last_activity']))
         else:
             last_active = "никогда"
-        
+
         text = f"📊 СТАТИСТИКА ЧАТА\n\n"
         text += f"👥 Участников: {stats['total_players']}\n"
         text += f"🔥 Активных: {stats['active_players']}\n\n"
-        
+
         text += f"🐍 Змий добыто:\n"
         text += f"• Всего: {stats['total_zmiy_all']/1000:.1f} кг\n"
         text += f"• На игрока: {stats['total_zmiy_all']/max(1, stats['total_players'])/1000:.1f} кг\n\n"
-        
+
         text += f"⚡ Давок сделано:\n"
         text += f"• Всего: {stats['total_davki_all']}\n"
         text += f"• На игрока: {stats['total_davki_all']/max(1, stats['total_players']):.0f}\n\n"
-        
+
         text += f"⏱️ Последняя активность: {last_active}"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback stats: {e}")
         await callback.answer("❌ Ошибка загрузки статистики", show_alert=True)
@@ -1014,59 +1067,59 @@ async def show_chat_stats_callback(callback: types.CallbackQuery, chat_id: int):
 async def show_user_chat_stats_callback(callback: types.CallbackQuery, user_id: int, chat_id: int):
     try:
         user_total = await ChatManager.get_user_total_in_chat(chat_id, user_id)
-        
+
         if user_total == 0:
             text = f"📊 Твоя статистика в этом чате:\n\n"
             text += f"Пока ты не давил змия в этом чате.\n"
             text += f"Нажми кнопку 🐍 Давить в чате!"
-            
+
             try:
                 await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
             except TelegramBadRequest:
                 await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-            
+
             await callback.answer()
             return
-        
+
         top_players = await ChatManager.get_chat_top(chat_id, limit=50)
         rank = None
         total_in_chat = 0
-        
+
         for i, player in enumerate(top_players, 1):
             total_in_chat += 1
             if player['user_id'] == user_id:
                 rank = i
-        
+
         stats = await ChatManager.get_chat_stats(chat_id)
-        
+
         text = f"📊 ТВОЯ СТАТИСТИКА В ЧАТЕ\n\n"
         text += f"🐍 Всего змия: {user_total/1000:.1f} кг\n"
-        
+
         if rank:
             text += f"🏆 Место в топе: #{rank} из {total_in_chat}\n"
-            
+
             if rank > 1:
                 prev_player = top_players[rank-2]
                 diff = user_total - prev_player['total_zmiy_grams']
                 text += f"📈 До #{rank-1}: +{diff/1000:.1f} кг\n"
-            
+
             if rank < len(top_players):
                 next_player = top_players[rank]
                 diff = next_player['total_zmiy_grams'] - user_total
                 text += f"📉 До #{rank+1}: -{diff/1000:.1f} кг\n"
-        
+
         text += f"\n📊 Статистика чата:\n"
         text += f"• Всего участников: {stats['total_players']}\n"
         text += f"• Общий вес змия: {stats['total_zmiy_all']/1000:.1f} кг\n"
         text += f"• Твой вклад: {(user_total/stats['total_zmiy_all']*100):.1f}%"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback me: {e}")
         await callback.answer("❌ Ошибка загрузки статистики", show_alert=True)
@@ -1075,14 +1128,14 @@ async def show_user_gofra_callback(callback: types.CallbackQuery, user_id: int):
     try:
         p = await get_patsan(user_id)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
-        
+
         text = f"🏗️ ТВОЯ ГОФРА\n\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"📏 Длина: {gofra_info['length_display']}\n\n"
         text += f"Характеристики:\n"
         text += f"⚡ Скорость атмосфер: x{gofra_info['atm_speed']:.2f}\n"
         text += f"⚖️ Вес змия: {gofra_info['min_grams']}-{gofra_info['max_grams']}г\n\n"
-        
+
         if gofra_info.get('next_threshold'):
             progress = gofra_info['progress']
             next_gofra = get_gofra_info(gofra_info['next_threshold'])
@@ -1092,14 +1145,14 @@ async def show_user_gofra_callback(callback: types.CallbackQuery, user_id: int):
             text += f"📈 Прогресс: {progress*100:.1f}%"
         else:
             text += "🎉 Максимальный уровень гофрошки!"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback gofra: {e}")
         await callback.answer("❌ Ошибка загрузки информации", show_alert=True)
@@ -1107,22 +1160,22 @@ async def show_user_gofra_callback(callback: types.CallbackQuery, user_id: int):
 async def show_user_cable_callback(callback: types.CallbackQuery, user_id: int):
     try:
         p = await get_patsan(user_id)
-        
+
         text = f"🔌 ТВОЙ КАБЕЛЬ\n\n"
         text += f"💪 Длина: {format_length(p.get('cable_mm', 10.0))}\n"
         text += f"⚔️ Бонус в PvP: +{(p.get('cable_mm', 10.0) * 0.02):.1f}%\n\n"
         text += f"Как прокачать:\n"
         text += f"• Каждые 2кг змия = +0.2 мм\n"
-        text += f"• Победы в радёмках = +0.2 мм\n\n"
+        text += f"• Победы в радёмках дают +0.2 мм\n\n"
         text += f"📊 Всего змия: {p.get('total_zmiy_grams', 0):.0f}г"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
-            await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+            await callback.message.answer(text, reply_markup=cable_info_kb())
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback cable: {e}")
         await callback.answer("❌ Ошибка загрузки информации", show_alert=True)
@@ -1158,21 +1211,21 @@ async def show_rademka_callback(callback: types.CallbackQuery, user_id: int, cha
     try:
         p = await get_patsan(user_id)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
-        
+
         can_fight, fight_msg = await can_fight_pvp(user_id)
         fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
-        
+
         text = f"👊 РАДЁМКА (PvP)\n\n"
         text += f"{fight_status}\n\n"
         text += f"Выбери пацана из участников чата!\n"
         text += f"За победу: +0.2 мм к кабелю, +5-12 мм к гофрошке\n\n"
-        
+
         try:
             chat_stats = await ChatManager.get_chat_stats(chat_id)
             if chat_stats['total_players'] > 1:
                 top_players = await ChatManager.get_chat_top(chat_id, limit=20)
                 opponents = [p for p in top_players if p['user_id'] != user_id]
-                
+
                 if opponents:
                     text += f"🎯 Доступные цели ({len(opponents)}):\n"
                     for i, opp in enumerate(opponents[:5], 1):
@@ -1188,18 +1241,18 @@ async def show_rademka_callback(callback: types.CallbackQuery, user_id: int, cha
         except Exception as e:
             logger.error(f"Error getting chat players in callback: {e}")
             text += "\nОшибка загрузки списка игроков"
-        
+
         text += f"\n\nТвои статы:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"🏗️ {format_length(p.get('gofra_mm', 10.0))} | 🔌 {format_length(p.get('cable_mm', 10.0))}"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback rademka: {e}")
         await callback.answer("❌ Ошибка загрузки информации", show_alert=True)
@@ -1225,30 +1278,30 @@ async def show_chat_help_callback(callback: types.CallbackQuery):
         "📊 В чате сохраняется общая статистика!\n"
         "👊 Радёмки работают только между участниками чата!"
     )
-    
+
     try:
         await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
     except TelegramBadRequest:
         await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-    
+
     await callback.answer()
 
 async def show_chat_menu_callback(callback: types.CallbackQuery):
     text = "🏗️ ГОФРА-МЕНЮ ДЛЯ ЧАТА 🏗️\n\nВыбери действие:"
-    
+
     try:
         await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
     except TelegramBadRequest:
         await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-    
+
     await callback.answer()
 
 @router.message(F.text.contains("гофрошка") | F.text.contains("змий") | F.text.contains("давка"))
 async def group_keywords(message: types.Message):
     text_lower = message.text.lower()
-    
+
     responses = []
-    
+
     if "гофрошка" in text_lower:
         responses.extend([
             "Гофрошка - это жизнь! 🏗️",
@@ -1270,7 +1323,7 @@ async def group_keywords(message: types.Message):
             "Все 12 атмосфер готовы? Тогда /davka ⚡",
             "Лучшая давка - это утренняя давка! ☀️"
         ])
-    
+
     if responses:
         response = random.choice(responses)
 
@@ -1288,3 +1341,223 @@ async def group_keywords(message: types.Message):
             response = response.format(weight=weight)
 
         await message.reply(response)
+
+# ========== TOP HANDLERS FROM top.py ==========
+@router.callback_query(F.data == "top")
+@ignore_not_modified_error
+async def callback_top_menu(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "🏆 ТОП ПАЦАНОВ С ГОФРОЦЕНТРАЛА\n\n"
+        "Выбери, по какому показателю сортировать рейтинг:",
+        reply_markup=top_sort_keyboard()
+    )
+
+@ignore_not_modified_error
+@router.callback_query(F.data.startswith("top_"))
+async def show_top(callback: types.CallbackQuery):
+    sort_type = callback.data.replace("top_", "")
+
+    sort_map = {
+        "gofra": ("гофрошке", "🏗️", "gofra"),
+        "cable": ("кабелю", "🔌", "cable_power"),
+        "zmiy": ("змию", "🐍", "zmiy_grams"),
+        "atm": ("атмосферам", "🌀", "atm_count")
+    }
+
+    if sort_type not in sort_map:
+        await callback.answer("Неизвестный тип топа", show_alert=True)
+        return
+
+    sort_name, emoji, db_key = sort_map[sort_type]
+
+    try:
+        top_players = await get_top_players(limit=10, sort_by=db_key)
+    except Exception as e:
+        await callback.answer(f"Ошибка при получении топа: {e}", show_alert=True)
+        return
+
+    if not top_players:
+        await callback.message.edit_text(
+            "😕 Топ пуст!\n\n"
+            "Ещё никто не заслужил места в рейтинге.\n"
+            "Будь первым!",
+            reply_markup=top_sort_keyboard()
+        )
+        return
+
+    top_text = f"{emoji} Топ пацанов по {sort_name}:\n\n"
+
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+    for i, player in enumerate(top_players):
+        medal = medals[i] if i < len(medals) else f"{i+1}."
+
+        if sort_type == "gofra":
+            gofra_info = get_gofra_info(player.get('gofra_mm', 10.0))
+            value = f"🏗️ {gofra_info['length_display']} {gofra_info['emoji']}"
+        elif sort_type == "cable":
+            value = f"🔌 {format_length(player.get('cable_mm', 10.0))}"
+        elif sort_type == "zmiy":
+            value = f"🐍 {player['zmiy_grams']:.0f}г"
+        else:
+            value = f"🌀 {player['atm_count']}/12"
+
+        nickname = player['nickname']
+        if len(nickname) > 20:
+            nickname = nickname[:17] + "..."
+
+        top_text += f"{medal} {nickname} — {value}\n"
+
+    top_text += f"\n📊 Всего пацанов в системе: {len(top_players)}"
+
+    current_user_id = callback.from_user.id
+    user_position = None
+
+    for i, player in enumerate(top_players):
+        if player.get('user_id') == current_user_id:
+            user_position = i + 1
+            break
+
+    if user_position:
+        user_medal = medals[user_position-1] if user_position-1 < len(medals) else str(user_position)
+        top_text += f"\n\n🎯 Твоя позиция: {user_medal}"
+
+    await callback.message.edit_text(
+        top_text,
+        reply_markup=top_sort_keyboard()
+    )
+
+@ignore_not_modified_error
+@router.callback_query(F.data == "back_main")
+async def back_to_main_from_top(callback: types.CallbackQuery):
+    from db_manager import get_patsan, get_gofra_info, format_length
+
+    patsan = await get_patsan(callback.from_user.id)
+    gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+    await callback.message.edit_text(
+        f"Главное меню. Атмосфер: {patsan['atm_count']}/12\n"
+        f"{gofra_info['emoji']} {gofra_info['name']} | 🏗️ {gofra_info['length_display']}",
+        reply_markup=main_keyboard()
+    )
+# ========== END OF TOP HANDLERS ==========
+
+# ========== ATM HANDLERS FROM atm_handlers.py ==========
+@router.callback_query(F.data == "atm_regen_time")
+@ignore_not_modified_error
+async def atm_regen_time_info(callback: types.CallbackQuery):
+    try:
+        await callback.answer()
+        user_id = callback.from_user.id
+        patsan = await get_patsan(user_id)
+
+        atm_count = patsan.get('atm_count', 0)
+        max_atm = 12
+
+        regen_info = await calculate_atm_regen_time(patsan)
+        gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+
+        text = (
+            f"⏱️ ВРЕМЯ ВОССТАНОВЛЕНИЯ АТМОСФЕР\n\n"
+            f"Текущее состояние:\n"
+            f"🌀 Атмосферы: [{pb(atm_count, max_atm)}] {atm_count}/{max_atm}\n"
+            f"📈 Нужно восстановить: {regen_info['needed']} шт.\n\n"
+            f"Точный таймер:\n"
+            f"🕒 До следующей атмосферы: {ft(regen_info['time_to_next_atm'])}\n"
+            f"🕐 До полного восстановления: {ft(regen_info['total'])}\n\n"
+            f"Скорость восстановления:\n"
+            f"• Базовая: 1 атм. за 2 часа (7200с)\n"
+            f"• С учётом гофрошки ({gofra_info['name']}): x{gofra_info['atm_speed']:.2f}\n"
+            f"• 1 атм. за: {ft(regen_info['time_to_one_atm'])}\n\n"
+            f"Как ускорить:\n"
+            f"• Повышай гофрошку - ускоряет восстановление\n"
+            f"• Дави змия при полных 12 атмосферах\n"
+            f"• Больше опыт → выше гофрошка → быстрее атмосферы"
+        )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_profile_keyboard()
+        )
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
+
+@ignore_not_modified_error
+@router.callback_query(F.data == "atm_max_info")
+async def atm_max_info(callback: types.CallbackQuery):
+    try:
+        await callback.answer()
+        user_id = callback.from_user.id
+        patsan = await get_patsan(user_id)
+
+        current_max = 12
+        atm_count = patsan.get('atm_count', 0)
+
+        gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+
+        text = (
+            f"📊 МАКСИМАЛЬНЫЙ ЗАПАС АТМОСФЕР\n\n"
+            f"Текущие показатели:\n"
+            f"🌀 Атмосферы: [{pb(atm_count, current_max)}] {atm_count}/{current_max}\n"
+            f"🎯 Максимум: {current_max} атм.\n\n"
+            f"Особенности системы:\n"
+            f"• Фиксированный максимум: 12 атмосфер\n"
+            f"• Только при полных 12 можно давить змия\n"
+            f"• Восстановление зависит от гофрошки\n\n"
+            f"Твоя гофрошка:\n"
+            f"{gofra_info['emoji']} {gofra_info['name']}\n"
+            f"⚡ Скорость восстановления: x{gofra_info['atm_speed']:.2f}\n\n"
+            f"Зачем ждать 12 атмосфер?\n"
+            f"• Более тяжёлый змий при давке\n"
+            f"• Больше опыт для гофрошки\n"
+            f"• Укрепление кабеля (+0.1 мм за 1кг змия)"
+        )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_profile_keyboard()
+        )
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
+
+@ignore_not_modified_error
+@router.callback_query(F.data == "atm_boosters")
+async def atm_boosters_info(callback: types.CallbackQuery):
+    try:
+        await callback.answer()
+        user_id = callback.from_user.id
+        patsan = await get_patsan(user_id)
+        gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
+
+        text = (
+            f"⚡ УСКОРЕНИЕ ВОССТАНОВЛЕНИЯ\n\n"
+            f"В новой системе нет платных бустеров!\n\n"
+            f"Вместо них работает:\n"
+            f"🏗️ СИСТЕМА ГОФРЫ\n\n"
+            f"Твоя гофрошка:\n"
+            f"{gofra_info['emoji']} {gofra_info['name']}\n"
+            f"⚡ Множитель скорости: x{gofra_info['atm_speed']:.2f}\n\n"
+            f"Как улучшить гофрошку?\n"
+            f"1. Дождись 12 атмосфер (кнопка 🌡️)\n"
+            f"2. Дави змия (кнопка 🐍)\n"
+            f"3. Получай опыт (0.02 мм/г змия)\n"
+            f"4. Повышай гофрошку\n\n"
+            f"Следующие уровни гофрошки:\n"
+        )
+
+        thresholds = [10.0, 50.0, 150.0, 300.0, 600.0, 1200.0, 2500.0, 5000.0, 10000.0, 20000.0]
+        current_gofra = patsan.get('gofra_mm', 10.0)
+
+        for i, threshold in enumerate(thresholds):
+            if current_gofra < threshold:
+                next_info = get_gofra_info(threshold)
+                text += f"• {next_info['emoji']} {next_info['name']}: x{next_info['atm_speed']:.2f}\n"
+                if i >= 2:
+                    break
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=back_to_profile_keyboard()
+        )
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
+# ========== END OF ATM HANDLERS ==========
