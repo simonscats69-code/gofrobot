@@ -9,7 +9,7 @@ import re
 import logging
 from db_manager import get_patsan, change_nickname, save_patsan, save_rademka_fight, get_top_players, get_gofra_info, calculate_pvp_chance, can_fight_pvp, format_length
 from keyboards import main_keyboard, nickname_keyboard, rademka_keyboard, rademka_fight_keyboard, back_kb
-from handlers.utils import ignore_not_modified_error
+from .callbacks import ignore_not_modified_error
 
 router = Router()
 logger = logging.getLogger(__name__)
