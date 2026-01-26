@@ -15,7 +15,7 @@ from db_manager import (
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight
 )
 from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard
-from handlers.utils import ft
+from .callbacks import ft
 
 router = Router()
 logger = logging.getLogger(__name__)
