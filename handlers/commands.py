@@ -27,7 +27,7 @@ async def cmd_profile(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
     gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
-    regen_info = calculate_atm_regen_time(patsan)
+    regen_info = await calculate_atm_regen_time(patsan)
     
     await message.answer(
         f"📊 ПРОФИЛЬ ПАЦАНА:\n\n"
@@ -98,7 +98,7 @@ async def cmd_cable(message: types.Message):
 @router.message(Command("atm"))
 async def cmd_atm(message: types.Message):
     patsan = await get_patsan(message.from_user.id)
-    regen_info = calculate_atm_regen_time(patsan)
+    regen_info = await calculate_atm_regen_time(patsan)
     gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     
     text = f"🌡️ СОСТОЯНИЕ АТМОСФЕР\n\n"
