@@ -799,7 +799,7 @@ async def handle_chat_fight(callback: types.CallbackQuery):
             await callback.answer("❌ Ошибка: игрок не найден!", show_alert=True)
             return
         
-        chance = calculate_pvp_chance(attacker, target)
+        chance = await calculate_pvp_chance(attacker, target)
         success = random.random() < (chance / 100)
         
         winner_id = attacker_id if success else target_id
