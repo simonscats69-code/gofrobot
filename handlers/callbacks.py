@@ -1130,16 +1130,9 @@ async def show_user_cable_callback(callback: types.CallbackQuery, user_id: int):
 async def show_user_atm_callback(callback: types.CallbackQuery, user_id: int):
     try:
         p = await get_patsan(user_id)
-        regen_info = calculate_atm_regen_time(p)
+        regen_info = await calculate_atm_regen_time(p)
         gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
-        
-        def ft(s):
-            if s < 60: return f"{s}с"
-            m, h, d = s // 60, s // 3600, s // 86400
-            if d > 0: return f"{d}д {h%24}ч {m%60}м"
-            if h > 0: return f"{h}ч {m%60}м {s%60}с"
-            return f"{m}м {s%60}с"
-        
+
         text = f"🌡️ ТВОИ АТМОСФЕРЫ\n\n"
         text += f"🌀 Текущий запас: {p.get('atm_count', 0)}/12\n\n"
         text += f"Восстановление:\n"
@@ -1149,14 +1142,14 @@ async def show_user_atm_callback(callback: types.CallbackQuery, user_id: int):
         text += f"Влияние гофрошки:\n"
         text += f"{gofra_info['emoji']} {gofra_info['name']}\n"
         text += f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}"
-        
+
         try:
             await callback.message.edit_text(text, reply_markup=get_chat_menu_keyboard())
         except TelegramBadRequest:
             await callback.message.answer(text, reply_markup=get_chat_menu_keyboard())
-        
+
         await callback.answer()
-        
+
     except Exception as e:
         logger.error(f"Error in chat callback atm: {e}")
         await callback.answer("❌ Ошибка загрузки информации", show_alert=True)
@@ -1280,17 +1273,18 @@ async def group_keywords(message: types.Message):
     
     if responses:
         response = random.choice(responses)
-        
+
         if "{length}" in response:
             try:
                 user = await get_patsan(message.from_user.id)
                 length = format_length(user.get('gofra_mm', 10.0))
                 response = response.format(length=length)
-            except:
+            except Exception as e:
+                logger.error(f"Error getting user gofra length: {e}")
                 response = response.format(length="1.5")
-        
+
         if "{weight}" in response:
             weight = random.randint(50, 500)
             response = response.format(weight=weight)
-        
+
         await message.reply(response)
