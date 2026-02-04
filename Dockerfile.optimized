@@ -1,0 +1,39 @@
+# Dockerfile для оптимизированного Telegram бота
+
+FROM python:3.10-slim
+
+# Устанавливаем системные зависимости
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libmysqlclient-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Устанавливаем Python зависимости
+COPY requirements.txt requirements_optimizations.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements_optimizations.txt
+
+# Создаем рабочую директорию
+WORKDIR /app
+
+# Копируем код приложения
+COPY . .
+
+# Создаем директории для данных
+RUN mkdir -p storage/backups storage/logs storage/cache
+
+# Устанавливаем права
+RUN chmod +x main.py
+
+# Экспортируем переменные окружения по умолчанию
+ENV PYTHONUNBUFFERED=1
+ENV REDIS_URL=redis://redis:6379/0
+ENV DB_PATH=storage/bot_database.db
+ENV DB_POOL_SIZE=20
+ENV MONITORING_ENABLED=true
+ENV BACKUP_ENABLED=true
+ENV RATE_LIMIT_ENABLED=true
+
+# Запускаем приложение
+CMD ["python", "main.py"]

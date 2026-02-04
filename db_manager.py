@@ -11,6 +11,63 @@ import sqlite3
 
 logger = logging.getLogger(__name__)
 
+class DatabaseConnectionPool:
+    """Пул соединений с базой данных для улучшения производительности"""
+    
+    def __init__(self, max_connections: int = 10):
+        self.max_connections = max_connections
+        self._connections = []
+        self._in_use = set()
+        self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(max_connections)
+    
+    async def get_connection(self):
+        """Получить соединение из пула"""
+        async with self._lock:
+            # Сначала попробуем найти свободное соединение
+            for conn in self._connections:
+                if conn not in self._in_use:
+                    self._in_use.add(conn)
+                    logger.debug(f"🔄 Использую существующее соединение из пула (занято: {len(self._in_use)}/{self.max_connections})")
+                    return conn
+            
+            # Если свободных нет, создаем новое (если не превышен лимит)
+            if len(self._connections) < self.max_connections:
+                conn = await aiosqlite.connect(DB_PATH, timeout=60)
+                conn.row_factory = aiosqlite.Row
+                self._connections.append(conn)
+                self._in_use.add(conn)
+                logger.info(f"🆕 Создано новое соединение с базой данных (всего: {len(self._connections)})")
+                return conn
+            
+            # Ждем освобождения соединения
+            logger.warning(f"⏳ Все соединения заняты, жду освобождения...")
+            await self._semaphore.acquire()
+            return await self.get_connection()
+    
+    async def release_connection(self, conn):
+        """Освободить соединение и вернуть в пул"""
+        async with self._lock:
+            if conn in self._in_use:
+                self._in_use.remove(conn)
+                self._semaphore.release()
+                logger.debug(f"✅ Соединение освобождено (занято: {len(self._in_use)}/{self.max_connections})")
+    
+    async def close_all(self):
+        """Закрыть все соединения в пуле"""
+        async with self._lock:
+            for conn in self._connections:
+                try:
+                    await conn.close()
+                except:
+                    pass
+            self._connections.clear()
+            self._in_use.clear()
+            logger.info("🔌 Все соединения с базой данных закрыты")
+
+# Глобальный пул соединений
+_db_pool = DatabaseConnectionPool(max_connections=10)
+
 # Импортируем функцию форматирования времени
 def ft(s):
     """
@@ -34,9 +91,17 @@ DATABASE_VERSION = 3
 _db_connection = None
 
 async def get_connection() -> aiosqlite.Connection:
-    """Создает и возвращает соединение с базой данных."""
+    """Создает и возвращает соединение с базой данных из пула."""
     await ensure_storage_dirs()
-    return await aiosqlite.connect(DB_PATH)
+    return await _db_pool.get_connection()
+
+async def release_connection(conn):
+    """Освободить соединение и вернуть в пул"""
+    await _db_pool.release_connection(conn)
+
+async def close_all_connections():
+    """Закрыть все соединения в пуле"""
+    await _db_pool.close_all()
 
 async def ensure_storage_dirs():
     """Убедиться, что все необходимые директории существуют."""
@@ -118,7 +183,7 @@ async def init_db():
 
         await conn.commit()
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def check_and_update_db_version(conn: aiosqlite.Connection):
     """Проверяет версию базы данных и применяет необходимые миграции."""
@@ -647,7 +712,7 @@ async def get_patsan(user_id: int) -> Dict[str, Any]:
             await conn.commit()
             return await get_patsan(user_id)
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def save_patsan(patsan_data: Dict[str, Any]):
     """Сохраняет данные пользователя в базу данных."""
@@ -676,7 +741,7 @@ async def save_patsan(patsan_data: Dict[str, Any]):
         ))
         await conn.commit()
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
     """Изменяет никнейм пользователя."""
@@ -696,13 +761,19 @@ async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
         logger.error(f"Ошибка при изменении никнейма: {e}")
         return False, f"Ошибка при изменении никнейма: {e}"
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[str, Any]]:
-    """Получает топ игроков по указанному критерию."""
+    """Получает топ игроков по указанному критерию с оптимизированным запросом."""
     conn = await get_connection()
     try:
-        query = f"SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, atm_count FROM users ORDER BY {sort_by} DESC LIMIT ?"
+        # Оптимизированный запрос с индексами
+        query = f"""
+            SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, atm_count, total_zmiy_grams
+            FROM users 
+            ORDER BY {sort_by} DESC 
+            LIMIT ?
+        """
         cursor = await conn.execute(query, (limit,))
         rows = await cursor.fetchall()
 
@@ -717,7 +788,7 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
             result.append(dict(zip(column_names, row)))
         return result
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0):
     """Сохраняет результат боя радёмки."""
@@ -729,7 +800,7 @@ async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0
         """, (winner_id, loser_id, int(time.time())))
         await conn.commit()
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
     """Возвращает информацию о гофрошке на основе её длины."""
