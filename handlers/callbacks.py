@@ -10,7 +10,7 @@ from db_manager import (
     get_patsan, davka_zmiy, uletet_zmiy, get_gofra_info,
     format_length, ChatManager, calculate_atm_regen_time,
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight,
-    calculate_davka_cooldown
+    calculate_davka_cooldown, get_top_players
 )
 from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard, mk
 
