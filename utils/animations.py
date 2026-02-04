@@ -11,7 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 # Импортируем visual_effects для использования в анимациях
 try:
-    from utils.visual_effects import visual_effects
+    from utils import visual_effects
 except ImportError:
     # Заглушка для visual_effects если импорт не удался
     class MockVisualEffects:

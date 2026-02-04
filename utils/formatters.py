@@ -6,7 +6,13 @@
 import logging
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from utils.visual_effects import visual_effects
+
+# Импорты для визуальных эффектов (если доступны)
+try:
+    from utils import visual_effects
+    VISUAL_EFFECTS_AVAILABLE = True
+except ImportError:
+    VISUAL_EFFECTS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
