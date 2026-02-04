@@ -25,17 +25,16 @@ import threading
 from collections import defaultdict, deque
 import hashlib
 
-from telegram import Update, TelegramError
-from telegram.error import (
-    BadRequest, 
-    TimedOut, 
-    NetworkError, 
-    Forbidden, 
-    ChatMigrated, 
-    RetryAfter,
-    Conflict
+from aiogram import types
+from aiogram.types import Update
+from aiogram.exceptions import (
+    TelegramBadRequest, 
+    TelegramNetworkError, 
+    TelegramForbiddenError, 
+    TelegramMigrateToChat, 
+    TelegramRetryAfter,
+    TelegramConflictError
 )
-from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
 
@@ -193,13 +192,12 @@ class ErrorHandler:
     
     def _init_default_handlers(self) -> None:
         """Инициализирует обработчики ошибок по умолчанию."""
-        self.add_error_handler(BadRequest, self._handle_bad_request)
-        self.add_error_handler(TimedOut, self._handle_timed_out)
-        self.add_error_handler(NetworkError, self._handle_network_error)
-        self.add_error_handler(Forbidden, self._handle_forbidden)
-        self.add_error_handler(ChatMigrated, self._handle_chat_migrated)
-        self.add_error_handler(RetryAfter, self._handle_retry_after)
-        self.add_error_handler(Conflict, self._handle_conflict)
+        self.add_error_handler(TelegramBadRequest, self._handle_bad_request)
+        self.add_error_handler(TelegramNetworkError, self._handle_network_error)
+        self.add_error_handler(TelegramForbiddenError, self._handle_forbidden)
+        self.add_error_handler(TelegramMigrateToChat, self._handle_chat_migrated)
+        self.add_error_handler(TelegramRetryAfter, self._handle_retry_after)
+        self.add_error_handler(TelegramConflictError, self._handle_conflict)
     
     def add_error_handler(self, exception_type: Type[Exception], handler: Callable) -> None:
         """Добавляет обработчик для конкретного типа исключений."""
@@ -213,31 +211,30 @@ class ErrorHandler:
         """Классифицирует ошибку по уровню серьезности и категории."""
         # Сопоставление исключений с категориями
         telegram_api_errors = {
-            BadRequest: ErrorCategory.TELEGRAM_API,
-            TimedOut: ErrorCategory.NETWORK,
-            NetworkError: ErrorCategory.NETWORK,
-            Forbidden: ErrorCategory.TELEGRAM_API,
-            ChatMigrated: ErrorCategory.TELEGRAM_API,
-            RetryAfter: ErrorCategory.TELEGRAM_API,
-            Conflict: ErrorCategory.TELEGRAM_API,
+            TelegramBadRequest: ErrorCategory.TELEGRAM_API,
+            TelegramNetworkError: ErrorCategory.NETWORK,
+            TelegramForbiddenError: ErrorCategory.TELEGRAM_API,
+            TelegramMigrateToChat: ErrorCategory.TELEGRAM_API,
+            TelegramRetryAfter: ErrorCategory.TELEGRAM_API,
+            TelegramConflictError: ErrorCategory.TELEGRAM_API,
         }
         
         # Определение категории
         category = telegram_api_errors.get(type(exception), ErrorCategory.UNKNOWN)
         
         # Определение серьезности
-        if isinstance(exception, (BadRequest, RetryAfter)):
+        if isinstance(exception, (TelegramBadRequest, TelegramRetryAfter)):
             severity = ErrorSeverity.LOW
-        elif isinstance(exception, (TimedOut, NetworkError, Forbidden)):
+        elif isinstance(exception, (TelegramNetworkError, TelegramForbiddenError)):
             severity = ErrorSeverity.MEDIUM
-        elif isinstance(exception, (ChatMigrated, Conflict)):
+        elif isinstance(exception, (TelegramMigrateToChat, TelegramConflictError)):
             severity = ErrorSeverity.HIGH
         else:
             severity = ErrorSeverity.CRITICAL
         
         return severity, category
     
-    def _extract_context(self, update: Optional[Update], context: Optional[ContextTypes.DEFAULT_TYPE]) -> Dict[str, Any]:
+    def _extract_context(self, update: Optional[Update], context: Optional[object]) -> Dict[str, Any]:
         """Извлекает контекст из update и context."""
         ctx = {}
         
@@ -289,9 +286,9 @@ class ErrorHandler:
         error_string = json.dumps(error_data, sort_keys=True)
         return hashlib.md5(error_string.encode()).hexdigest()[:16]
     
-    def _handle_bad_request(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: BadRequest) -> bool:
-        """Обрабатывает ошибки BadRequest."""
-        logger.warning(f"BadRequest: {exception}")
+    def _handle_bad_request(self, update: Update, context: object, exception: TelegramBadRequest) -> bool:
+        """Обрабатывает ошибки TelegramBadRequest."""
+        logger.warning(f"TelegramBadRequest: {exception}")
         if update and update.effective_message:
             try:
                 update.effective_message.reply_text(
@@ -302,22 +299,9 @@ class ErrorHandler:
                 pass
         return True
     
-    def _handle_timed_out(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: TimedOut) -> bool:
-        """Обрабатывает ошибки таймаута."""
-        logger.warning(f"TimedOut: {exception}")
-        if update and update.effective_message:
-            try:
-                update.effective_message.reply_text(
-                    "⏰ Время ожидания ответа истекло. Попробуйте еще раз.",
-                    reply_markup=None
-                )
-            except Exception:
-                pass
-        return True
-    
-    def _handle_network_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: NetworkError) -> bool:
+    def _handle_network_error(self, update: Update, context: object, exception: TelegramNetworkError) -> bool:
         """Обрабатывает сетевые ошибки."""
-        logger.warning(f"NetworkError: {exception}")
+        logger.warning(f"TelegramNetworkError: {exception}")
         if update and update.effective_message:
             try:
                 update.effective_message.reply_text(
@@ -328,19 +312,19 @@ class ErrorHandler:
                 pass
         return True
     
-    def _handle_forbidden(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: Forbidden) -> bool:
+    def _handle_forbidden(self, update: Update, context: object, exception: TelegramForbiddenError) -> bool:
         """Обрабатывает ошибки доступа."""
-        logger.warning(f"Forbidden: {exception}")
+        logger.warning(f"TelegramForbiddenError: {exception}")
         return True  # Не отправляем сообщение пользователю
     
-    def _handle_chat_migrated(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: ChatMigrated) -> bool:
+    def _handle_chat_migrated(self, update: Update, context: object, exception: TelegramMigrateToChat) -> bool:
         """Обрабатывает перенос чата."""
-        logger.info(f"ChatMigrated: {exception}")
+        logger.info(f"TelegramMigrateToChat: {exception}")
         return True
     
-    def _handle_retry_after(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: RetryAfter) -> bool:
+    def _handle_retry_after(self, update: Update, context: object, exception: TelegramRetryAfter) -> bool:
         """Обрабатывает ошибки повторной отправки."""
-        logger.warning(f"RetryAfter: {exception}")
+        logger.warning(f"TelegramRetryAfter: {exception}")
         if update and update.effective_message:
             try:
                 update.effective_message.reply_text(
@@ -351,9 +335,9 @@ class ErrorHandler:
                 pass
         return True
     
-    def _handle_conflict(self, update: Update, context: ContextTypes.DEFAULT_TYPE, exception: Conflict) -> bool:
+    def _handle_conflict(self, update: Update, context: object, exception: TelegramConflictError) -> bool:
         """Обрабатывает конфликты."""
-        logger.error(f"Conflict: {exception}")
+        logger.error(f"TelegramConflictError: {exception}")
         return True
     
     async def _send_error_notification(self, error_info: ErrorInfo, update: Optional[Update]) -> None:
@@ -429,7 +413,7 @@ class ErrorHandler:
     async def handle_error(
         self, 
         update: Optional[Update], 
-        context: Optional[ContextTypes.DEFAULT_TYPE], 
+        context: Optional[object], 
         exception: Exception,
         command: Optional[str] = None
     ) -> bool:
@@ -551,7 +535,7 @@ def handle_errors(command_name: Optional[str] = None):
     """Декоратор для обработки ошибок в обработчиках команд."""
     def decorator(func):
         @wraps(func)
-        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        async def wrapper(update: Update, context: object, *args, **kwargs):
             error_handler = get_error_handler()
             
             try:
@@ -594,7 +578,7 @@ def retry_on_error(max_retries: int = 3, delay: float = 1.0, backoff: float = 2.
 
 # Функции для удобного использования
 
-async def handle_bot_error(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_bot_error(update: Update, context: object) -> None:
     """Функция для обработки ошибок бота (для использования в telegram.ext)."""
     error_handler = get_error_handler()
     await error_handler.handle_error(update, context, context.error)

@@ -294,77 +294,6 @@ class MessageFormatters:
         return f"⚠️ ВНИМАНИЕ\n\n{message}\n{visual_effects.create_divider('─', 30, 'double')}"
 
     @staticmethod
-    def format_profile(nickname: str = "Пацанчик", gofra_emoji: str = "🏗️", 
-                      gofra_name: str = "Гофрошка", gofra_length: str = "10.0мм",
-                      cable_length: str = "10.0мм", atm_count: int = 0, 
-                      atm_max: int = 12, atm_regen: float = 0.0,
-                      zmiy_grams: float = 0.0, total_davki: int = 0,
-                      total_zmiy_grams: float = 0.0) -> str:
-        """Форматировать профиль игрока"""
-        return (
-            f"📊 ПРОФИЛЬ ПАЦАНА:\n\n"
-            f"{gofra_emoji} {gofra_name}\n"
-            f"👤 {nickname}\n"
-            f"🏗️ Гофра: {gofra_length}\n"
-            f"🔌 Кабель: {cable_length}\n\n"
-            f"Ресурсы:\n"
-            f"🌀 Атмосферы: {atm_count}/{atm_max}\n"
-            f"⏱️ Восстановление: {atm_regen:.0f} сек за 1 атм.\n"
-            f"🐍 Змий: {zmiy_grams:.0f}г\n\n"
-            f"Статистика:\n"
-            f"📊 Всего давок: {total_davki}\n"
-            f"📈 Всего змия: {total_zmiy_grams:.0f}г"
-        )
-
-    @staticmethod
-    def format_section_header(title: str) -> str:
-        """Форматировать заголовок раздела"""
-        return f"{title}\n\n"
-
-    @staticmethod
-    def format_gofra_info(gofra_emoji: str = "🏗️", gofra_name: str = "Гофрошка",
-                         gofra_length: str = "10.0мм", atm_speed: float = 1.0,
-                         min_grams: float = 0.0, max_grams: float = 0.0,
-                         progress: float = 0.0, next_gofra_name: str = "",
-                         next_gofra_length: str = "", next_atm_speed: float = 0.0,
-                         next_min_grams: float = 0.0, next_max_grams: float = 0.0) -> str:
-        """Форматировать информацию о гофрошке"""
-        text = f"🏗️ ИНФОРМАЦИЯ О ГОФРОШКЕ\n\n"
-        text += f"{gofra_emoji} {gofra_name}\n"
-        text += f"📊 Длина гофрошки: {gofra_length}\n\n"
-        text += f"Характеристики:\n"
-        text += f"⚡ Скорость атмосфер: x{atm_speed:.2f}\n"
-        text += f"⚖️ Вес змия: {min_grams}-{max_grams}г\n\n"
-        
-        if next_gofra_name:
-            text += f"Следующая гофрошка:\n"
-            text += f"{gofra_emoji} → {gofra_emoji}\n"
-            text += f"{next_gofra_name} (от {next_gofra_length})\n"
-            text += f"📈 Прогресс: {progress*100:.1f}%\n"
-            text += f"⚡ Новая скорость: x{next_atm_speed:.2f}\n"
-            text += f"⚖️ Новый вес: {next_min_grams}-{next_max_grams}г"
-        else:
-            text += "🎉 Максимальный уровень гофрошки!"
-        
-        return text
-
-    @staticmethod
-    def format_cable_info(cable_length: str = "10.0мм", pvp_bonus: float = 0.0,
-                         total_zmiy_grams: float = 0.0, next_upgrade: float = 0.0) -> str:
-        """Форматировать информацию о кабеле"""
-        return (
-            f"🔌 СИЛОВОЙ КАБЕЛЬ\n\n"
-            f"💪 Длина кабеля: {cable_length}\n"
-            f"⚔️ Бонус в PvP: +{pvp_bonus:.1f}% к шансу\n\n"
-            f"Как прокачать:\n"
-            f"• Каждые 2кг змия = +0.2 мм к кабелю\n"
-            f"• Победы в радёмках дают +0.2 мм\n\n"
-            f"Прогресс:\n"
-            f"📊 Всего змия: {total_zmiy_grams:.0f}г\n"
-            f"📈 Следующий +0.1 мм через: {next_upgrade:.0f}г"
-        )
-
-    @staticmethod
     def format_atm_status(atm_count: int = 0, atm_max: int = 12,
                          per_atm: float = 0.0, total: float = 0.0,
                          needed: int = 0, gofra_emoji: str = "🏗️",
@@ -442,6 +371,7 @@ class MessageFormatters:
             "• /chat_stats - статистика чата\n"
             "• Сохранение прогресса в каждом чате"
         )
+
 
 # Глобальный экземпляр для удобства
 formatters = MessageFormatters()
