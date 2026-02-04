@@ -761,7 +761,7 @@ async def show_chat_stats_callback(callback: types.CallbackQuery, chat_id: int):
         await callback.answer()
 
     except Exception as e:
-        logger.error(f"Error in chat callback stats: {e}")
+        logger.error(f"Error in chat callback stats: {e}", exc_info=True)
         await callback.answer("❌ Ошибка загрузки статистики", show_alert=True)
 
 async def show_user_chat_stats_callback(callback: types.CallbackQuery, user_id: int, chat_id: int):
