@@ -87,76 +87,6 @@ DB_PATH = "storage/bot_database.db"
 BACKUP_DIR = "storage/backups"
 DATABASE_VERSION = 4
 
-# Глобальный пул соединений для оптимизации производительности
-_db_pool = None
-_pool_lock = asyncio.Lock()
-_pool_size = 10  # Размер пула соединений
-
-class DatabasePool:
-    """Пул соединений к базе данных для оптимизации производительности."""
-    
-    def __init__(self, max_connections: int = 10):
-        self.max_connections = max_connections
-        self._connections = []
-        self._in_use = set()
-        self._lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(max_connections)
-    
-    async def get_connection(self) -> aiosqlite.Connection:
-        """Получает соединение из пула."""
-        async with self._lock:
-            # Сначала пытаемся найти свободное соединение
-            for conn in self._connections:
-                if conn not in self._in_use:
-                    self._in_use.add(conn)
-                    return conn
-            
-            # Если свободных нет, создаем новое (если не превышен лимит)
-            if len(self._connections) < self.max_connections:
-                await ensure_storage_dirs()
-                conn = await aiosqlite.connect(DB_PATH)
-                conn.row_factory = aiosqlite.Row  # Для удобства работы с результатами
-                self._connections.append(conn)
-                self._in_use.add(conn)
-                return conn
-            
-            # Если пул полон, ждем освобождения
-            await self._semaphore.acquire()
-            # Рекурсивно пытаемся снова
-            return await self.get_connection()
-    
-    async def release_connection(self, conn: aiosqlite.Connection):
-        """Возвращает соединение в пул."""
-        async with self._lock:
-            if conn in self._in_use:
-                self._in_use.remove(conn)
-                self._semaphore.release()
-    
-    async def close_all(self):
-        """Закрывает все соединения в пуле."""
-        async with self._lock:
-            for conn in self._connections:
-                try:
-                    await conn.close()
-                except Exception:
-                    pass
-            self._connections.clear()
-            self._in_use.clear()
-
-# Инициализация пула соединений
-_db_pool = DatabasePool(max_connections=10)
-
-    """Получает соединение из пула."""
-    return await _db_pool.get_connection()
-
-async def release_connection(conn: aiosqlite.Connection):
-    """Возвращает соединение в пул."""
-    await _db_pool.release_connection(conn)
-
-async def close_pool():
-    """Закрывает все соединения в пуле."""
->>>>>>> e23d92a (🚀 Оптимизация производительности системы)
-    await _db_pool.close_all()
 async def get_connection() -> aiosqlite.Connection:
     """Получает соединение из пула."""
     return await _db_pool.get_connection()
@@ -167,18 +97,6 @@ async def release_connection(conn: aiosqlite.Connection):
 
 async def close_pool():
     """Закрывает все соединения в пуле."""
-    await _db_pool.close_all()
-=======
-    """Получает соединение из пула."""
-    return await _db_pool.get_connection()
-
-async def release_connection(conn: aiosqlite.Connection):
-    """Возвращает соединение в пул."""
-    await _db_pool.release_connection(conn)
-
-async def close_pool():
-    """Закрывает все соединения в пуле."""
->>>>>>> e23d92a (🚀 Оптимизация производительности системы)
     await _db_pool.close_all()
 
 async def ensure_storage_dirs():
@@ -880,22 +798,12 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
     """Получает топ игроков по указанному критерию с оптимизированным запросом."""
     conn = await get_connection()
     try:
-<<<<<<< HEAD
-        # Оптимизированный запрос с индексами
-        query = f"""
-            SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, atm_count, total_zmiy_grams
-            FROM users 
-            ORDER BY {sort_by} DESC 
-            LIMIT ?
-        """
-=======
         # Используем подготовленный запрос для безопасности
         valid_sort_fields = ["gofra_mm", "cable_mm", "zmiy_grams", "total_zmiy_grams", "atm_count"]
         if sort_by not in valid_sort_fields:
             sort_by = "gofra_mm"
         
         query = f"SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, total_zmiy_grams, atm_count FROM users ORDER BY {sort_by} DESC LIMIT ?"
->>>>>>> e23d92a (🚀 Оптимизация производительности системы)
         cursor = await conn.execute(query, (limit,))
         rows = await cursor.fetchall()
 
