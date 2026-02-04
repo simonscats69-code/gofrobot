@@ -61,12 +61,14 @@ ATM_BASE_TIME = 7200  # 2 hours in seconds
 
 # Redis Configuration (if enabled)
 REDIS_CONFIG = {
-    "enabled": False,
+    "enabled": True,  # Включаем по умолчанию
     "host": "localhost",
     "port": 6379,
     "db": 0,
     "password": None,
-    "cache_ttl": 300  # 5 minutes
+    "cache_ttl": 3600,  # 1 час по умолчанию
+    "connection_timeout": 5,  # 5 секунд таймаут
+    "max_connections": 20  # Максимум 20 соединений
 }
 
 # Logging Configuration
@@ -91,4 +93,27 @@ MONITORING = {
     "prometheus_enabled": False,
     "prometheus_port": 8000,
     "health_check_path": "/health"
+}
+
+# Storage Configuration
+STORAGE_DIR = "storage"
+LOGS_DIR = "storage/logs"
+BACKUP_DIR = "storage/backups"
+CACHE_DIR = "storage/cache"
+
+# Timing Configuration
+TIMING_CONFIG = {
+    "base_davka_cooldown": 7200,  # 2 hours in seconds
+    "atm_regen_time": 600,        # 10 minutes in seconds
+    "max_atm_count": 12,
+    "precision_update_interval": 1,  # Update every second
+    "countdown_update_interval": 1,  # Update countdown every second
+    "max_countdown_messages": 100,   # Maximum active countdowns
+    "time_precision": 2,             # Decimal places for time display
+    "color_thresholds": {
+        "ready": 0,
+        "warning": 300,      # 5 minutes
+        "danger": 60,        # 1 minute
+        "critical": 10       # 10 seconds
+    }
 }

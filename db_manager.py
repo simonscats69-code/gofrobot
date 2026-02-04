@@ -85,22 +85,100 @@ def ft(s):
 # Глобальные переменные для базы данных
 DB_PATH = "storage/bot_database.db"
 BACKUP_DIR = "storage/backups"
-DATABASE_VERSION = 3
+DATABASE_VERSION = 4
 
-# Глобальное соединение для избежания проблем с потоками
-_db_connection = None
+# Глобальный пул соединений для оптимизации производительности
+_db_pool = None
+_pool_lock = asyncio.Lock()
+_pool_size = 10  # Размер пула соединений
 
-async def get_connection() -> aiosqlite.Connection:
-    """Создает и возвращает соединение с базой данных из пула."""
-    await ensure_storage_dirs()
+class DatabasePool:
+    """Пул соединений к базе данных для оптимизации производительности."""
+    
+    def __init__(self, max_connections: int = 10):
+        self.max_connections = max_connections
+        self._connections = []
+        self._in_use = set()
+        self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(max_connections)
+    
+    async def get_connection(self) -> aiosqlite.Connection:
+        """Получает соединение из пула."""
+        async with self._lock:
+            # Сначала пытаемся найти свободное соединение
+            for conn in self._connections:
+                if conn not in self._in_use:
+                    self._in_use.add(conn)
+                    return conn
+            
+            # Если свободных нет, создаем новое (если не превышен лимит)
+            if len(self._connections) < self.max_connections:
+                await ensure_storage_dirs()
+                conn = await aiosqlite.connect(DB_PATH)
+                conn.row_factory = aiosqlite.Row  # Для удобства работы с результатами
+                self._connections.append(conn)
+                self._in_use.add(conn)
+                return conn
+            
+            # Если пул полон, ждем освобождения
+            await self._semaphore.acquire()
+            # Рекурсивно пытаемся снова
+            return await self.get_connection()
+    
+    async def release_connection(self, conn: aiosqlite.Connection):
+        """Возвращает соединение в пул."""
+        async with self._lock:
+            if conn in self._in_use:
+                self._in_use.remove(conn)
+                self._semaphore.release()
+    
+    async def close_all(self):
+        """Закрывает все соединения в пуле."""
+        async with self._lock:
+            for conn in self._connections:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+            self._connections.clear()
+            self._in_use.clear()
+
+# Инициализация пула соединений
+_db_pool = DatabasePool(max_connections=10)
+
+    """Получает соединение из пула."""
     return await _db_pool.get_connection()
 
-async def release_connection(conn):
-    """Освободить соединение и вернуть в пул"""
+async def release_connection(conn: aiosqlite.Connection):
+    """Возвращает соединение в пул."""
     await _db_pool.release_connection(conn)
 
-async def close_all_connections():
-    """Закрыть все соединения в пуле"""
+async def close_pool():
+    """Закрывает все соединения в пуле."""
+>>>>>>> e23d92a (🚀 Оптимизация производительности системы)
+    await _db_pool.close_all()
+async def get_connection() -> aiosqlite.Connection:
+    """Получает соединение из пула."""
+    return await _db_pool.get_connection()
+
+async def release_connection(conn: aiosqlite.Connection):
+    """Возвращает соединение в пул."""
+    await _db_pool.release_connection(conn)
+
+async def close_pool():
+    """Закрывает все соединения в пуле."""
+    await _db_pool.close_all()
+=======
+    """Получает соединение из пула."""
+    return await _db_pool.get_connection()
+
+async def release_connection(conn: aiosqlite.Connection):
+    """Возвращает соединение в пул."""
+    await _db_pool.release_connection(conn)
+
+async def close_pool():
+    """Закрывает все соединения в пуле."""
+>>>>>>> e23d92a (🚀 Оптимизация производительности системы)
     await _db_pool.close_all()
 
 async def ensure_storage_dirs():
@@ -212,6 +290,10 @@ async def check_and_update_db_version(conn: aiosqlite.Connection):
         await apply_migration_v3(conn)
         current_version = 3
 
+    if current_version < 4:
+        await apply_migration_v4(conn)
+        current_version = 4
+
     # Обновляем версию в базе
     await conn.execute("INSERT OR REPLACE INTO database_version (version) VALUES (?)", (DATABASE_VERSION,))
 
@@ -260,6 +342,37 @@ async def apply_migration_v3(conn: aiosqlite.Connection):
 
     except Exception as e:
         logger.error(f"Ошибка при миграции v3: {e}")
+        raise
+
+async def apply_migration_v4(conn: aiosqlite.Connection):
+    """Миграция для версии 4 - добавление индексов для производительности."""
+    logger.info("Применение миграции v4 (индексы)...")
+
+    try:
+        # Индексы для таблицы users
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_atm_count ON users(atm_count)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_gofra_mm ON users(gofra_mm)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_cable_mm ON users(cable_mm)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_last_davka ON users(last_davka)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_last_rademka ON users(last_rademka)")
+        
+        # Индексы для таблицы user_chat_stats
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_user_chat_stats_chat_user ON user_chat_stats(chat_id, user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_user_chat_stats_total_zmiy ON user_chat_stats(total_zmiy_grams)")
+        
+        # Индексы для таблицы rademka_fights
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_rademka_fights_winner ON rademka_fights(winner_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_rademka_fights_loser ON rademka_fights(loser_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_rademka_fights_created ON rademka_fights(created_at)")
+        
+        # Индексы для таблицы chat_stats
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_stats_total_zmiy ON chat_stats(total_zmiy_all)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_stats_total_davki ON chat_stats(total_davki_all)")
+        
+        logger.info("✅ Индексы для производительности добавлены")
+
+    except Exception as e:
+        logger.error(f"Ошибка при миграции v4 (индексы): {e}")
         raise
 
 async def repair_database():
@@ -767,6 +880,7 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
     """Получает топ игроков по указанному критерию с оптимизированным запросом."""
     conn = await get_connection()
     try:
+<<<<<<< HEAD
         # Оптимизированный запрос с индексами
         query = f"""
             SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, atm_count, total_zmiy_grams
@@ -774,6 +888,14 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
             ORDER BY {sort_by} DESC 
             LIMIT ?
         """
+=======
+        # Используем подготовленный запрос для безопасности
+        valid_sort_fields = ["gofra_mm", "cable_mm", "zmiy_grams", "total_zmiy_grams", "atm_count"]
+        if sort_by not in valid_sort_fields:
+            sort_by = "gofra_mm"
+        
+        query = f"SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, total_zmiy_grams, atm_count FROM users ORDER BY {sort_by} DESC LIMIT ?"
+>>>>>>> e23d92a (🚀 Оптимизация производительности системы)
         cursor = await conn.execute(query, (limit,))
         rows = await cursor.fetchall()
 
@@ -789,6 +911,78 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
         return result
     finally:
         await release_connection(conn)
+
+async def bulk_update_users(users_data: List[Dict[str, Any]]):
+    """Пакетное обновление пользователей для улучшения производительности."""
+    if not users_data:
+        return
+    
+    conn = await get_connection()
+    try:
+        # Используем транзакцию для пакетного обновления
+        await conn.execute("BEGIN")
+        
+        for user_data in users_data:
+            await conn.execute("""
+                INSERT OR REPLACE INTO users (
+                    user_id, nickname, gofra_mm, cable_mm, atm_count,
+                    zmiy_grams, total_zmiy_grams, cable_power, gofra,
+                    last_atm_regen, last_davka, last_rademka, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_data['user_id'],
+                user_data.get('nickname', 'Неизвестно'),
+                user_data.get('gofra_mm', 10.0),
+                user_data.get('cable_mm', 10.0),
+                user_data.get('atm_count', 0),
+                user_data.get('zmiy_grams', 0.0),
+                user_data.get('total_zmiy_grams', 0.0),
+                user_data.get('cable_power', 2),
+                user_data.get('gofra', 1),
+                user_data.get('last_atm_regen', 0),
+                user_data.get('last_davka', 0),
+                user_data.get('last_rademka', 0),
+                int(time.time())
+            ))
+        
+        await conn.commit()
+    except Exception as e:
+        await conn.rollback()
+        logger.error(f"Ошибка при пакетном обновлении пользователей: {e}")
+        raise
+    finally:
+        await conn.close()
+
+async def get_multiple_users(user_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Пакетная загрузка пользователей для улучшения производительности."""
+    if not user_ids:
+        return {}
+    
+    conn = await get_connection()
+    try:
+        # Создаем плейсхолдеры для IN запроса
+        placeholders = ','.join(['?'] * len(user_ids))
+        query = f"""
+            SELECT * FROM users WHERE user_id IN ({placeholders})
+        """
+        
+        cursor = await conn.execute(query, user_ids)
+        rows = await cursor.fetchall()
+        
+        # Получаем имена колонок
+        cursor = await conn.execute("PRAGMA table_info(users)")
+        columns = await cursor.fetchall()
+        column_names = [col[1] for col in columns]
+        
+        # Преобразуем строки в словари и группируем по user_id
+        result = {}
+        for row in rows:
+            user_data = dict(zip(column_names, row))
+            result[user_data['user_id']] = user_data
+        
+        return result
+    finally:
+        await conn.close()
 
 async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0):
     """Сохраняет результат боя радёмки."""

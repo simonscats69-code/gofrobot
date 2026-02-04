@@ -8,7 +8,7 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
-from keyboards import get_main_keyboard
+from keyboards import main_keyboard
 from timing_system import timing_manager
 from db_manager import get_patsan
 from config import TIMING_CONFIG

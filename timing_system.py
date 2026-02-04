@@ -207,9 +207,9 @@ class PreciseTimingManager:
             return {'error': str(e)}
     
     async def format_precise_time(self, seconds: float) -> str:
-        """Форматировать время с миллисекундами"""
+        """Форматировать время с миллисекундами и анимацией"""
         if seconds < 1:
-            return f"{seconds:.3f}с"
+            return f"⏱️ {seconds:.3f}с"
         
         days = int(seconds // 86400)
         hours = int((seconds % 86400) // 3600)
@@ -217,16 +217,16 @@ class PreciseTimingManager:
         secs = int(seconds % 60)
         
         if days > 0:
-            return f"{days}д {hours}ч {minutes}м {secs}с"
+            return f"📅 {days}д {hours}ч {minutes}м {secs}с"
         elif hours > 0:
-            return f"{hours}ч {minutes}м {secs}с"
+            return f"⏰ {hours}ч {minutes}м {secs}с"
         elif minutes > 0:
-            return f"{minutes}м {secs}с"
+            return f"⏱️ {minutes}м {secs}с"
         else:
-            return f"{secs}с"
+            return f"⚡ {secs}с"
     
     def create_progress_bar(self, current: float, total: float, length: int = 15) -> str:
-        """Создать прогресс-бар"""
+        """Создать прогресс-бар с анимацией"""
         if total <= 0:
             return "█" * length
         
@@ -234,18 +234,32 @@ class PreciseTimingManager:
         filled = int(length * progress)
         empty = length - filled
         
-        return "█" * filled + "░" * empty
+        # Добавляем анимацию для готового состояния
+        if filled == length:
+            return "█" * filled + " 🎉"
+        elif filled >= length * 0.8:
+            return "█" * filled + "🔥" * empty
+        elif filled >= length * 0.5:
+            return "█" * filled + "⚡" * empty
+        else:
+            return "█" * filled + "░" * empty
     
     def get_time_color(self, time_until: float, threshold_fast: float = 300, threshold_medium: float = 1800) -> str:
-        """Получить цветовую индикацию времени"""
+        """Получить цветовую индикацию времени с улучшенной системой"""
         if time_until <= 0:
             return "🟢"  # Можно давить
-        elif time_until <= threshold_fast:
-            return "🟡"  # Скоро можно (5 минут)
-        elif time_until <= threshold_medium:
-            return "🟠"  # Среднее время (30 минут)
+        elif time_until <= 60:  # 1 минута
+            return "🟡"  # Скоро можно (1 минута)
+        elif time_until <= 300:  # 5 минут
+            return "🟠"  # Скоро можно (5 минут)
+        elif time_until <= 900:  # 15 минут
+            return "🔴"  # Среднее время (15 минут)
+        elif time_until <= 1800:  # 30 минут
+            return "🟣"  # Долго ждать (30 минут)
+        elif time_until <= 3600:  # 1 час
+            return "⚫"  # Очень долго (1 час)
         else:
-            return "🔴"  # Долго ждать (1+ час)
+            return "💀"  # Смертельно долго (1+ час)
     
     async def start_countdown(self, user_id: int, chat_id: int, message_id: int, bot):
         """Запустить обратный отсчёт"""
@@ -263,13 +277,13 @@ class PreciseTimingManager:
             del self.countdown_tasks[user_id]
     
     async def _countdown_loop(self, user_id: int, chat_id: int, message_id: int, bot):
-        """Цикл обратного отсчёта"""
+        """Цикл обратного отсчёта с улучшенной логикой"""
         try:
             while True:
-                await asyncio.sleep(10)  # Обновляем каждые 10 секунд
+                await asyncio.sleep(5)  # Обновляем каждые 5 секунд для более плавной анимации
                 
                 # Проверяем, не прошло ли слишком много времени с последнего обновления
-                if time.time() - self.last_update_times.get(user_id, 0) > 300:  # 5 минут
+                if time.time() - self.last_update_times.get(user_id, 0) > 600:  # 10 минут
                     await self.stop_countdown(user_id)
                     break
                 
@@ -278,6 +292,14 @@ class PreciseTimingManager:
                 atm_info = await self.get_realtime_atm_status(user_id)
                 
                 if 'error' in davka_info or 'error' in atm_info:
+                    continue
+                
+                # Проверяем, изменилось ли что-то существенно
+                current_time = time.time()
+                last_update = self.last_update_times.get(user_id, 0)
+                
+                # Если прошло меньше 2 секунд и время не изменилось существенно, пропускаем обновление
+                if current_time - last_update < 2:
                     continue
                 
                 # Формируем сообщение с таймерами
@@ -290,6 +312,7 @@ class PreciseTimingManager:
                         text=message_text,
                         reply_markup=self._get_countdown_keyboard()
                     )
+                    self.last_update_times[user_id] = current_time
                 except TelegramBadRequest:
                     # Сообщение не изменилось, пропускаем
                     pass
@@ -304,7 +327,7 @@ class PreciseTimingManager:
             logger.error(f"Error in countdown loop: {e}")
     
     async def _format_countdown_message(self, davka_info: Dict, atm_info: Dict) -> str:
-        """Форматировать сообщение с таймерами"""
+        """Форматировать сообщение с таймерами с улучшенной визуализацией"""
         current_time = davka_info['current_time']
         
         # Информация о давке
@@ -345,6 +368,10 @@ class PreciseTimingManager:
         
         # Текущее время
         message += f"\n🕒 Серверное время: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S')}"
+        
+        # Добавляем анимационные эффекты для готовых таймеров
+        if can_davka:
+            message += f"\n🎉 ДАВКА ГОТОВА! БЫСТРЕЕ ДАВИ ЗМИЯ!"
         
         return message
     
