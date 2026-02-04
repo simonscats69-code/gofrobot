@@ -400,6 +400,8 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
             await show_chat_menu_callback(callback)
         elif action == "fight":
             await callback.answer("Используй команду /fight в ответ на сообщение игрока", show_alert=True)
+        elif action.startswith("chat_fight_"):
+            await handle_chat_fight(callback)
         else:
             await callback.answer("❌ Неизвестное действие", show_alert=True)
 
