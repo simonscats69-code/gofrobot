@@ -12,7 +12,17 @@ from db_manager import (
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight,
     calculate_davka_cooldown
 )
-from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard
+from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard, mk
+
+# Импорты для визуальных эффектов (если доступны)
+try:
+    from utils.visual_effects import visual_effects
+    from utils.formatters import formatters
+    from utils.animations import animation_manager, notification_effects
+    from utils.keyboards import beautiful_keyboards
+    VISUAL_EFFECTS_AVAILABLE = True
+except ImportError:
+    VISUAL_EFFECTS_AVAILABLE = False
 
 router = Router()
 logger = logging.getLogger(__name__)

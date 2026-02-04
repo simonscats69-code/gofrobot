@@ -13,6 +13,16 @@ DB_CONFIG = {
     "backup_keep": 5
 }
 
+# Admin Configuration
+ADMIN_CONFIG = {
+    "admin_ids": [5449121710],  # User IDs with admin privileges
+    "maintenance_mode": False,  # Enable/disable maintenance mode
+    "auto_repair_enabled": True,  # Enable automatic repair
+    "backup_interval": 1800,  # Auto backup every 30 minutes (in seconds)
+    "max_backup_files": 20,  # Maximum number of backup files to keep
+    "diagnostic_interval": 300  # Diagnostic check every 5 minutes (in seconds)
+}
+
 # Game Balance Settings
 BALANCE = {
     "UNIT_SCALE": 10.0,

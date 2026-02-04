@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from db_manager import get_patsan, get_gofra_info, calculate_atm_regen_time, format_length
 from keyboards import main_keyboard, profile_extended_kb
-from keyboards import rademka_keyboard, top_sort_keyboard, nickname_keyboard, gofra_info_kb, cable_info_kb, atm_status_kb
+from keyboards import rademka_keyboard, top_sort_keyboard, nickname_keyboard, gofra_info_kb, cable_info_kb, atm_status_kb, mk
 
 router = Router()
 
@@ -159,6 +159,271 @@ async def cmd_help(message: types.Message):
     )
     
     await message.answer(help_text, reply_markup=main_keyboard())
+
+@router.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    """Handle /admin command - show admin panel"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    # Show admin panel
+    admin_text = """
+🔧 <b>Админ-панель</b>
+
+Доступные команды:
+"""
+    
+    await message.answer(admin_text, reply_markup=mk("admin"), parse_mode='HTML')
+
+@router.message(Command("admin_repair"))
+async def cmd_admin_repair(message: types.Message):
+    """Handle /admin_repair command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Import and run repair
+        from persistent_storage import storage_manager
+        await storage_manager._repair_database()
+        
+        await message.answer("✅ База данных успешно отремонтирована!", reply_markup=mk("admin"))
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при ремонте базы данных: {e}", reply_markup=mk("admin"))
+
+@router.message(Command("admin_backup"))
+async def cmd_admin_backup(message: types.Message):
+    """Handle /admin_backup command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Import and run backup
+        from persistent_storage import storage_manager
+        await storage_manager._create_backup("manual")
+        
+        await message.answer("✅ Резервная копия создана!", reply_markup=mk("admin"))
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при создании резервной копии: {e}", reply_markup=mk("admin"))
+
+@router.message(Command("admin_status"))
+async def cmd_admin_status(message: types.Message):
+    """Handle /admin_status command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Import and get status
+        from persistent_storage import storage_manager
+        
+        # Run diagnostics
+        diagnostics = await storage_manager.diagnostic_system.run_comprehensive_diagnostic()
+        health = storage_manager.diagnostic_system.get_health_summary()
+        
+        # Format status message
+        status_text = f"""
+📊 <b>Статус системы</b>
+
+🏥 <b>Здоровье:</b> {health['status'].upper()}
+📝 <b>Сообщение:</b> {health['message']}
+⚠️ <b>Проблем:</b> {health['total_issues']}
+
+📋 <b>Последняя проверка:</b> {health['last_check'].strftime('%Y-%m-%d %H:%M:%S') if health['last_check'] else 'Нет данных'}
+
+🔧 <b>Рекомендации:</b>
+"""
+        
+        for result in diagnostics:
+            if result.severity in ["warning", "error", "critical"]:
+                status_text += f"• {result.message}\n"
+                for suggestion in result.suggestions:
+                    status_text += f"  - {suggestion}\n"
+        
+        await message.answer(status_text, reply_markup=mk("admin"), parse_mode='HTML')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при получении статуса: {e}", reply_markup=mk("admin"))
+
+@router.message(Command("admin_cleanup"))
+async def cmd_admin_cleanup(message: types.Message):
+    """Handle /admin_cleanup command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Import and run cleanup
+        from persistent_storage import storage_manager
+        await storage_manager._cleanup_backups()
+        
+        await message.answer("✅ Очистка завершена!", reply_markup=mk("admin"))
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при очистке: {e}", reply_markup=mk("admin"))
+
+@router.message(Command("admin_logs"))
+async def cmd_admin_logs(message: types.Message):
+    """Handle /admin_logs command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Get recent log entries
+        import logging
+        from logging_system import get_recent_logs
+        
+        logs = await get_recent_logs(50)  # Get last 50 log entries
+        
+        if not logs:
+            await message.answer("📋 Логи пусты", reply_markup=mk("admin"))
+            return
+        
+        # Format logs
+        log_text = "<b>Последние логи:</b>\n\n"
+        for log in logs:
+            log_text += f"{log}\n"
+        
+        await message.answer(log_text, reply_markup=mk("admin"), parse_mode='HTML')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при получении логов: {e}", reply_markup=mk("admin"))
+
+@router.message(Command("admin_settings"))
+async def cmd_admin_settings(message: types.Message):
+    """Handle /admin_settings command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    # Show settings menu
+    settings_text = """
+⚙️ <b>Настройки системы</b>
+
+Текущие настройки:
+• Авто-ремонт: {}
+• Интервал бэкапов: {} минут
+• Интервал диагностики: {} минут
+""".format(
+        "Включён" if ADMIN_CONFIG["auto_repair_enabled"] else "Выключен",
+        ADMIN_CONFIG["backup_interval"] // 60,
+        ADMIN_CONFIG["diagnostic_interval"] // 60
+    )
+    
+    await message.answer(settings_text, reply_markup=mk("admin_settings"), parse_mode='HTML')
+
+@router.message(Command("admin_enable_auto_repair"))
+async def cmd_admin_enable_auto_repair(message: types.Message):
+    """Handle /admin_enable_auto_repair command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    ADMIN_CONFIG["auto_repair_enabled"] = True
+    await message.answer("✅ Автоматический ремонт включён!", reply_markup=mk("admin_settings"))
+
+@router.message(Command("admin_disable_auto_repair"))
+async def cmd_admin_disable_auto_repair(message: types.Message):
+    """Handle /admin_disable_auto_repair command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    ADMIN_CONFIG["auto_repair_enabled"] = False
+    await message.answer("❌ Автоматический ремонт выключен!", reply_markup=mk("admin_settings"))
+
+@router.message(Command("admin_export"))
+async def cmd_admin_export(message: types.Message):
+    """Handle /admin_export command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Import and run export
+        from persistent_storage import storage_manager
+        
+        export_file = await storage_manager.export_data("json")
+        
+        if export_file:
+            await message.answer(f"📤 Экспорт завершён: {export_file}", reply_markup=mk("admin"))
+        else:
+            await message.answer("❌ Ошибка при экспорте данных", reply_markup=mk("admin"))
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при экспорте: {e}", reply_markup=mk("admin"))
+
+@router.message(Command("admin_import"))
+async def cmd_admin_import(message: types.Message):
+    """Handle /admin_import command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    await message.answer("📥 Отправьте файл для импорта (JSON или SQL)", reply_markup=mk("admin"))
+
+@router.message(Command("admin_restore"))
+async def cmd_admin_restore(message: types.Message):
+    """Handle /admin_restore command"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    from config import ADMIN_CONFIG
+    if user_id not in ADMIN_CONFIG["admin_ids"]:
+        await message.answer("❌ Доступ запрещён. Вы не являетесь администратором.", reply_markup=main_keyboard())
+        return
+    
+    try:
+        # Import and run restore
+        from persistent_storage import storage_manager
+        await storage_manager._restore_from_backup()
+        
+        await message.answer("✅ Восстановление из резервной копии завершено!", reply_markup=mk("admin"))
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при восстановлении: {e}", reply_markup=mk("admin"))
 
 @router.message(Command("version"))
 async def cmd_version(message: types.Message):

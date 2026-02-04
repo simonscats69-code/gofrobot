@@ -1,6 +1,6 @@
 """
-Improved persistent storage system for bothost.ru
-Handles automatic backups, cloud storage, and data recovery
+Advanced persistent storage system for bothost.ru with AI-powered diagnostics
+Handles automatic backups, cloud storage, data recovery, and intelligent monitoring
 """
 import os
 import json
@@ -8,17 +8,336 @@ import time
 import asyncio
 import logging
 import hashlib
-from datetime import datetime
-from typing import Dict, Any, Optional, List
+import shutil
+from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, List, Tuple
 import aiosqlite
-from config import STORAGE_DIR, DB_CONFIG
+from config import STORAGE_DIR, DB_CONFIG, ADMIN_CONFIG
 
 logger = logging.getLogger(__name__)
 
+class DiagnosticResult:
+    """Result of system diagnostic"""
+    def __init__(self, status: str, message: str, severity: str = "info", suggestions: List[str] = None):
+        self.status = status
+        self.message = message
+        self.severity = severity  # info, warning, error, critical
+        self.suggestions = suggestions or []
+        self.timestamp = datetime.now()
+
+class StorageDiagnostic:
+    """AI-powered diagnostic system for storage health"""
+    
+    def __init__(self, storage_manager):
+        self.storage_manager = storage_manager
+        self.last_diagnostics = []
+        self.problems_detected = []
+        
+    async def run_comprehensive_diagnostic(self) -> List[DiagnosticResult]:
+        """Run comprehensive system diagnostic"""
+        results = []
+        
+        # 1. Database integrity check
+        db_result = await self._check_database_integrity()
+        results.append(db_result)
+        
+        # 2. Storage space check
+        space_result = await self._check_storage_space()
+        results.append(space_result)
+        
+        # 3. Backup health check
+        backup_result = await self._check_backup_health()
+        results.append(backup_result)
+        
+        # 4. Performance check
+        perf_result = await self._check_performance()
+        results.append(perf_result)
+        
+        # 5. Predictive analysis
+        prediction_result = await self._predict_issues()
+        results.append(prediction_result)
+        
+        # Store results
+        self.last_diagnostics = results
+        self._analyze_problems(results)
+        
+        return results
+    
+    async def _check_database_integrity(self) -> DiagnosticResult:
+        """Check database file integrity"""
+        try:
+            if not os.path.exists(self.storage_manager.db_path):
+                return DiagnosticResult(
+                    "error", 
+                    "Database file not found", 
+                    "critical", 
+                    ["Run automatic repair", "Restore from backup"]
+                )
+            
+            # Check file size
+            db_size = os.path.getsize(self.storage_manager.db_path)
+            if db_size < 1024:  # Less than 1KB
+                return DiagnosticResult(
+                    "warning",
+                    f"Database file suspiciously small: {db_size} bytes",
+                    "warning",
+                    ["Check for corruption", "Verify data integrity"]
+                )
+            
+            # Test database connection
+            try:
+                conn = await aiosqlite.connect(self.storage_manager.db_path)
+                await conn.execute("SELECT COUNT(*) FROM users")
+                await conn.close()
+                
+                return DiagnosticResult(
+                    "ok",
+                    f"Database integrity verified ({db_size / 1024 / 1024:.1f} MB)",
+                    "info"
+                )
+            except Exception as e:
+                return DiagnosticResult(
+                    "error",
+                    f"Database connection failed: {str(e)}",
+                    "error",
+                    ["Run database repair", "Check file permissions"]
+                )
+                
+        except Exception as e:
+            return DiagnosticResult(
+                "error",
+                f"Database check failed: {str(e)}",
+                "error",
+                ["Manual inspection required"]
+            )
+    
+    async def _check_storage_space(self) -> DiagnosticResult:
+        """Check available storage space"""
+        try:
+            total, used, free = shutil.disk_usage(self.storage_manager.storage_dir)
+            
+            free_gb = free / (1024**3)
+            used_percent = (used / total) * 100
+            
+            if free_gb < 0.1:  # Less than 100MB
+                return DiagnosticResult(
+                    "critical",
+                    f"Critical: Only {free_gb:.2f} GB free space remaining",
+                    "critical",
+                    ["Clean up old files", "Increase storage", "Monitor space usage"]
+                )
+            elif free_gb < 1.0:  # Less than 1GB
+                return DiagnosticResult(
+                    "warning",
+                    f"Warning: Only {free_gb:.2f} GB free space remaining",
+                    "warning",
+                    ["Consider cleanup", "Monitor space usage"]
+                )
+            elif used_percent > 80:
+                return DiagnosticResult(
+                    "warning",
+                    f"Warning: {used_percent:.1f}% of disk space used",
+                    "warning",
+                    ["Monitor space usage", "Plan for cleanup"]
+                )
+            else:
+                return DiagnosticResult(
+                    "ok",
+                    f"Storage space healthy: {free_gb:.2f} GB free ({used_percent:.1f}% used)",
+                    "info"
+                )
+                
+        except Exception as e:
+            return DiagnosticResult(
+                "error",
+                f"Storage check failed: {str(e)}",
+                "error",
+                ["Check disk access permissions"]
+            )
+    
+    async def _check_backup_health(self) -> DiagnosticResult:
+        """Check backup file health and availability"""
+        try:
+            backup_files = self.storage_manager._find_backups(self.storage_manager.backup_dir)
+            cloud_backups = self.storage_manager._find_backups(self.storage_manager.cloud_backup_dir)
+            
+            total_backups = len(backup_files) + len(cloud_backups)
+            
+            if total_backups == 0:
+                return DiagnosticResult(
+                    "critical",
+                    "No backup files found",
+                    "critical",
+                    ["Create immediate backup", "Enable automatic backups"]
+                )
+            
+            # Check latest backup age
+            all_backups = backup_files + cloud_backups
+            latest_backup = max(all_backups, key=lambda x: os.path.getmtime(x))
+            backup_age = time.time() - os.path.getmtime(latest_backup)
+            
+            if backup_age > 86400:  # More than 24 hours
+                return DiagnosticResult(
+                    "warning",
+                    f"Latest backup is {backup_age / 3600:.1f} hours old",
+                    "warning",
+                    ["Create new backup", "Check backup automation"]
+                )
+            elif backup_age > 172800:  # More than 48 hours
+                return DiagnosticResult(
+                    "error",
+                    f"Latest backup is {backup_age / 3600:.1f} hours old",
+                    "error",
+                    ["Create immediate backup", "Investigate backup failures"]
+                )
+            else:
+                return DiagnosticResult(
+                    "ok",
+                    f"Backup system healthy: {total_backups} backups available, latest {backup_age / 3600:.1f} hours old",
+                    "info"
+                )
+                
+        except Exception as e:
+            return DiagnosticResult(
+                "error",
+                f"Backup check failed: {str(e)}",
+                "error",
+                ["Check backup directory access"]
+            )
+    
+    async def _check_performance(self) -> DiagnosticResult:
+        """Check system performance metrics"""
+        try:
+            # Test database query performance
+            start_time = time.time()
+            conn = await aiosqlite.connect(self.storage_manager.db_path)
+            await conn.execute("SELECT COUNT(*) FROM users")
+            await conn.close()
+            query_time = time.time() - start_time
+            
+            if query_time > 1.0:  # More than 1 second
+                return DiagnosticResult(
+                    "warning",
+                    f"Database query slow: {query_time:.2f}s",
+                    "warning",
+                    ["Check database size", "Consider optimization", "Monitor performance"]
+                )
+            elif query_time > 5.0:  # More than 5 seconds
+                return DiagnosticResult(
+                    "error",
+                    f"Database query very slow: {query_time:.2f}s",
+                    "error",
+                    ["Database optimization required", "Check for corruption", "Consider backup and rebuild"]
+                )
+            else:
+                return DiagnosticResult(
+                    "ok",
+                    f"Database performance good: {query_time:.2f}s",
+                    "info"
+                )
+                
+        except Exception as e:
+            return DiagnosticResult(
+                "error",
+                f"Performance check failed: {str(e)}",
+                "error",
+                ["Check database connection", "Monitor system resources"]
+            )
+    
+    async def _predict_issues(self) -> DiagnosticResult:
+        """Predict potential future issues based on trends"""
+        try:
+            # Analyze backup frequency
+            backup_files = self.storage_manager._find_backups(self.storage_manager.backup_dir)
+            if len(backup_files) < 3:
+                return DiagnosticResult(
+                    "warning",
+                    "Insufficient backup history for trend analysis",
+                    "warning",
+                    ["Create more backups", "Enable automatic backups"]
+                )
+            
+            # Check backup file sizes for trends
+            backup_sizes = []
+            for backup in backup_files[-10:]:  # Last 10 backups
+                try:
+                    backup_sizes.append(os.path.getsize(backup))
+                except:
+                    pass
+            
+            if len(backup_sizes) >= 3:
+                # Calculate growth trend
+                size_trend = (backup_sizes[-1] - backup_sizes[0]) / len(backup_sizes)
+                
+                if size_trend > 1024 * 1024:  # Growing by more than 1MB per backup
+                    estimated_days = (5 * 1024 * 1024 * 1024) / max(1, size_trend)  # Days until 5GB growth
+                    if estimated_days < 30:
+                        return DiagnosticResult(
+                            "warning",
+                            f"Database growing rapidly, may exceed storage in {estimated_days:.0f} days",
+                            "warning",
+                            ["Monitor growth", "Consider cleanup", "Plan storage expansion"]
+                        )
+            
+            return DiagnosticResult(
+                "ok",
+                "No immediate issues predicted based on current trends",
+                "info"
+            )
+            
+        except Exception as e:
+            return DiagnosticResult(
+                "error",
+                f"Prediction analysis failed: {str(e)}",
+                "error",
+                ["Manual monitoring required"]
+            )
+    
+    def _analyze_problems(self, results: List[DiagnosticResult]):
+        """Analyze diagnostic results for patterns and problems"""
+        self.problems_detected = [r for r in results if r.severity in ["warning", "error", "critical"]]
+        
+        # Auto-repair suggestions
+        if ADMIN_CONFIG["auto_repair_enabled"]:
+            for result in self.problems_detected:
+                if result.status == "error" and "Database connection failed" in result.message:
+                    asyncio.create_task(self.storage_manager._auto_repair_database())
+                elif result.status == "critical" and "No backup files found" in result.message:
+                    asyncio.create_task(self.storage_manager._create_backup("emergency"))
+    
+    def get_health_summary(self) -> Dict[str, Any]:
+        """Get overall health summary"""
+        if not self.last_diagnostics:
+            return {"status": "unknown", "message": "No diagnostics available"}
+        
+        critical_issues = [r for r in self.last_diagnostics if r.severity == "critical"]
+        error_issues = [r for r in self.last_diagnostics if r.severity == "error"]
+        warning_issues = [r for r in self.last_diagnostics if r.severity == "warning"]
+        
+        if critical_issues:
+            status = "critical"
+            message = f"{len(critical_issues)} critical issues detected"
+        elif error_issues:
+            status = "error"
+            message = f"{len(error_issues)} errors detected"
+        elif warning_issues:
+            status = "warning"
+            message = f"{len(warning_issues)} warnings detected"
+        else:
+            status = "healthy"
+            message = "System operating normally"
+        
+        return {
+            "status": status,
+            "message": message,
+            "total_issues": len(self.problems_detected),
+            "last_check": self.last_diagnostics[0].timestamp if self.last_diagnostics else None
+        }
+
 class BothostStorageManager:
     """
-    Advanced storage manager for bothost.ru with automatic backups
-    and data persistence across deployments
+    Advanced storage manager for bothost.ru with automatic backups,
+    AI-powered diagnostics, and intelligent recovery
     """
 
     def __init__(self):
@@ -26,6 +345,7 @@ class BothostStorageManager:
         self.db_path = os.path.join(STORAGE_DIR, DB_CONFIG["name"])
         self.backup_dir = os.path.join(STORAGE_DIR, "backups")
         self.cloud_backup_dir = os.path.join(STORAGE_DIR, "cloud_backups")
+        self.diagnostic_system = StorageDiagnostic(self)
         self._ensure_directories()
 
     def _ensure_directories(self):
@@ -42,8 +362,8 @@ class BothostStorageManager:
                     f.write(f"# Bothost.ru keep file\n# Created: {datetime.now().isoformat()}\n# Do not delete this file or directory")
 
     async def initialize(self):
-        """Initialize storage system"""
-        logger.info("🔧 Initializing persistent storage system")
+        """Initialize storage system with AI diagnostics"""
+        logger.info("🔧 Initializing advanced persistent storage system with AI diagnostics")
 
         # Check if this is a fresh deployment
         is_fresh = not os.path.exists(self.db_path)
@@ -55,8 +375,8 @@ class BothostStorageManager:
             logger.info("✅ Existing database found")
             await self._create_backup("pre_init")
 
-        # Start periodic backup task
-        asyncio.create_task(self._periodic_backup())
+        # Start intelligent monitoring
+        asyncio.create_task(self._intelligent_monitoring())
 
         return is_fresh
 
@@ -164,12 +484,86 @@ class BothostStorageManager:
         except Exception as e:
             logger.error(f"⚠️ Backup cleanup failed: {e}")
 
+    async def _intelligent_monitoring(self):
+        """Intelligent monitoring with AI diagnostics"""
+        while True:
+            try:
+                # Run comprehensive diagnostics
+                diagnostics = await self.diagnostic_system.run_comprehensive_diagnostic()
+                
+                # Log diagnostic results
+                for result in diagnostics:
+                    if result.severity == "critical":
+                        logger.critical(f"🚨 CRITICAL: {result.message}")
+                    elif result.severity == "error":
+                        logger.error(f"❌ ERROR: {result.message}")
+                    elif result.severity == "warning":
+                        logger.warning(f"⚠️ WARNING: {result.message}")
+                    else:
+                        logger.info(f"✅ {result.message}")
+                
+                # Get health summary
+                health = self.diagnostic_system.get_health_summary()
+                logger.info(f"📊 Health Status: {health['status']} - {health['message']}")
+                
+                # Sleep until next diagnostic check
+                await asyncio.sleep(ADMIN_CONFIG["diagnostic_interval"])
+                
+            except Exception as e:
+                logger.error(f"❌ Intelligent monitoring failed: {e}")
+                await asyncio.sleep(60)  # Retry after delay
+
+    async def _repair_database(self):
+        """Repair database issues"""
+        try:
+            logger.info("🔧 Starting database repair...")
+            
+            # Create backup before repair
+            await self._create_backup("repair_backup")
+            
+            # Try to repair database
+            conn = await aiosqlite.connect(self.db_path)
+            
+            # Run integrity check
+            async with conn.execute("PRAGMA integrity_check") as cursor:
+                result = await cursor.fetchone()
+                if result and result[0] != "ok":
+                    logger.warning(f"Database integrity issue: {result[0]}")
+            
+            # Optimize database
+            await conn.execute("VACUUM")
+            await conn.execute("PRAGMA optimize")
+            
+            await conn.close()
+            
+            logger.info("✅ Database repair completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Database repair failed: {e}")
+            raise
+
+    async def _auto_repair_database(self):
+        """Automatically repair database issues"""
+        try:
+            logger.info("🔧 Starting automatic database repair...")
+            
+            # Try to repair database
+            await self._repair_database()
+            
+            # Create backup after repair
+            await self._create_backup("auto_repair")
+            
+            logger.info("✅ Automatic database repair completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Automatic repair failed: {e}")
+
     async def _periodic_backup(self):
         """Periodic backup task"""
         while True:
             try:
-                await asyncio.sleep(3600)  # Backup every hour
-                await self._create_backup("hourly")
+                await asyncio.sleep(ADMIN_CONFIG["backup_interval"])  # Backup every configured interval
+                await self._create_backup("auto")
             except Exception as e:
                 logger.error(f"❌ Periodic backup failed: {e}")
                 await asyncio.sleep(60)  # Retry after delay
