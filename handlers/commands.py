@@ -714,11 +714,19 @@ async def fight_command(message: types.Message, command: CommandObject):
 @router.callback_query(F.data.startswith("chat_"))
 async def handle_chat_callbacks(callback: types.CallbackQuery):
     """Handle all chat-related callbacks"""
-    action = callback.data.replace("chat_", "")
+    callback_data = callback.data
     chat_id = callback.message.chat.id
     user_id = callback.from_user.id
 
     try:
+        # Обработка chat_fight_123 - ИЗВЛЕКАЕМ ID перед удалением prefix
+        if callback_data.startswith("chat_fight_"):
+            await handle_chat_fight(callback)
+            return
+        
+        # Удаляем prefix для остальных
+        action = callback_data.replace("chat_", "")
+        
         if action == "davka":
             await process_chat_davka_callback(callback, user_id, chat_id)
         elif action == "top":
@@ -745,13 +753,11 @@ async def handle_chat_callbacks(callback: types.CallbackQuery):
             await show_chat_menu_callback(callback)
         elif action == "fight":
             await callback.answer("Используй команду /fight в ответ на сообщение игрока", show_alert=True)
-        elif action.startswith("chat_fight_"):
-            await handle_chat_fight(callback)
         else:
             await callback.answer("❌ Неизвестное действие", show_alert=True)
 
     except Exception as e:
-        logger.error(f"Error in chat callback {action}: {e}")
+        logger.error(f"Error in chat callback {callback_data}: {e}")
         await callback.answer("❌ Ошибка, попробуй позже", show_alert=True)
 
 # ==================== UTILITY FUNCTIONS FOR CHAT COMMANDS ====================
