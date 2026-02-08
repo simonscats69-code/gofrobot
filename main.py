@@ -7,7 +7,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from db_manager import init_db, close_pool, stop_auto_backup, create_backup
+from db_manager import init_db, close_pool, stop_auto_backup, create_backup, start_auto_backup
 from dotenv import load_dotenv
 from handlers import router
 
@@ -171,6 +171,9 @@ async def main():
         logger.info(f"📂 Содержимое: {os.listdir('.')}")
 
         await init_db()
+
+        # Запускаем автобэкап
+        await start_auto_backup(interval_seconds=3600)
 
         BOT_TOKEN = os.getenv("BOT_TOKEN")
         if not BOT_TOKEN:
