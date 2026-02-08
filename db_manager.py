@@ -1381,7 +1381,38 @@ async def stop_auto_backup():
         _backup_task = None
         logger.info("🛑 Автобэкап остановлен")
 
-async def get_backup_info() -> Dict:
+async def upload_backup_to_telegram(bot, admin_id: int) -> bool:
+    """Отправляет последний бэкап в Telegram админу."""
+    try:
+        if not os.path.exists(DB_PATH):
+            logger.warning("⚠️ База данных не существует для отправки")
+            return False
+        
+        # Находим последний бэкап
+        backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith('backup_') and f.endswith('.db')]
+        if not backups:
+            logger.info("📭 Нет бэкапов для отправки")
+            return False
+        
+        latest_backup = sorted(backups)[-1]
+        backup_path = os.path.join(BACKUP_DIR, latest_backup)
+        
+        # Отправляем файл
+        with open(backup_path, 'rb') as f:
+            await bot.send_document(
+                chat_id=admin_id,
+                document=f,
+                caption=f"💾 Бэкап бота: {latest_backup}",
+                protect_content=True
+            )
+        
+        logger.info(f"✅ Бэкап отправлен в Telegram: {latest_backup}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка отправки бэкапа в Telegram: {e}")
+        return False
+
     """Возвращает информацию о бэкапах."""
     try:
         if not os.path.exists(BACKUP_DIR):
