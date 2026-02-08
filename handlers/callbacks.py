@@ -16,13 +16,6 @@ from db_manager import (
 )
 from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard, mk, rademka_fight_keyboard
 
-# Импорты для визуальных эффектов (если доступны)
-try:
-    from utils import visual_effects, formatters, animation_manager, notification_effects
-    VISUAL_EFFECTS_AVAILABLE = True
-except ImportError:
-    VISUAL_EFFECTS_AVAILABLE = False
-
 router = Router()
 logger = logging.getLogger(__name__)
 
@@ -1428,19 +1421,6 @@ async def cmd_cancel(m: types.Message, state: FSMContext):
     else:
         await m.answer("Нет активного процесса для отмены.", reply_markup=main_keyboard())
 
-async def cmd_rademka(m: types.Message):
-    p = await get_patsan(m.from_user.id)
-    gofra_info = get_gofra_info(p.get('gofra_mm', 10.0))
-    
-    can_fight, fight_msg = await can_fight_pvp(m.from_user.id)
-    fight_status = "✅ Можно атаковать" if can_fight else f"❌ {fight_msg}"
-    
-    txt = f"👊 ПРОТАЩИТЬ КАК РАДЁМКУ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ!\n\n{fight_status}\n\nВыбери пацана и протащи его по гофроцентралу!\nЗа успешную радёмку получишь:\n• +0.2 мм к кабелю\n• +5-12 мм к гофрошке\n• Шанс унизить публично\n\nРиски:\n• Можешь опозориться перед всеми\n• Потеряешь уважение\n\nТвои статы:\n{gofra_info['emoji']} {gofra_info['name']}\n🏗️ {format_length(p.get('gofra_mm', 10.0))}\n🔌 {format_length(p.get('cable_mm', 10.0))}"
-    await m.answer(txt, reply_markup=rademka_keyboard())
-
-@router.message(Command("rademka"))
-async def cmd_rademka_handler(m: types.Message):
-    await cmd_rademka(m)
 
 @ignore_not_modified_error
 @router.callback_query(F.data == "rademka")
