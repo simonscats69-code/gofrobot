@@ -317,7 +317,7 @@ async def callback_change_nickname(c: types.CallbackQuery, state: FSMContext):
     await c.answer("Введи новый ник в чат")
 
 # ОБРАБОТЧИК ВВОДА НИКА
-@router.message(NicknameChange.waiting_for_nickname)
+@router.message(F.state == NicknameChange.waiting_for_nickname)
 async def process_nickname_input(message: types.Message, state: FSMContext):
     """Process nickname input with validation"""
     nn = message.text.strip()
