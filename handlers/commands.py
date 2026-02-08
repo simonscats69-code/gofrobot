@@ -13,7 +13,7 @@ from db_manager import (
     get_patsan, davka_zmiy, uletet_zmiy, get_gofra_info, 
     format_length, ChatManager, calculate_atm_regen_time,
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight,
-    calculate_davka_cooldown, get_top_players
+    calculate_davka_cooldown, get_top_players, get_connection
 )
 from keyboards import (
     main_keyboard, profile_extended_kb, rademka_keyboard, 
