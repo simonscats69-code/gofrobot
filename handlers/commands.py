@@ -20,9 +20,12 @@ from keyboards import (
     cable_info_kb, atm_status_kb, mk, back_kb, 
     rademka_fight_keyboard, chat_menu_keyboard as get_chat_menu_keyboard
 )
-from .shared import ignore_not_modified_error, ft, pb
+from .shared import ignore_not_modified_error
 
 router = Router()
+
+# Визуальные эффекты отключены
+VISUAL_EFFECTS_AVAILABLE = False
 logger = logging.getLogger(__name__)
 
 # FSM States for nickname changes
