@@ -2,15 +2,19 @@ import asyncio
 import os
 import logging
 import gc
+import signal
 from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from db_manager import init_db
+from db_manager import init_db, close_pool, stop_auto_backup, create_backup
 from dotenv import load_dotenv
 from handlers import router
 
 load_dotenv()
+
+# Глобальные переменные для graceful shutdown
+_shutdown_event = None
 
 def setup_logging():
     log_dir = "storage/logs"
@@ -105,7 +109,60 @@ async def set_bot_commands(bot: Bot):
     
     logger.info("✅ Команды бота установлены (разные для лички и групп)")
 
+async def graceful_shutdown(signal_name: str):
+    """Корректное завершение работы бота."""
+    logger.info(f"🛑 Получен сигнал {signal_name}, начинаю корректное завершение...")
+    
+    try:
+        # 1. Создаём финальный бэкап
+        logger.info("💾 Создаём финальный бэкап...")
+        await create_backup()
+        
+        # 2. Останавливаем автобэкап
+        logger.info("🛑 Останавливаем автобэкап...")
+        await stop_auto_backup()
+        
+        # 3. Закрываем пул соединений с БД
+        logger.info("🔌 Закрываем соединения с базой данных...")
+        await close_pool()
+        
+        # 4. Принудительный сборщик мусора
+        gc.collect()
+        
+        logger.info("✅ Корректное завершение работы бота выполнено!")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при завершении работы: {e}", exc_info=True)
+
+def setup_signal_handlers(loop):
+    """Настройка обработчиков сигналов."""
+    global _shutdown_event
+    
+    _shutdown_event = asyncio.Event()
+    
+    def signal_handler(sig):
+        logger.info(f"📡 Получен сигнал {sig.name}")
+        loop.create_task(graceful_shutdown(sig.name))
+        _shutdown_event.set()
+    
+    # Обработчики для Windows
+    try:
+        loop.add_signal_handler(signal.SIGTERM, lambda: signal_handler(signal.SIGTERM))
+        loop.add_signal_handler(signal.SIGINT, lambda: signal_handler(signal.SIGINT))
+    except (AttributeError, NotImplementedError):
+        # SIGTERM/SIGINT не доступны на Windows
+        pass
+    
+    # Добавляем обработку Ctrl+C через on_shutdown
+    logger.info("✅ Обработчики сигналов настроены")
+
 async def main():
+    global _shutdown_event
+    
+    # Создаём event loop для shutdown
+    loop = asyncio.get_running_loop()
+    setup_signal_handlers(loop)
+    
     gc.collect()
     
     try:
@@ -128,14 +185,23 @@ async def main():
         dp.include_router(router)
 
         logger.info("Бот запускается...")
-        await dp.start_polling(bot)
+        
+        # Запускаем polling с возможностью graceful shutdown
+        try:
+            await dp.start_polling(bot, shutdown_hook=graceful_shutdown)
+        except asyncio.CancelledError:
+            logger.info("⏹️ Polling отменён")
+        
+        # Ждём завершения если был сигнал
+        if _shutdown_event and not _shutdown_event.is_set():
+            await _shutdown_event.wait()
 
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}", exc_info=True)
 
     finally:
         gc.collect()
-        logger.info("Бот остановлен")
+        logger.info("👋 Бот полностью остановлен")
 
 if __name__ == "__main__":
     try:

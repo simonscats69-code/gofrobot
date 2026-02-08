@@ -91,7 +91,7 @@ def ft(s):
 # Глобальные переменные для базы данных
 DB_PATH = "storage/bot_database.db"
 BACKUP_DIR = "storage/backups"
-DATABASE_VERSION = 4
+DATABASE_VERSION = 5
 
 async def get_connection() -> aiosqlite.Connection:
     """Получает соединение из пула."""
@@ -612,40 +612,6 @@ async def repair_save_directory():
         logger.error(f"❌ Ошибка при ремонте директории с сейвами: {e}")
         return False, f"Ошибка при ремонте директории с сейвами: {e}"
 
-async def cleanup_old_backups():
-    """Удаляет старые резервные копии базы данных."""
-    logger.info("🧹 Очистка старых резервных копий...")
-
-    try:
-        if not os.path.exists(BACKUP_DIR):
-            return
-
-        # Получаем список всех резервных копий
-        backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith('backup_') or f.startswith('repair_backup_')]
-
-        if not backups:
-            logger.info("📁 Нет резервных копий для очистки")
-            return
-
-        # Сортируем по дате (самые старые первые)
-        backups.sort()
-
-        # Оставляем последние 5 резервных копий
-        backups_to_delete = backups[:-5]
-
-        for backup in backups_to_delete:
-            backup_path = os.path.join(BACKUP_DIR, backup)
-            try:
-                os.remove(backup_path)
-                logger.info(f"🗑️ Удалена старая резервная копия: {backup}")
-            except Exception as e:
-                logger.warning(f"⚠️ Не удалось удалить резервную копию {backup}: {e}")
-
-        logger.info(f"✅ Очистка завершена. Оставлено {len(backups[-5:])} последних резервных копий")
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка при очистке резервных копий: {e}")
-        raise
 
 async def repair_config_files():
     """Восстанавливает файлы конфигурации."""
@@ -1069,7 +1035,6 @@ async def davka_zmiy(user_id: int, chat_id: Optional[int] = None) -> Tuple[bool,
 
         # Обновляем статистику чата если нужно
         if chat_id:
-            from db_manager import ChatManager
             await ChatManager.update_user_chat_stats(user_id, chat_id, zmiy_grams)
 
         return True, patsan, {
@@ -1324,3 +1289,125 @@ class ChatManager:
             return [dict(row) for row in rows]
         finally:
             await conn.close()
+
+
+# ============ AUTO BACKUP SYSTEM ============
+
+_backup_task = None
+_backup_interval = 3600  # 1 час по умолчанию
+
+async def create_backup() -> str:
+    """Создаёт бэкап базы данных."""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_filename = f"backup_{timestamp}.db"
+    backup_path = os.path.join(BACKUP_DIR, backup_filename)
+    
+    try:
+        if os.path.exists(DB_PATH):
+            shutil.copy2(DB_PATH, backup_path)
+            logger.info(f"💾 Создан бэкап: {backup_filename}")
+            
+            # Удаляем старые бэкапы
+            await cleanup_old_backups(max_keep=5)
+            
+            return backup_filename
+        else:
+            logger.warning("⚠️ База данных не существует для бэкапа")
+            return ""
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания бэкапа: {e}")
+        return ""
+
+async def cleanup_old_backups(max_keep: int = 5):
+    """Удаляет старые бэкапы, оставляя только max_keep последних."""
+    try:
+        if not os.path.exists(BACKUP_DIR):
+            return
+        
+        backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith('backup_') and f.endswith('.db')]
+        if len(backups) <= max_keep:
+            return
+        
+        backups.sort()
+        for old in backups[:-max_keep]:
+            old_path = os.path.join(BACKUP_DIR, old)
+            try:
+                os.remove(old_path)
+                logger.info(f"🗑️ Удалён старый бэкап: {old}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось удалить {old}: {e}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка очистки бэкапов: {e}")
+
+async def auto_backup_loop():
+    """Фоновый цикл автобэкапа."""
+    global _backup_task, _backup_interval
+    
+    logger.info("🚀 Запущен фоновый автобэкап")
+    
+    while True:
+        try:
+            await asyncio.sleep(_backup_interval)
+            await create_backup()
+        except asyncio.CancelledError:
+            logger.info("🛑 Остановлен фоновый автобэкап")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Ошибка в цикле автобэкапа: {e}")
+            await asyncio.sleep(60)  # Ждём минуту перед повторной попыткой
+
+async def start_auto_backup(interval_seconds: int = 3600):
+    """Запускает автобэкап."""
+    global _backup_task, _backup_interval
+    
+    _backup_interval = interval_seconds
+    
+    if _backup_task is None or _backup_task.done():
+        _backup_task = asyncio.create_task(auto_backup_loop())
+        logger.info(f"✅ Автобэкап запущен (интервал: {interval_seconds}с)")
+    else:
+        logger.info("ℹ️ Автобэкап уже запущен")
+
+async def stop_auto_backup():
+    """Останавливает автобэкап."""
+    global _backup_task
+    
+    if _backup_task is not None and not _backup_task.done():
+        _backup_task.cancel()
+        try:
+            await _backup_task
+        except asyncio.CancelledError:
+            pass
+        _backup_task = None
+        logger.info("🛑 Автобэкап остановлен")
+
+async def get_backup_info() -> Dict:
+    """Возвращает информацию о бэкапах."""
+    try:
+        if not os.path.exists(BACKUP_DIR):
+            return {"count": 0, "backups": [], "total_size": 0}
+        
+        backups = []
+        total_size = 0
+        
+        for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            if f.startswith('backup_') and f.endswith('.db'):
+                fpath = os.path.join(BACKUP_DIR, f)
+                size = os.path.getsize(fpath)
+                total_size += size
+                backups.append({
+                    "name": f,
+                    "size": size,
+                    "size_mb": round(size / (1024*1024), 2),
+                    "created": datetime.fromtimestamp(os.path.getctime(fpath)).isoformat()
+                })
+        
+        return {
+            "count": len(backups),
+            "backups": backups,
+            "total_size": total_size,
+            "total_size_mb": round(total_size / (1024*1024), 2)
+        }
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения инфо о бэкапах: {e}")
+        return {"count": 0, "backups": [], "total_size": 0, "error": str(e)}
