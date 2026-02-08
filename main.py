@@ -7,7 +7,7 @@ from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from db_manager import init_db, close_pool, stop_auto_backup, create_backup, start_auto_backup
+from db_manager import init_db, close_pool, stop_auto_backup, create_backup, start_auto_backup, upload_backup_to_telegram
 from dotenv import load_dotenv
 from handlers import router
 
@@ -15,6 +15,7 @@ load_dotenv()
 
 # Глобальные переменные для graceful shutdown
 _shutdown_event = None
+_bot_instance = None
 
 def setup_logging():
     log_dir = "storage/logs"
@@ -111,6 +112,8 @@ async def set_bot_commands(bot: Bot):
 
 async def graceful_shutdown(signal_name: str):
     """Корректное завершение работы бота."""
+    global _bot_instance
+    
     logger.info(f"🛑 Получен сигнал {signal_name}, начинаю корректное завершение...")
     
     try:
@@ -118,15 +121,28 @@ async def graceful_shutdown(signal_name: str):
         logger.info("💾 Создаём финальный бэкап...")
         await create_backup()
         
-        # 2. Останавливаем автобэкап
+        # 2. Отправляем бэкап в Telegram админу
+        if _bot_instance:
+            admin_id = os.getenv("ADMIN_ID")
+            if admin_id:
+                try:
+                    admin_id = int(admin_id)
+                    logger.info(f"📤 Отправляем бэкап админу {admin_id}...")
+                    await upload_backup_to_telegram(_bot_instance, admin_id)
+                except ValueError:
+                    logger.warning("⚠️ ADMIN_ID неверный формат")
+            else:
+                logger.warning("⚠️ ADMIN_ID не найден в .env")
+        
+        # 3. Останавливаем автобэкап
         logger.info("🛑 Останавливаем автобэкап...")
         await stop_auto_backup()
         
-        # 3. Закрываем пул соединений с БД
+        # 4. Закрываем пул соединений с БД
         logger.info("🔌 Закрываем соединения с базой данных...")
         await close_pool()
         
-        # 4. Принудительный сборщик мусора
+        # 5. Принудительный сборщик мусора
         gc.collect()
         
         logger.info("✅ Корректное завершение работы бота выполнено!")
@@ -180,7 +196,9 @@ async def main():
             logger.error("BOT_TOKEN не найден в переменных окружения")
             raise ValueError("BOT_TOKEN не найден в переменных окружения")
 
+        global _bot_instance
         bot = Bot(token=BOT_TOKEN)
+        _bot_instance = bot
         dp = Dispatcher(storage=MemoryStorage())
 
         await set_bot_commands(bot)
