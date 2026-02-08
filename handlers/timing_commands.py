@@ -10,8 +10,24 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.exceptions import TelegramBadRequest
 from keyboards import main_keyboard
 from timing_system import timing_manager
-from db_manager import get_patsan
+from db_manager import get_patsan, get_gofra_info
 from config import TIMING_CONFIG
+
+# Утилиты для форматирования
+def get_atm_info(atm_count: int) -> dict:
+    """Информация об атмосферах"""
+    return {
+        'atm_count': atm_count,
+        'regen_time': '1 атм. = 2 часа',
+        'max_atm': 12
+    }
+
+def get_cable_info(cable_mm: float) -> dict:
+    """Информация о кабеле"""
+    return {
+        'length': cable_mm,
+        'strength': cable_mm / 10.0
+    }
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +82,7 @@ async def cmd_stats(message: Message):
                 return
             
             message_text = await _format_timing_stats_message(stats)
-            await message.answer(message_text, reply_markup=get_main_keyboard())
+            await message.answer(message_text, reply_markup=main_keyboard())
         else:
             # Общая статистика (оставляем существующую логику)
             patsan = await get_patsan(user_id)
@@ -87,7 +103,7 @@ async def cmd_stats(message: Message):
                 f"📅 Регистрация: {datetime.fromtimestamp(patsan['registration_time']).strftime('%d.%m.%Y')}"
             )
             
-            await message.answer(message_text, reply_markup=get_main_keyboard())
+            await message.answer(message_text, reply_markup=main_keyboard())
         
     except Exception as e:
         logger.error(f"Error in cmd_stats: {e}")
@@ -175,7 +191,7 @@ async def callback_timing_stats(callback: CallbackQuery):
         # Обновляем сообщение
         await callback.message.edit_text(
             text=message_text,
-            reply_markup=get_main_keyboard()
+            reply_markup=main_keyboard()
         )
         
         await callback.answer("📊 Статистика загружена")
@@ -199,7 +215,7 @@ async def callback_timing_stop(callback: CallbackQuery):
         # Обновляем сообщение
         await callback.message.edit_text(
             text=message_text,
-            reply_markup=get_main_keyboard()
+            reply_markup=main_keyboard()
         )
         
         await callback.answer("✅ Таймеры остановлены")

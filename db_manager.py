@@ -9,6 +9,12 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import sqlite3
 
+# Импортируем конфигурацию
+from config import (
+    BALANCE, GOFRY_MM, ATM_MAX, ATM_BASE_TIME,
+    DB_CONFIG, ADMIN_CONFIG
+)
+
 logger = logging.getLogger(__name__)
 
 class DatabaseConnectionPool:
@@ -738,10 +744,34 @@ async def get_patsan(user_id: int) -> Dict[str, Any]:
         else:
             # Создаем нового пользователя, если его нет в базе
             await conn.execute("""
-                INSERT INTO users (user_id) VALUES (?)
+                INSERT OR IGNORE INTO users (user_id) VALUES (?)
             """, (user_id,))
             await conn.commit()
-            return await get_patsan(user_id)
+            # Повторно получаем данные созданного пользователя
+            cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            row = await cursor.fetchone()
+            if row:
+                cursor = await conn.execute("PRAGMA table_info(users)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                return dict(zip(column_names, row))
+            # Если все еще None, возвращаем дефолтные данные
+            return {
+                'user_id': user_id,
+                'nickname': 'Неизвестно',
+                'gofra_mm': 10.0,
+                'cable_mm': 10.0,
+                'atm_count': 12,
+                'zmiy_grams': 0.0,
+                'total_zmiy_grams': 0.0,
+                'cable_power': 2,
+                'gofra': 1,
+                'last_atm_regen': 0,
+                'last_davka': 0,
+                'last_rademka': 0,
+                'created_at': int(time.time()),
+                'updated_at': int(time.time())
+            }
     finally:
         await release_connection(conn)
 
@@ -776,6 +806,7 @@ async def save_patsan(patsan_data: Dict[str, Any]):
 
 async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
     """Изменяет никнейм пользователя."""
+    conn = None
     try:
         conn = await get_connection()
         # Проверяем, не используется ли этот никнейм уже
@@ -792,7 +823,8 @@ async def change_nickname(user_id: int, new_nickname: str) -> Tuple[bool, str]:
         logger.error(f"Ошибка при изменении никнейма: {e}")
         return False, f"Ошибка при изменении никнейма: {e}"
     finally:
-        await release_connection(conn)
+        if conn is not None:
+            await release_connection(conn)
 
 async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[str, Any]]:
     """Получает топ игроков по указанному критерию с оптимизированным запросом."""
@@ -976,7 +1008,7 @@ async def calculate_atm_regen_time(patsan: Dict[str, Any]) -> Dict[str, Any]:
     gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
     atm_speed = gofra_info['atm_speed']
 
-    base_time_per_atm = 7200  # 2 часа в секундах
+    base_time_per_atm = ATM_BASE_TIME  # 2 часа из config.py
     actual_time_per_atm = base_time_per_atm / atm_speed
 
     current_atm = patsan.get('atm_count', 0)
@@ -994,7 +1026,7 @@ async def calculate_atm_regen_time(patsan: Dict[str, Any]) -> Dict[str, Any]:
         'time_to_one_atm': actual_time_per_atm
     }
 
-async def davka_zmiy(user_id: int, chat_id: int = None) -> Tuple[bool, Dict[str, Any], Dict[str, Any]]:
+async def davka_zmiy(user_id: int, chat_id: Optional[int] = None) -> Tuple[bool, Optional[Dict[str, Any]], Dict[str, Any]]:
     """Обрабатывает давку змия пользователем."""
     try:
         patsan = await get_patsan(user_id)
@@ -1053,7 +1085,7 @@ async def davka_zmiy(user_id: int, chat_id: int = None) -> Tuple[bool, Dict[str,
         logger.error(f"Ошибка при давке змия: {e}")
         return False, None, {"error": f"Ошибка при давке змия: {e}"}
 
-async def uletet_zmiy(user_id: int) -> Tuple[bool, Dict[str, Any], Dict[str, Any]]:
+async def uletet_zmiy(user_id: int) -> Tuple[bool, Optional[Dict[str, Any]], Dict[str, Any]]:
     """Обрабатывает отправку змия в коричневую страну."""
     try:
         patsan = await get_patsan(user_id)

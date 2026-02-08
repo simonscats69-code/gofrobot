@@ -138,4 +138,7 @@ async def main():
         logger.info("Бот остановлен")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем (Ctrl+C)")

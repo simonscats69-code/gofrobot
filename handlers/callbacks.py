@@ -7,17 +7,18 @@ from aiogram.exceptions import TelegramBadRequest
 import time
 import random
 import logging
+import re
 from db_manager import (
     get_patsan, davka_zmiy, uletet_zmiy, get_gofra_info,
     format_length, ChatManager, calculate_atm_regen_time,
     calculate_pvp_chance, can_fight_pvp, save_patsan, save_rademka_fight,
-    calculate_davka_cooldown, get_top_players
+    calculate_davka_cooldown, get_top_players, change_nickname
 )
-from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard, mk
+from keyboards import main_keyboard, back_kb, gofra_info_kb, cable_info_kb, atm_status_kb, rademka_keyboard, nickname_keyboard, chat_menu_keyboard as get_chat_menu_keyboard, top_sort_keyboard, back_to_profile_keyboard, mk, rademka_fight_keyboard
 
 # Импорты для визуальных эффектов (если доступны)
 try:
-    from utils import visual_effects, formatters, animation_manager, notification_effects, beautiful_keyboards
+    from utils import visual_effects, formatters, animation_manager, notification_effects
     VISUAL_EFFECTS_AVAILABLE = True
 except ImportError:
     VISUAL_EFFECTS_AVAILABLE = False
@@ -414,7 +415,8 @@ async def show_user_chat_stats_message(user_id, chat_id, message_obj):
         text += f"\n📊 Статистика чата:\n"
         text += f"• Всего участников: {stats['total_players']}\n"
         text += f"• Общий вес змия: {stats['total_zmiy_all']/1000:.1f} кг\n"
-        text += f"• Твой вклад: {(user_total/stats['total_zmiy_all']*100):.1f}%"
+        total_all = stats['total_zmiy_all'] or 1  # Избегаем деления на 0
+        text += f"• Твой вклад: {(user_total/total_all*100):.1f}%" if total_all > 0 else "• Твой вклад: 0%"
 
         await message_obj.answer(text, reply_markup=get_chat_menu_keyboard())
 

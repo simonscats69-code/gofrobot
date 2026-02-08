@@ -1,174 +1,213 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton as Btn
-from typing import List, Optional
+"""
+Единая система клавиатур для Telegram-бота
+Все клавиатуры в едином красивом стиле
+"""
 
-MENUS = {
-    "main": [
-        ("🐍 Давить коричневага", "davka"),
-        ("✈️ Отправить змия", "uletet"),
-        ("👊 Радёмка (PvP)", "rademka"),
-        ("🏆 Топ игроков", "top"),
-        ("📊 Профиль", "profile"),
-        ("👤 Никнейм", "nickname_menu")
-    ],
+from typing import List, Dict
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-    "nickname": [
-        ("📝 Изменить ник", "change_nickname"),
-        ("🔄 Обновить", "nickname_menu")
-    ],
+# ============================================
+# УНИФИЦИРОВАННЫЕ КЛАВИАТУРЫ (ВСЕ В КРАСИВОМ СТИЛЕ)
+# ============================================
 
-    "rad": [
-        ("🎯 Случайная цель", "rademka_random"),
-        ("📊 Статистика", "rademka_stats"),
-        ("👑 Топ", "rademka_top")
-    ],
+def _btn(text: str, callback_data: str) -> InlineKeyboardButton:
+    """Создать кнопку"""
+    return InlineKeyboardButton(text=text, callback_data=callback_data)
 
-    "gofra": [
-        ("📈 Прогресс гофрошки", "gofra_progress"),
-        ("⚡ Скорость атмосфер", "gofra_speed"),
-        ("📊 Следующая гофрошка", "gofra_next"),
-        ("⬅️ Назад", "back_main")
-    ],
+def _row(*buttons: InlineKeyboardButton) -> List[InlineKeyboardButton]:
+    """Создать ряд кнопок"""
+    return list(buttons)
 
-    "cable": [
-        ("💪 Сила кабеля", "cable_power_info"),
-        ("⚔️ Урон в PvP", "cable_pvp_info"),
-        ("📈 Прокачка", "cable_upgrade_info"),
-        ("⬅️ Назад", "back_main")
-    ],
+def _mk(*rows: List[InlineKeyboardButton]) -> InlineKeyboardMarkup:
+    """Создать клавиатуру из рядов"""
+    return InlineKeyboardMarkup(inline_keyboard=list(rows))
 
-    "top": [
-        ("🏗️ По гофрошке", "top_gofra"),
-        ("🔌 По кабелю", "top_cable"),
-        ("🐍 По змию", "top_zmiy"),
-        ("🌡️ По атмосферам", "top_atm")
-    ],
 
-    "profile": [
-        ("🏗️ Моя гофрошка", "gofra_info"),
-        ("🔌 Мой кабель", "cable_info"),
-        ("🌡️ Атмосферы", "atm_status"),
-        ("⬅️ Назад", "back_main")
-    ],
+# ========== ГЛАВНОЕ МЕНЮ ==========
+def main_keyboard() -> InlineKeyboardMarkup:
+    """Главное меню - все действия"""
+    return _mk(
+        _row(_btn("🐍 Давить коричневага", "davka"), _btn("✈️ Отправить змия", "uletet")),
+        _row(_btn("👊 Радёмка (PvP)", "rademka"), _btn("🏆 Топ игроков", "top")),
+        _row(_btn("📊 Профиль", "profile"), _btn("👤 Никнейм", "nickname_menu"))
+    )
 
-    "admin": [
-        ("🔧 Ремонт базы", "admin_repair"),
-        ("💾 Создать бэкап", "admin_backup"),
-        ("🔄 Восстановить", "admin_restore"),
-        ("📤 Экспорт данных", "admin_export"),
-        ("📥 Импорт данных", "admin_import"),
-        ("📊 Статус системы", "admin_status"),
-        ("🧹 Очистка", "admin_cleanup"),
-        ("📋 Логи", "admin_logs"),
-        ("⚙️ Настройки", "admin_settings")
-    ],
 
-    "admin_settings": [
-        ("🔄 Включить авто-ремонт", "admin_enable_auto_repair"),
-        ("❌ Отключить авто-ремонт", "admin_disable_auto_repair"),
-        ("⏰ Интервал бэкапов", "admin_backup_interval"),
-        ("📊 Интервал диагностики", "admin_diagnostic_interval"),
-        ("⬅️ Назад", "admin")
-    ]
-}
+# ========== МЕНЮ НИКНЕЙМА ==========
+def nickname_keyboard() -> InlineKeyboardMarkup:
+    """Меню никнейма"""
+    return _mk(
+        _row(_btn("📝 Изменить ник", "change_nickname"), _btn("⭐ Моя репутация", "my_reputation")),
+        _row(_btn("🥇 Топ репутации", "top_reputation"), _btn("⬅️ Назад", "back_main"))
+    )
+
+
+# ========== МЕНЮ РАДЁМКИ ==========
+def rademka_keyboard() -> InlineKeyboardMarkup:
+    """Меню радёмки"""
+    return _mk(
+        _row(_btn("🎯 Случайная цель", "rademka_random"), _btn("📊 Моя статистика", "rademka_stats")),
+        _row(_btn("🥇 Топ радёмщиков", "rademka_top"), _btn("⬅️ Назад", "back_main"))
+    )
+
+
+# ========== МЕНЮ ГОФРЫ ==========
+def gofra_info_keyboard() -> InlineKeyboardMarkup:
+    """Меню информации о гофрошке"""
+    return _mk(
+        _row(_btn("📈 Прогресс", "gofra_progress"), _btn("⚡ Скорость ATM", "gofra_speed")),
+        _row(_btn("🎯 Следующая гофра", "gofra_next"), _btn("⬅️ В профиль", "profile"))
+    )
+
+
+# ========== МЕНЮ КАБЕЛЯ ==========
+def cable_info_keyboard() -> InlineKeyboardMarkup:
+    """Меню информации о кабеле"""
+    return _mk(
+        _row(_btn("💪 Сила кабеля", "cable_power_info"), _btn("⚔️ PvP бонус", "cable_pvp_info")),
+        _row(_btn("📈 Прокачка", "cable_upgrade_info"), _btn("⬅️ В профиль", "profile"))
+    )
+
+
+# ========== МЕНЮ АТМОСФЕР ==========
+def atm_status_keyboard() -> InlineKeyboardMarkup:
+    """Меню атмосфер"""
+    return _mk(
+        _row(_btn("⏱️ Время восстановления", "atm_regen_time"), _btn("📊 Максимум ATM", "atm_max_info")),
+        _row(_btn("⚡ Ускорение", "atm_boosters"), _btn("⬅️ В профиль", "profile"))
+    )
+
+
+# ========== МЕНЮ ТОПА ==========
+def top_sort_keyboard() -> InlineKeyboardMarkup:
+    """Меню выбора сортировки топа"""
+    return _mk(
+        _row(_btn("🏗️ По гофрошке", "top_gofra"), _btn("🔌 По кабелю", "top_cable")),
+        _row(_btn("🐍 По змию", "top_zmiy"), _btn("🌡️ По атмосферам", "top_atm")),
+        _row(_btn("⬅️ Назад", "back_main"))
+    )
+
+
+# ========== МЕНЮ ЧАТА ==========
+def chat_menu_keyboard() -> InlineKeyboardMarkup:
+    """Главное меню для чата"""
+    return _mk(
+        _row(_btn("🐍 Давить в чате", "chat_davka"), _btn("👊 Радёмка", "chat_rademka")),
+        _row(_btn("🏆 Топ чата", "chat_top"), _btn("📊 Стата чата", "chat_stats")),
+        _row(_btn("👤 Мой вклад", "chat_me"), _btn("📊 Профиль", "chat_profile")),
+        _row(_btn("🌡️ Атмосферы", "chat_atm"), _btn("⏱️ Таймер", "chat_atm_regen")),
+        _row(_btn("🆘 Помощь", "chat_help"), _btn("📱 Меню", "chat_menu"))
+    )
+
+
+# ========== КЛАВИАТУРЫ ПОДТВЕРЖДЕНИЯ ==========
+def rademka_fight_keyboard(target_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения радёмки"""
+    return _mk(
+        _row(
+            _btn("✅ Протащить!", f"rademka_confirm_{target_id}"),
+            _btn("❌ Отмена", "rademka")
+        )
+    )
+
+
+def chat_fight_keyboard(target_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения радёмки в чате"""
+    return _mk(
+        _row(
+            _btn("✅ Протащить!", f"chat_fight_{target_id}"),
+            _btn("❌ Отмена", "chat_menu")
+        )
+    )
+
+
+def confirmation_keyboard(action: str, confirm_text: str = "Да", cancel_text: str = "Нет") -> InlineKeyboardMarkup:
+    """Универсальная клавиатура подтверждения"""
+    return _mk(
+        _row(
+            _btn(f"✅ {confirm_text}", f"confirm_{action}"),
+            _btn(f"❌ {cancel_text}", f"cancel_{action}")
+        )
+    )
+
+
+# ========== КНОПКА НАЗАД ==========
+def back_keyboard(to: str = "back_main") -> InlineKeyboardMarkup:
+    """Клавиатура только с кнопкой назад"""
+    return _mk(
+        _row(_btn("⬅️ Назад", to))
+    )
+
+
+# ========== УСТАРЕВШИЕ ФУНКЦИИ (для совместимости) ==========
+# Эти функции теперь используют новый стиль
 
 def mk(menu: str, back: str = None, cols: int = 2) -> InlineKeyboardMarkup:
-    if menu not in MENUS: return main_kb()
+    """Устаревшая функция - используйте конкретные клавиатуры"""
+    if menu == "main":
+        return main_keyboard()
+    elif menu == "nickname":
+        return nickname_keyboard()
+    elif menu == "rad":
+        return rademka_keyboard()
+    elif menu == "gofra":
+        return gofra_info_keyboard()
+    elif menu == "cable":
+        return cable_info_keyboard()
+    elif menu == "top":
+        return top_sort_keyboard()
+    elif menu == "profile":
+        return main_keyboard()
+    else:
+        return main_keyboard()
 
-    items = MENUS[menu]
-    if not items:
-        return main_kb()
 
-    btns, row = [], []
+# ========== АЛИАСЫ (для совместимости) ==========
+main_kb = main_keyboard
+nickname_kb = nickname_keyboard
+rad_kb = rademka_keyboard
+gofra_kb = gofra_info_keyboard
+cable_kb = cable_info_keyboard
+top_kb = top_sort_keyboard
+back_kb = back_keyboard
+atm_status_kb = atm_status_keyboard
+gofra_info_kb = gofra_info_keyboard
+cable_info_kb = cable_info_keyboard
+profile_extended_kb = main_keyboard
+chat_menu_kb = chat_menu_keyboard
+top_sort_kb = top_sort_keyboard
 
-    for i, (text, cb) in enumerate(items, 1):
-        row.append(Btn(text=text, callback_data=cb))
-        if i % cols == 0:
-            btns.append(row)
-            row = []
-    if row: btns.append(row)
+back_to_main_keyboard = lambda: back_keyboard("back_main")
+back_to_profile_keyboard = lambda: back_keyboard("profile")
+back_to_rademka_keyboard = lambda: back_keyboard("rademka")
 
-    if back: btns.append([Btn(text="⬅️ Назад", callback_data=back)])
-    return InlineKeyboardMarkup(inline_keyboard=btns)
 
-def main_kb(): return mk("main")
-def nickname_kb(): return mk("nickname", "back_main", 2)
-def rad_kb(): return mk("rad", "back_main")
-def gofra_kb(): return mk("gofra", "profile", 1)
-def cable_kb(): return mk("cable", "profile", 1)
-def top_kb(): return mk("top", "back_main", 2)
-
-def back_kb(to="back_main"): 
-    return InlineKeyboardMarkup(inline_keyboard=[[Btn(text="⬅️ Назад", callback_data=to)]])
-
-main_keyboard = main_kb
-nickname_keyboard = nickname_kb
-rademka_keyboard = rad_kb
-top_sort_keyboard = top_kb
-back_to_main_keyboard = lambda: back_kb("back_main")
-back_to_profile_keyboard = lambda: back_kb("profile")
-back_to_rademka_keyboard = lambda: back_kb("rademka")
-profile_extended_keyboard = lambda: mk("profile", "back_main", 1)
-
-def atm_status_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="⏱️ Время восстановления", callback_data="atm_regen_time")],
-        [Btn(text="� Максимум атмосфер", callback_data="atm_max_info")],
-        [Btn(text="⚡ Ускорение", callback_data="atm_boosters")],
-        [Btn(text="⬅️ В профиль", callback_data="profile")]
-    ])
-
-def gofra_info_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="📈 Прогресс", callback_data="gofra_progress")],
-        [Btn(text="⚡ Скорость", callback_data="gofra_speed")],
-        [Btn(text="🎯 Следующая", callback_data="gofra_next")],
-        [Btn(text="⬅️ В главное", callback_data="back_main")]
-    ])
-
-def cable_info_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="💪 Сила кабеля", callback_data="cable_power_info")],
-        [Btn(text="⚔️ Урон в PvP", callback_data="cable_pvp_info")],
-        [Btn(text="📈 Прокачка", callback_data="cable_upgrade_info")],
-        [Btn(text="⬅️ В главное", callback_data="back_main")]
-    ])
-
-def profile_extended_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [Btn(text="🏗️ Моя гофрошка", callback_data="gofra_info")],
-        [Btn(text="🔌 Мой кабель", callback_data="cable_info")],
-        [Btn(text="🌡️ Атмосферы", callback_data="atm_status")],
-        [Btn(text="⬅️ Главное меню", callback_data="back_main")]
-    ])
-
-def rademka_fight_keyboard(target_id: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            Btn(text="✅ Протащить!", callback_data=f"rademka_confirm_{target_id}"),
-            Btn(text="❌ Отмена", callback_data="rademka")
-        ]
-    ])
-
-def chat_menu_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            Btn(text="🐍 Давить в чате", callback_data="chat_davka"),
-            Btn(text="👊 Радёмка", callback_data="chat_rademka")
-        ],
-        [
-            Btn(text="🏆 Топ чата", callback_data="chat_top"),
-            Btn(text="📊 Стата чата", callback_data="chat_stats")
-        ],
-        [
-            Btn(text="👤 Мой вклад", callback_data="chat_me"),
-            Btn(text="📊 Профиль", callback_data="chat_profile")
-        ],
-        [
-            Btn(text="🌡️ Атмосферы", callback_data="chat_atm"),
-            Btn(text="⏱️ Таймер", callback_data="chat_atm_regen")
-        ],
-        [
-            Btn(text="🆘 Помощь", callback_data="chat_help"),
-            Btn(text="📱 Меню", callback_data="chat_menu")
-        ]
-    ])
+# ========== ЭКСПОРТ ==========
+__all__ = [
+    # Основные клавиатуры
+    'main_keyboard',
+    'nickname_keyboard', 
+    'rademka_keyboard',
+    'gofra_info_keyboard',
+    'cable_info_keyboard',
+    'atm_status_keyboard',
+    'top_sort_keyboard',
+    'chat_menu_keyboard',
+    
+    # Подтверждения
+    'rademka_fight_keyboard',
+    'chat_fight_keyboard',
+    'confirmation_keyboard',
+    
+    # Назад
+    'back_keyboard',
+    
+    # Алиасы
+    'main_kb', 'nickname_kb', 'rad_kb', 'gofra_kb', 'cable_kb', 'top_kb', 'back_kb',
+    'atm_status_kb', 'gofra_info_kb', 'cable_info_kb', 'profile_extended_kb',
+    'chat_menu_kb', 'top_sort_kb',
+    'back_to_main_keyboard', 'back_to_profile_keyboard', 'back_to_rademka_keyboard',
+    
+    # Устаревшая функция
+    'mk'
+]
