@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
 from db_manager import init_db, close_pool, stop_auto_backup, create_backup, start_auto_backup, upload_backup_to_telegram
+from config import ADMIN_CONFIG
 from dotenv import load_dotenv
 from handlers import router
 
@@ -123,16 +124,17 @@ async def graceful_shutdown(signal_name: str):
         
         # 2. Отправляем бэкап в Telegram админу
         if _bot_instance:
-            admin_id = os.getenv("ADMIN_ID")
-            if admin_id:
+            admin_ids = ADMIN_CONFIG.get("admin_ids", [])
+            if admin_ids:
+                admin_id = admin_ids[0]  # Первый админ
                 try:
                     admin_id = int(admin_id)
                     logger.info(f"📤 Отправляем бэкап админу {admin_id}...")
                     await upload_backup_to_telegram(_bot_instance, admin_id)
-                except ValueError:
+                except (ValueError, TypeError):
                     logger.warning("⚠️ ADMIN_ID неверный формат")
             else:
-                logger.warning("⚠️ ADMIN_ID не найден в .env")
+                logger.warning("⚠️ ADMIN_ID не найден в config.py")
         
         # 3. Останавливаем автобэкап
         logger.info("🛑 Останавливаем автобэкап...")
