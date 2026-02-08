@@ -138,6 +138,43 @@ def back_keyboard(to: str = "back_main") -> InlineKeyboardMarkup:
         _row(_btn("⬅️ Назад", to))
     )
 
+# ========== АДМИН-ПАНЕЛЬ ==========
+def admin_keyboard() -> InlineKeyboardMarkup:
+    """Админ-панель"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💾 Бэкап", callback_data="admin_backup"),
+            InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
+        ],
+        [
+            InlineKeyboardButton(text="🔧 Система", callback_data="admin_system"),
+            InlineKeyboardButton(text="👥 Игроки", callback_data="admin_players"),
+        ],
+        [
+            InlineKeyboardButton(text="📝 Логи", callback_data="admin_logs"),
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin_settings"),
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Выход", callback_data="admin_exit"),
+        ]
+    ])
+
+def admin_system_keyboard() -> InlineKeyboardMarkup:
+    """Меню системных настроек"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔄 Перезапуск", callback_data="admin_restart"),
+            InlineKeyboardButton(text="🧹 Очистка кэша", callback_data="admin_clear_cache"),
+        ],
+        [
+            InlineKeyboardButton(text="🗄️ Инфо БД", callback_data="admin_db_info"),
+            InlineKeyboardButton(text="📈 Redis stats", callback_data="admin_redis"),
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back"),
+        ]
+    ])
+
 
 # ========== АЛИАСЫ ==========
 back_kb = back_keyboard
@@ -178,4 +215,8 @@ __all__ = [
     'atm_status_kb', 'gofra_info_kb', 'cable_info_kb', 'profile_extended_kb',
     'chat_menu_kb', 'top_sort_kb',
     'back_to_main_keyboard', 'back_to_profile_keyboard', 'back_to_rademka_keyboard',
+    
+    # Админ
+    'admin_keyboard',
+    'admin_system_keyboard',
 ]

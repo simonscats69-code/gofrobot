@@ -6,9 +6,9 @@ import signal
 from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.file import FileStorage
 from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from db_manager import init_db, close_pool, stop_auto_backup, create_backup, start_auto_backup, upload_backup_to_telegram
-from config import ADMIN_CONFIG
+from db_manager import init_db, close_pool, stop_auto_backup, create_backup, start_auto_backup, upload_backup_to_telegram, ADMIN_CONFIG
 from dotenv import load_dotenv
 from handlers import router
 
@@ -200,7 +200,11 @@ async def main():
         global _bot_instance
         bot = Bot(token=BOT_TOKEN)
         _bot_instance = bot
-        dp = Dispatcher(storage=MemoryStorage())
+        
+        # Используем FileStorage для сохранения FSM между перезагрузками
+        fsm_dir = "storage/fsm"
+        os.makedirs(fsm_dir, exist_ok=True)
+        dp = Dispatcher(storage=FileStorage(path=fsm_dir))
 
         await set_bot_commands(bot)
 
