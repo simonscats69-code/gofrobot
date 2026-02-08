@@ -3,11 +3,11 @@
 Все клавиатуры в едином красивом стиле
 """
 
-from typing import List, Dict
+from typing import List
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ============================================
-# УНИФИЦИРОВАННЫЕ КЛАВИАТУРЫ (ВСЕ В КРАСИВОМ СТИЛЕ)
+# УНИФИЦИРОВАННЫЕ КЛАВИАТУРЫ
 # ============================================
 
 def _btn(text: str, callback_data: str) -> InlineKeyboardButton:
@@ -139,36 +139,7 @@ def back_keyboard(to: str = "back_main") -> InlineKeyboardMarkup:
     )
 
 
-# ========== УСТАРЕВШИЕ ФУНКЦИИ (для совместимости) ==========
-# Эти функции теперь используют новый стиль
-
-def mk(menu: str, back: str = None, cols: int = 2) -> InlineKeyboardMarkup:
-    """Устаревшая функция - используйте конкретные клавиатуры"""
-    if menu == "main":
-        return main_keyboard()
-    elif menu == "nickname":
-        return nickname_keyboard()
-    elif menu == "rad":
-        return rademka_keyboard()
-    elif menu == "gofra":
-        return gofra_info_keyboard()
-    elif menu == "cable":
-        return cable_info_keyboard()
-    elif menu == "top":
-        return top_sort_keyboard()
-    elif menu == "profile":
-        return main_keyboard()
-    else:
-        return main_keyboard()
-
-
-# ========== АЛИАСЫ (для совместимости) ==========
-main_kb = main_keyboard
-nickname_kb = nickname_keyboard
-rad_kb = rademka_keyboard
-gofra_kb = gofra_info_keyboard
-cable_kb = cable_info_keyboard
-top_kb = top_sort_keyboard
+# ========== АЛИАСЫ ==========
 back_kb = back_keyboard
 atm_status_kb = atm_status_keyboard
 gofra_info_kb = gofra_info_keyboard
@@ -203,11 +174,8 @@ __all__ = [
     'back_keyboard',
     
     # Алиасы
-    'main_kb', 'nickname_kb', 'rad_kb', 'gofra_kb', 'cable_kb', 'top_kb', 'back_kb',
+    'back_kb',
     'atm_status_kb', 'gofra_info_kb', 'cable_info_kb', 'profile_extended_kb',
     'chat_menu_kb', 'top_sort_kb',
     'back_to_main_keyboard', 'back_to_profile_keyboard', 'back_to_rademka_keyboard',
-    
-    # Устаревшая функция
-    'mk'
 ]

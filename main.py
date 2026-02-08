@@ -86,7 +86,6 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="nickname", description="👤 Смена ника"),
         BotCommand(command="rademka", description="👊 Радёмка (PvP)"),
         BotCommand(command="help", description="🆘 Помощь"),
-        BotCommand(command="version", description="🔄 Версия бота"),
         BotCommand(command="menu", description="📱 Главное меню"),
     ]
     

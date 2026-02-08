@@ -13,22 +13,6 @@ from timing_system import timing_manager
 from db_manager import get_patsan, get_gofra_info
 from config import TIMING_CONFIG
 
-# Утилиты для форматирования
-def get_atm_info(atm_count: int) -> dict:
-    """Информация об атмосферах"""
-    return {
-        'atm_count': atm_count,
-        'regen_time': '1 атм. = 2 часа',
-        'max_atm': 12
-    }
-
-def get_cable_info(cable_mm: float) -> dict:
-    """Информация о кабеле"""
-    return {
-        'length': cable_mm,
-        'strength': cable_mm / 10.0
-    }
-
 logger = logging.getLogger(__name__)
 
 router = Router()
@@ -84,23 +68,18 @@ async def cmd_stats(message: Message):
             message_text = await _format_timing_stats_message(stats)
             await message.answer(message_text, reply_markup=main_keyboard())
         else:
-            # Общая статистика (оставляем существующую логику)
+            # Общая статистика
             patsan = await get_patsan(user_id)
             gofra_info = get_gofra_info(patsan.get('gofra_mm', 10.0))
-            cable_info = get_cable_info(patsan.get('cable_mm', 10.0))
-            atm_info = get_atm_info(patsan.get('atm_count', 0))
             
             message_text = (
                 f"📊 СТАТИСТИКА ПАЦАНА {patsan['nickname']}\n\n"
                 f"🏗️ Гофрошка: {patsan['gofra_mm']:.1f}мм\n"
                 f"⚡ Скорость: x{gofra_info['atm_speed']:.2f}\n"
                 f"🔋 Атмосферы: {patsan['atm_count']}/12\n"
-                f"🕐 Время восстановления: {atm_info['regen_time']}\n"
                 f"🔌 Кабель: {patsan['cable_mm']:.1f}мм\n"
-                f"💪 Сила: x{cable_info['strength']:.2f}\n"
+                f"💪 Сила: x{patsan['cable_mm'] / 10.0:.2f}\n"
                 f"🐍 Змий: {patsan['zmiy_grams']:.1f}г\n"
-                f"🏆 Радёмка: {patsan['rademka_wins']}/{patsan['rademka_losses']}\n"
-                f"📅 Регистрация: {datetime.fromtimestamp(patsan['registration_time']).strftime('%d.%m.%Y')}"
             )
             
             await message.answer(message_text, reply_markup=main_keyboard())

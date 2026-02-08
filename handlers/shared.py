@@ -8,41 +8,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Импортируем функции форматирования из utils.display
+from utils.display import Display
 
-def ft(s: int) -> str:
-    """
-    Format time duration in seconds to human-readable format
+# Алиас для форматирования времени
+ft = Display.format_time
 
-    Args:
-        s: seconds
-
-    Returns:
-        str: formatted time string
-    """
-    if s < 60:
-        return f"{s}с"
-    m, h, d = s // 60, s // 3600, s // 86400
-    if d > 0:
-        return f"{d}д {h%24}ч {m%60}м"
-    if h > 0:
-        return f"{h}ч {m%60}м {s%60}с"
-    return f"{m}м {s%60}с"
-
-
+# Алиас для прогрессбара (использует Display.progress_bar)
 def pb(c: float, t: float, l: int = 10) -> str:
     """
-    Create a progress bar string
-
-    Args:
-        c: current value
-        t: total value
-        l: length of bar
-
-    Returns:
-        str: progress bar
+    Create a progress bar string (using Display.progress_bar internally)
     """
-    f = int((c / t) * l) if t > 0 else 0
-    return "█" * f + "░" * (l - f)
+    pct = (c / t * 100) if t > 0 else 0
+    return Display.progress_bar(pct, l, 'default')
 
 
 def ignore_not_modified_error(func):
@@ -74,5 +52,40 @@ def ignore_not_modified_error(func):
     return wrapper
 
 
+# ============ VALIDATION FUNCTIONS ============
+
+def validate_nickname(nickname: str) -> tuple[bool, str]:
+    """
+    Validate nickname format and content
+
+    Args:
+        nickname: nickname to validate
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    import re
+
+    if len(nickname) < 3 or len(nickname) > 20:
+        return False, "Длина ника должна быть от 3 до 20 символов"
+
+    banned_words = ["admin", "root", "support", "бот", "модератор",
+                    "админ", "help", "техподдержка"]
+    nickname_lower = nickname.lower()
+    if any(word in nickname_lower for word in banned_words):
+        return False, "Запрещённый ник"
+
+    pattern = r'^[a-zA-Zа-яА-ЯёЁ0-9_\- ]+$'
+    if not re.match(pattern, nickname):
+        return False, "Только буквы, цифры, пробелы, дефисы и подчёркивания"
+
+    if nickname.strip() != nickname:
+        return False, "Убери пробелы в начале или конце"
+
+    if nickname.count('  ') > 0:
+        return False, "Слишком много пробелов подряд"
+
+    return True, "OK"
+
 # Экспорт
-__all__ = ['ft', 'pb', 'ignore_not_modified_error']
+__all__ = ['ft', 'pb', 'ignore_not_modified_error', 'validate_nickname']

@@ -74,19 +74,11 @@ class DatabaseConnectionPool:
 # Глобальный пул соединений
 _db_pool = DatabaseConnectionPool(max_connections=10)
 
-# Импортируем функцию форматирования времени
-def ft(s):
-    """
-    Format time duration in seconds to human-readable format
-    """
-    if s < 60:
-        return f"{s}с"
-    m, h, d = s // 60, s // 3600, s // 86400
-    if d > 0:
-        return f"{d}д {h%24}ч {m%60}м"
-    if h > 0:
-        return f"{h}ч {m%60}м {s%60}с"
-    return f"{m}м {s%60}с"
+# Импортируем функции форматирования из utils.display
+from utils.display import format_length, Display
+
+# Алиас для форматирования времени
+ft = Display.format_time
 
 # Глобальные переменные для базы данных
 DB_PATH = "storage/bot_database.db"
@@ -956,18 +948,7 @@ def get_gofra_info(gofra_mm: float) -> Dict[str, Any]:
         "next_threshold": next_level["threshold"] if next_level else None
     }
 
-def format_length(mm: float) -> str:
-    """Форматирует длину в удобочитаемый вид (сантиметры)."""
-    # Convert millimeters to centimeters (10 mm = 1 cm)
-    cm = mm / 10.0
-    if cm < 10:
-        return f"{cm:.1f} см"
-    elif cm < 100:
-        return f"{cm:.1f} см"
-    elif cm < 1000:
-        return f"{cm/10:.1f} см"
-    else:
-        return f"{cm/100:.1f} м"
+# format_length импортируется из utils.display (строка 66)
 
 async def calculate_atm_regen_time(patsan: Dict[str, Any]) -> Dict[str, Any]:
     """Вычисляет время восстановления атмосфер."""
@@ -1413,6 +1394,7 @@ async def upload_backup_to_telegram(bot, admin_id: int) -> bool:
         logger.error(f"❌ Ошибка отправки бэкапа в Telegram: {e}")
         return False
 
+async def get_backup_info() -> dict:
     """Возвращает информацию о бэкапах."""
     try:
         if not os.path.exists(BACKUP_DIR):
