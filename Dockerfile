@@ -32,14 +32,10 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Copy requirements
-COPY requirements.txt requirements_optimizations.txt ./
+COPY requirements.txt ./
 
 # Install Python dependencies based on build type
-RUN if [ "$BUILD_TYPE" = "production" ]; then \
-        pip install --no-cache-dir -r requirements.txt; \
-    else \
-        pip install --no-cache-dir -r requirements.txt -r requirements_optimizations.txt; \
-    fi
+RUN pip install --no-cache-dir -r requirements.txt
 
 # =============================================
 # FINAL STAGE
