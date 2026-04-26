@@ -213,13 +213,15 @@ async def main():
         logger.info("Бот запускается...")
         
         # Запускаем polling с возможностью graceful shutdown
+        dp.shutdown.register(graceful_shutdown, "DP_SHUTDOWN")
+        
         try:
-            await dp.start_polling(bot, shutdown_hook=graceful_shutdown)
+            await dp.start_polling(bot)
         except asyncio.CancelledError:
             logger.info("⏹️ Polling отменён")
         
         # Ждём завершения если был сигнал
-        if _shutdown_event and not _shutdown_event.is_set():
+        if _shutdown_event is not None and not _shutdown_event.is_set():
             await _shutdown_event.wait()
 
     except Exception as e:

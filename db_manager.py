@@ -5,6 +5,7 @@ import json
 import logging
 import time
 import shutil
+import random
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import sqlite3
@@ -17,62 +18,10 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-class DatabaseConnectionPool:
-    """Пул соединений с базой данных для улучшения производительности"""
-    
-    def __init__(self, max_connections: int = 10):
-        self.max_connections = max_connections
-        self._connections = []
-        self._in_use = set()
-        self._lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(max_connections)
-    
-    async def get_connection(self):
-        """Получить соединение из пула"""
-        async with self._lock:
-            # Сначала попробуем найти свободное соединение
-            for conn in self._connections:
-                if conn not in self._in_use:
-                    self._in_use.add(conn)
-                    logger.debug(f"🔄 Использую существующее соединение из пула (занято: {len(self._in_use)}/{self.max_connections})")
-                    return conn
-            
-            # Если свободных нет, создаем новое (если не превышен лимит)
-            if len(self._connections) < self.max_connections:
-                conn = await aiosqlite.connect(DB_PATH, timeout=60)
-                conn.row_factory = aiosqlite.Row
-                self._connections.append(conn)
-                self._in_use.add(conn)
-                logger.info(f"🆕 Создано новое соединение с базой данных (всего: {len(self._connections)})")
-                return conn
-            
-            # Ждем освобождения соединения
-            logger.warning(f"⏳ Все соединения заняты, жду освобождения...")
-            await self._semaphore.acquire()
-            return await self.get_connection()
-    
-    async def release_connection(self, conn):
-        """Освободить соединение и вернуть в пул"""
-        async with self._lock:
-            if conn in self._in_use:
-                self._in_use.remove(conn)
-                self._semaphore.release()
-                logger.debug(f"✅ Соединение освобождено (занято: {len(self._in_use)}/{self.max_connections})")
-    
-    async def close_all(self):
-        """Закрыть все соединения в пуле"""
-        async with self._lock:
-            for conn in self._connections:
-                try:
-                    await conn.close()
-                except:
-                    pass
-            self._connections.clear()
-            self._in_use.clear()
-            logger.info("🔌 Все соединения с базой данных закрыты")
-
-# Глобальный пул соединений
-_db_pool = DatabaseConnectionPool(max_connections=10)
+# Глобальные переменные для базы данных
+DB_PATH = "storage/bot_database.db"
+BACKUP_DIR = "storage/backups"
+DATABASE_VERSION = 5
 
 # Импортируем функции форматирования из utils.display
 from utils.display import format_length, Display
@@ -80,22 +29,45 @@ from utils.display import format_length, Display
 # Алиас для форматирования времени
 ft = Display.format_time
 
-# Глобальные переменные для базы данных
-DB_PATH = "storage/bot_database.db"
-BACKUP_DIR = "storage/backups"
-DATABASE_VERSION = 5
+# Единое соединение с базой данных (для Telegram бота этого более чем достаточно)
+_db_connection = None
+_db_lock = asyncio.Lock()
 
 async def get_connection() -> aiosqlite.Connection:
-    """Получает соединение из пула."""
-    return await _db_pool.get_connection()
+    """Получить соединение с базой данных."""
+    global _db_connection
+    
+    async with _db_lock:
+        if _db_connection is None:
+            _db_connection = await aiosqlite.connect(DB_PATH, timeout=60)
+            _db_connection.row_factory = aiosqlite.Row
+            
+            # Оптимизация SQLite
+            await _db_connection.execute("PRAGMA journal_mode=WAL")
+            await _db_connection.execute("PRAGMA synchronous=NORMAL")
+            await _db_connection.execute("PRAGMA temp_store=MEMORY")
+            await _db_connection.execute("PRAGMA cache_size=-20000")
+            await _db_connection.execute("PRAGMA foreign_keys=ON")
+            
+            logger.info("✅ Соединение с базой данных установлено")
+        
+        return _db_connection
 
 async def release_connection(conn: aiosqlite.Connection):
-    """Возвращает соединение в пул."""
-    await _db_pool.release_connection(conn)
+    """Ничего не делаем - используем одно глобальное соединение."""
+    pass
 
 async def close_pool():
-    """Закрывает все соединения в пуле."""
-    await _db_pool.close_all()
+    """Закрыть соединение с базой данных."""
+    global _db_connection
+    
+    async with _db_lock:
+        if _db_connection is not None:
+            await _db_connection.close()
+            _db_connection = None
+            logger.info("🔌 Соединение с базой данных закрыто")
+
+
 
 async def ensure_storage_dirs():
     """Убедиться, что все необходимые директории существуют."""
@@ -522,7 +494,7 @@ async def restore_all_data(backup_data: dict):
             logger.info("✅ Данные восстановлены из резервной копии")
 
         finally:
-            await conn.close()
+            await release_connection(conn)
 
     except Exception as e:
         logger.error(f"❌ Ошибка при восстановлении данных: {e}")
@@ -550,7 +522,7 @@ async def optimize_database():
             logger.info("✅ База данных оптимизирована")
 
         finally:
-            await conn.close()
+            await release_connection(conn)
 
     except Exception as e:
         logger.error(f"❌ Ошибка при оптимизации базы данных: {e}")
@@ -809,12 +781,11 @@ async def get_top_players(limit: int = 10, sort_by: str = "gofra") -> List[Dict[
         
         query = f"SELECT user_id, nickname, gofra_mm, cable_mm, zmiy_grams, total_zmiy_grams, atm_count FROM users ORDER BY {sort_by} DESC LIMIT ?"
         cursor = await conn.execute(query, (limit,))
+        
+        # Получаем имена колонок ПРЯМО ИЗ КУРСОРА
+        column_names = [desc[0] for desc in cursor.description]
+        
         rows = await cursor.fetchall()
-
-        # Получаем имена колонок
-        cursor = await conn.execute("PRAGMA table_info(users)")
-        columns = await cursor.fetchall()
-        column_names = [col[1] for col in columns]
 
         # Преобразуем строки в словари
         result = []
@@ -863,7 +834,7 @@ async def bulk_update_users(users_data: List[Dict[str, Any]]):
         logger.error(f"Ошибка при пакетном обновлении пользователей: {e}")
         raise
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def get_multiple_users(user_ids: List[int]) -> Dict[int, Dict[str, Any]]:
     """Пакетная загрузка пользователей для улучшения производительности."""
@@ -894,7 +865,7 @@ async def get_multiple_users(user_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         
         return result
     finally:
-        await conn.close()
+        await release_connection(conn)
 
 async def save_rademka_fight(winner_id: int, loser_id: int, money_taken: int = 0):
     """Сохраняет результат боя радёмки."""
@@ -998,7 +969,6 @@ async def davka_zmiy(user_id: int, chat_id: Optional[int] = None) -> Tuple[bool,
             return False, None, {"error": "Нужно 12 атмосфер для давки змия!"}
 
         # Вычисляем вес змия
-        import random
         zmiy_grams = random.randint(gofra_info['min_grams'], gofra_info['max_grams'])
 
         # Обновляем данные пользователя
@@ -1091,8 +1061,8 @@ async def can_fight_pvp(user_id: int) -> Tuple[bool, str]:
                 remaining_time = 3600 - (current_time - last_fight)
                 minutes = remaining_time // 60
                 return False, f"Лимит боёв: 10/час. Подожди {minutes} минут"
-        finally:
-            await conn.close()
+    finally:
+        await release_connection(conn)
 
     return True, "Можно драться"
 

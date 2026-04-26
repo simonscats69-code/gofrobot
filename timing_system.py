@@ -392,10 +392,13 @@ class PreciseTimingManager:
 timing_manager = PreciseTimingManager()
 
 # Конфигурация по умолчанию (если нет в config.py)
-if not hasattr(TIMING_CONFIG, 'base_davka_cooldown'):
-    TIMING_CONFIG = {
+if 'base_davka_cooldown' not in TIMING_CONFIG:
+    default_config = {
         'base_davka_cooldown': 7200,  # 2 часа в секундах
         'base_atm_regen_time': 7200,  # 2 часа в секундах
         'countdown_update_interval': 10,  # Обновление каждые 10 секунд
         'max_countdown_duration': 300  # Максимальное время отсчёта 5 минут
     }
+    # Объединяем конфиги, не перезаписывая существующие значения
+    default_config.update(TIMING_CONFIG)
+    TIMING_CONFIG = default_config

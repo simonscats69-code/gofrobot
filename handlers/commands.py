@@ -415,6 +415,8 @@ async def rademka_confirm(c: types.CallbackQuery):
         a["cable_power"] = int(a["cable_mm"] / 5)
         a["gofra"] = int(a["gofra_mm"] / 10)
         
+        a["last_rademka"] = int(time.time())
+        
         txt = f"✅ УСПЕХ!\n\nИДИ СЮДА РАДЁМКУ БАЛЯ! ТЫ ПРОТАЩИЛ!\n\n"
         txt += f"Ты унизил {t.get('nickname','Неизвестно')}!\n"
         txt += f"🔌 Кабель: +{cable_gain_mm:.1f} мм (теперь {format_length(a['cable_mm'])})\n"
@@ -422,10 +424,15 @@ async def rademka_confirm(c: types.CallbackQuery):
         txt += f"🎯 Шанс был: {chance}%\n"
         txt += "Он теперь боится!"
     else:
+        t["last_rademka"] = int(time.time())
         txt = f"❌ ПРОВАЛ!\n\nСам оказался радёмкой...\n\n"
         txt += f"{t.get('nickname','Неизвестно')} круче!\n"
         txt += f"🎯 Шанс был: {chance}%\n"
         txt += "Теперь смеются..."
+    
+    # Обновляем время последней радёмки у ОБОИХ игроков
+    a["last_rademka"] = int(time.time())
+    t["last_rademka"] = int(time.time())
     
     await save_patsan(a)
     await save_patsan(t)
