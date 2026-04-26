@@ -679,12 +679,7 @@ async def get_patsan(user_id: int) -> Dict[str, Any]:
         cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         row = await cursor.fetchone()
         if row:
-            # Получаем имена колонок
-            cursor = await conn.execute("PRAGMA table_info(users)")
-            columns = await cursor.fetchall()
-            column_names = [col[1] for col in columns]
-            # Создаем словарь из результата
-            return dict(zip(column_names, row))
+            return dict(row)
         else:
             # Создаем нового пользователя, если его нет в базе
             await conn.execute("""
@@ -695,10 +690,7 @@ async def get_patsan(user_id: int) -> Dict[str, Any]:
             cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             if row:
-                cursor = await conn.execute("PRAGMA table_info(users)")
-                columns = await cursor.fetchall()
-                column_names = [col[1] for col in columns]
-                return dict(zip(column_names, row))
+                return dict(row)
             # Если все еще None, возвращаем дефолтные данные
             return {
                 'user_id': user_id,
@@ -1061,8 +1053,8 @@ async def can_fight_pvp(user_id: int) -> Tuple[bool, str]:
                 remaining_time = 3600 - (current_time - last_fight)
                 minutes = remaining_time // 60
                 return False, f"Лимит боёв: 10/час. Подожди {minutes} минут"
-    finally:
-        await release_connection(conn)
+        finally:
+            await release_connection(conn)
 
     return True, "Можно драться"
 
@@ -1135,7 +1127,7 @@ class ChatManager:
             """, (chat_id, chat_title, chat_type))
             await conn.commit()
         finally:
-            await conn.close()
+            await release_connection(conn)
 
     @staticmethod
     async def update_chat_activity(chat_id: int):
